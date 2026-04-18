@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import * as ImagePicker from 'expo-image-picker'
-import * as FileSystem from 'expo-file-system'
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy'
 
 export type OCRItem = { name: string; value: number }
 
@@ -17,7 +17,7 @@ export type OCRResult = {
 }
 
 export async function imageToBase64(uri: string): Promise<string> {
-  return FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any })
+  return readAsStringAsync(uri, { encoding: EncodingType.Base64 })
 }
 
 // Legacy alias used by OCRCamera.tsx

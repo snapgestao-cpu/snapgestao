@@ -16,15 +16,8 @@ Notifications.setNotificationHandler({
 export async function registerForPushNotifications(): Promise<void> {
   if (!Device.isDevice) return
 
-  const { status: existing } = await Notifications.getPermissionsAsync()
-  let finalStatus = existing
-
-  if (existing !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync()
-    finalStatus = status
-  }
-
-  if (finalStatus !== 'granted') return
+  const { status } = await Notifications.requestPermissionsAsync()
+  if (status !== 'granted') return
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('snapgestao', {
@@ -34,7 +27,6 @@ export async function registerForPushNotifications(): Promise<void> {
       lightColor: '#0F5EA8',
     })
   }
-  // Sem getExpoPushTokenAsync — não necessário no Expo Go
 }
 
 export async function sendLocalNotification(
