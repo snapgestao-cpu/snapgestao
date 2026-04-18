@@ -22,6 +22,7 @@ type Props = {
   visible: boolean
   onClose: () => void
   onSuccess: () => void
+  initialDate?: string
 }
 
 function todayISO() { return new Date().toISOString().split('T')[0] }
@@ -30,7 +31,7 @@ function isoToDisplay(iso: string) {
   return `${d}/${m}/${y}`
 }
 
-export function NewIncomeModal({ visible, onClose, onSuccess }: Props) {
+export function NewIncomeModal({ visible, onClose, onSuccess, initialDate }: Props) {
   const insets = useSafeAreaInsets()
 
   const [amountDigits, setAmountDigits] = useState('')
@@ -48,8 +49,9 @@ export function NewIncomeModal({ visible, onClose, onSuccess }: Props) {
     setAmountDigits('')
     setDescription('')
     setSelectedSourceId(null)
-    setDateISO(todayISO())
-    setDateDisplay(isoToDisplay(todayISO()))
+    const d = initialDate ?? todayISO()
+    setDateISO(d)
+    setDateDisplay(isoToDisplay(d))
     setPaymentMethod('pix')
     setError(null)
 

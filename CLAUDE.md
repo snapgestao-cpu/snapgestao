@@ -94,9 +94,9 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Exclusão com `Alert.alert` de confirmação; lançamentos vinculados são mantidos
 
 **Tela de Projeção** (`app/(tabs)/projection.tsx`)
-- Gráfico de linha 12 meses com `react-native-svg` + `react-native-chart-kit`
-- Tabela mês a mês com receita, despesa e saldo projetados
-- Dados calculados com base em `income_sources` e potes do ciclo atual
+- Tabela 12 meses: 6 passados (dados reais) + 6 futuros (receita base de `income_sources`, gasto zero)
+- Receita = `income_sources` (base) + transações `income` do ciclo
+- Linha futura marcada com `*` e estilo itálico/muted
 
 **Metas de longo prazo** (`app/(tabs)/goals.tsx`)
 - Tela com summary cards (total alocado, total projetado com juros compostos)
@@ -134,9 +134,22 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Potes duplicando ao tocar duas vezes no botão
 - Campos inexistentes (`icon`, `mesada_active`) no insert de potes — **nunca incluir no INSERT/UPDATE**
 
+**Controle mensal** (`app/(tabs)/monthly.tsx`)
+- Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
+- Card escuro de resumo: receita base + receita extra, despesas, saldo, débito/sobra de ciclos anteriores
+- Alerta âmbar se gasto > 80% da renda disponível
+- Tabela de potes com progresso, gasto e limite por pote
+- Lista de transações agrupada por data (Hoje/Ontem/DD MMM) com botão ✏️ por linha
+- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo (expense vs income)
+- Seção "Encerrar ciclo": chips de destino da sobra (meta / emergência / renda / descartar), seletor de meta, botão de fechamento
+- Seção pote de emergência: saldo acumulado de todas as transações deste pote
+- FAB igual ao dashboard (registrar gasto / receita) com `initialDate` do ciclo atual
+- `lib/cycle.ts`: `getCycle(cycleStart, offset)` → `CycleInfo` com ISO strings; `formatDateShort(iso)` → Hoje/Ontem/DD MMM
+- `lib/cycleClose.ts`: `calculateCycleSummary()` e `processCycleClose()` com upsert em `cycle_rollovers`
+- SQL migration: `supabase/migrations/20240418_cycle_rollovers.sql` — criar tabela `cycle_rollovers` manualmente no Supabase SQL editor
+
 ### Fase 2 — Pendente
 
-- [ ] Receita na projeção: corrigir contabilização (usar transações reais do ciclo, não apenas `income_sources`)
 - [ ] Módulo OCR — leitura de cupons fiscais via `lib/ocr.ts` + `components/OCRCamera.tsx` (estrutura existe, Edge Function pendente)
 - [ ] Importação via planilha Excel — parse de `.xlsx` e inserção em batch de transações
 - [ ] Notificações push reais — alertas de pote próximo do limite, vencimento de fatura (toggles de UI já existem)
@@ -154,7 +167,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 | Group | Purpose |
 |---|---|
 | `app/(auth)/` | Unauthenticated screens: login, register |
-| `app/(tabs)/` | Bottom-tab navigator: dashboard (potes), projection, goals, profile |
+| `app/(tabs)/` | Bottom-tab navigator: Potes, Mensal, Projeção, Metas, Perfil |
 | `app/onboarding/` | First-run wizard: step1 (balance + currency), step2 (cycle + income), step3 (first pot) |
 
 `app/_layout.tsx` is the root. On mount it:

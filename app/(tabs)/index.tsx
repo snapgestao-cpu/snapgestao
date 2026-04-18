@@ -14,6 +14,7 @@ import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { Pot, Transaction } from '../../types'
+import { getCycle } from '../../lib/cycle'
 
 type PotRow = {
   pot: Pot
@@ -23,18 +24,6 @@ type PotRow = {
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
-function getCycleDates(cycleDay: number): { start: string; end: string } {
-  const now = new Date()
-  const d = now.getDate()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const start = d >= cycleDay ? new Date(y, m, cycleDay) : new Date(y, m - 1, cycleDay)
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, cycleDay - 1)
-  return {
-    start: start.toISOString().split('T')[0],
-    end: end.toISOString().split('T')[0],
-  }
-}
 
 function brl(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -95,7 +84,9 @@ export default function DashboardScreen() {
         return
       }
 
-      const { start: cycleStart, end: cycleEnd } = getCycleDates(user.cycle_start ?? 1)
+      const cycle = getCycle(user.cycle_start ?? 1, 0)
+      const cycleStart = cycle.startISO
+      const cycleEnd = cycle.endISO
 
       const rows: PotRow[] = await Promise.all(
         pots.map(async (pot) => {
@@ -210,7 +201,14 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         onScrollBeginDrag={closeFab}
       >
-        <Text style={styles.greeting}>Olá, {user?.name ?? 'usuário'} 👋</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.greeting}>Olá, {user?.name ?? 'usuário'} 👋</Text>
+          <View style={styles.cycleBadge}>
+            <Text style={styles.cycleBadgeText}>
+              {user ? getCycle(user.cycle_start ?? 1, 0).label : ''}
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: Colors.lightGreen }]}>
@@ -404,7 +402,13 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 20 },
-  greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 20 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 },
+  greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark, flex: 1 },
+  cycleBadge: {
+    backgroundColor: Colors.lightBlue, borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 5, marginTop: 4, marginLeft: 8,
+  },
+  cycleBadgeText: { fontSize: 11, fontWeight: '600', color: Colors.primary },
   summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   summaryCard: { flex: 1, borderRadius: 12, padding: 14 },
   summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },

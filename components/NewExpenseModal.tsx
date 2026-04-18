@@ -25,6 +25,7 @@ type Props = {
   onClose: () => void
   onSuccess: () => void
   pots: Pot[]
+  initialDate?: string
 }
 
 function todayISO(): string {
@@ -42,7 +43,7 @@ function calcBillingDate(txISO: string, card: CreditCard): string {
   return due.toISOString().split('T')[0]
 }
 
-export function NewExpenseModal({ visible, onClose, onSuccess, pots }: Props) {
+export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate }: Props) {
   const insets = useSafeAreaInsets()
 
   const [amountDigits, setAmountDigits] = useState('')
@@ -63,8 +64,9 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots }: Props) {
     setAmountDigits('')
     setDescription('')
     setSelectedPotId(pots[0]?.id ?? null)
-    setDateISO(todayISO())
-    setDateDisplay(isoToDisplay(todayISO()))
+    const d = initialDate ?? todayISO()
+    setDateISO(d)
+    setDateDisplay(isoToDisplay(d))
     setPaymentMethod('pix')
     setCards([])
     setSelectedCardId(null)

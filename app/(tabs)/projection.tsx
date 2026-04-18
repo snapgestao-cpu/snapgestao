@@ -1,86 +1,136 @@
-import React, { useMemo } from 'react'
-import { View, Text, ScrollView, StyleSheet } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
-import { BarChart } from '../../components/charts/BarChart'
-import { useTransactions } from '../../hooks/useTransactions'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { supabase } from '../../lib/supabase'
+import { getCycle } from '../../lib/cycle'
 
-const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
-  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+function brl(v: number) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+type MonthRow = {
+  label: string
+  income: number
+  expense: number
+  saldo: number
+}
 
 export default function ProjectionScreen() {
-  const { data: transactions = [] } = useTransactions()
+  const { user } = useAuthStore()
+  const [rows, setRows] = useState<MonthRow[]>([])
+  const [monthlyIncome, setMonthlyIncome] = useState(0)
+  const [loading, setLoading] = useState(true)
 
-  const chartData = useMemo(() => {
-    const now = new Date()
-    return Array.from({ length: 12 }, (_, i) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)
-      const month = MONTH_NAMES[date.getMonth()]
-      const year = date.getFullYear()
-      const monthTxs = transactions.filter((t) => {
-        const d = new Date(t.date)
-        return d.getFullYear() === year && d.getMonth() === date.getMonth()
-      })
-      const income = monthTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-      const expense = monthTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-      return { month, income, expense }
-    })
-  }, [transactions])
+  useEffect(() => {
+    if (!user) return
+    loadProjection()
+  }, [user?.id])
 
-  const avgIncome = chartData.reduce((s, d) => s + d.income, 0) / 12
-  const avgExpense = chartData.reduce((s, d) => s + d.expense, 0) / 12
+  async function loadProjection() {
+    if (!user) return
+    setLoading(true)
+    try {
+      const { data: sources } = await supabase
+        .from('income_sources').select('amount').eq('user_id', user.id)
+      const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
+      setMonthlyIncome(base)
+
+      const built: MonthRow[] = []
+      for (let offset = -5; offset <= 0; offset++) {
+        const cycle = getCycle(user.cycle_start ?? 1, offset)
+        const { data: txs } = await supabase
+          .from('transactions').select('type,amount')
+          .eq('user_id', user.id)
+          .gte('date', cycle.startISO).lte('date', cycle.endISO)
+        const incomeActual = ((txs ?? []) as any[])
+          .filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+        const expense = ((txs ?? []) as any[])
+          .filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+        const income = base + incomeActual
+        built.push({
+          label: cycle.monthYear,
+          income,
+          expense,
+          saldo: income - expense,
+        })
+      }
+
+      for (let offset = 1; offset <= 6; offset++) {
+        const cycle = getCycle(user.cycle_start ?? 1, offset)
+        built.push({
+          label: cycle.monthYear + ' *',
+          income: base,
+          expense: 0,
+          saldo: base,
+        })
+      }
+
+      setRows(built)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const pastRows = rows.filter(r => !r.label.endsWith('*'))
+  const avgExpense = pastRows.length
+    ? pastRows.reduce((s, r) => s + r.expense, 0) / pastRows.length
+    : 0
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Projeção 12 meses</Text>
+        <Text style={styles.title}>Projeção</Text>
 
-        <View style={styles.card}>
-          <BarChart data={chartData} />
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={[styles.stat, { backgroundColor: Colors.lightGreen }]}>
-            <Text style={styles.statLabel}>Receita média</Text>
-            <Text style={[styles.statValue, { color: Colors.success }]}>
-              R$ {avgIncome.toFixed(2)}
-            </Text>
-          </View>
-          <View style={[styles.stat, { backgroundColor: Colors.lightRed }]}>
-            <Text style={styles.statLabel}>Gasto médio</Text>
-            <Text style={[styles.statValue, { color: Colors.danger }]}>
-              R$ {avgExpense.toFixed(2)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.table}>
-          <View style={styles.tableHeader}>
-            <Text style={styles.tableHCell}>Mês</Text>
-            <Text style={styles.tableHCell}>Receita</Text>
-            <Text style={styles.tableHCell}>Despesa</Text>
-            <Text style={styles.tableHCell}>Saldo</Text>
-          </View>
-          {chartData.map((row) => (
-            <View key={row.month} style={styles.tableRow}>
-              <Text style={styles.tableCell}>{row.month}</Text>
-              <Text style={[styles.tableCell, { color: Colors.success }]}>
-                {row.income.toFixed(0)}
-              </Text>
-              <Text style={[styles.tableCell, { color: Colors.danger }]}>
-                {row.expense.toFixed(0)}
-              </Text>
-              <Text
-                style={[
-                  styles.tableCell,
-                  { color: row.income - row.expense >= 0 ? Colors.success : Colors.danger },
-                ]}
-              >
-                {(row.income - row.expense).toFixed(0)}
-              </Text>
+        {loading ? (
+          <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            <View style={styles.summaryRow}>
+              <View style={[styles.stat, { backgroundColor: Colors.lightGreen }]}>
+                <Text style={styles.statLabel}>Receita mensal base</Text>
+                <Text style={[styles.statValue, { color: Colors.success }]}>{brl(monthlyIncome)}</Text>
+              </View>
+              <View style={[styles.stat, { backgroundColor: Colors.lightRed }]}>
+                <Text style={styles.statLabel}>Gasto médio</Text>
+                <Text style={[styles.statValue, { color: Colors.danger }]}>{brl(avgExpense)}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+
+            <View style={styles.table}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHCell, { flex: 2 }]}>Ciclo</Text>
+                <Text style={styles.tableHCell}>Receita</Text>
+                <Text style={styles.tableHCell}>Gasto</Text>
+                <Text style={styles.tableHCell}>Saldo</Text>
+              </View>
+              {rows.map((row, i) => {
+                const isFuture = row.label.endsWith('*')
+                return (
+                  <View key={i} style={[styles.tableRow, isFuture && styles.futureRow]}>
+                    <Text style={[styles.tableCell, { flex: 2 }, isFuture && styles.futureCellText]}>
+                      {row.label}
+                    </Text>
+                    <Text style={[styles.tableCell, { color: Colors.success }]}>
+                      {brl(row.income)}
+                    </Text>
+                    <Text style={[styles.tableCell, { color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
+                      {brl(row.expense)}
+                    </Text>
+                    <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
+                      {brl(row.saldo)}
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
+
+            <Text style={styles.hint}>* Meses futuros usam receita base sem gastos lançados.</Text>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
@@ -90,45 +140,26 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 20 },
   title: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 20 },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   stat: { flex: 1, borderRadius: 12, padding: 14 },
   statLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
   statValue: { fontSize: 18, fontWeight: '700' },
   table: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: Colors.white, borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, marginBottom: 12,
   },
   tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: Colors.lightBlue,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    flexDirection: 'row', backgroundColor: Colors.lightBlue,
+    paddingVertical: 10, paddingHorizontal: 12,
   },
-  tableHCell: { flex: 1, fontSize: 12, fontWeight: '700', color: Colors.primary },
+  tableHCell: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.primary },
   tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  tableCell: { flex: 1, fontSize: 13, color: Colors.textDark },
+  futureRow: { backgroundColor: Colors.background },
+  tableCell: { flex: 1, fontSize: 11, color: Colors.textDark },
+  futureCellText: { color: Colors.textMuted, fontStyle: 'italic' },
+  hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 4 },
 })

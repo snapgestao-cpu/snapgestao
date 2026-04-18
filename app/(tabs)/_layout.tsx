@@ -22,6 +22,10 @@ export default function TabsLayout() {
         options={{ title: 'Potes', tabBarIcon: ({ color }) => <TabIcon emoji="🏺" color={color} /> }}
       />
       <Tabs.Screen
+        name="monthly"
+        options={{ title: 'Mensal', tabBarIcon: ({ color }) => <TabIcon emoji="📅" color={color} /> }}
+      />
+      <Tabs.Screen
         name="projection"
         options={{ title: 'Projeção', tabBarIcon: ({ color }) => <TabIcon emoji="📈" color={color} /> }}
       />
