@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { NewExpenseModal } from '../../components/NewExpenseModal'
 import { NewIncomeModal } from '../../components/NewIncomeModal'
+import { NewPotModal } from '../../components/NewPotModal'
 import { EditTransactionModal } from '../../components/EditTransactionModal'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -51,6 +52,8 @@ export default function MonthlyScreen() {
   const [closing, setClosing] = useState(false)
   const [cycleClosed, setCycleClosed] = useState(false)
 
+  const [totalIncome, setTotalIncome] = useState(0)
+  const [showNewPot, setShowNewPot] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const fabAnim = useRef(new Animated.Value(0)).current
   const [showExpense, setShowExpense] = useState(false)
@@ -62,21 +65,29 @@ export default function MonthlyScreen() {
   const loadData = useCallback(async () => {
     if (!user) return
     try {
-      const [txRes, allPotsRes, epRes, goalsRes] = await Promise.all([
+      const [txRes, allPotsRes, epRes, goalsRes, sourcesRes] = await Promise.all([
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false }),
-        supabase.from('pots').select('*').eq('user_id', user.id).order('created_at'),
+        supabase.from('pots').select('*')
+          .eq('user_id', user.id)
+          .eq('is_emergency', false)
+          .is('deleted_at', null)
+          .lte('created_at', cycle.end.toISOString())
+          .order('created_at', { ascending: true }),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
+        supabase.from('income_sources').select('amount').eq('user_id', user.id),
       ])
 
       const txs = (txRes.data ?? []) as Transaction[]
       const pots = (allPotsRes.data ?? []) as Pot[]
       const ep = epRes.data as Pot | null
+      const income = ((sourcesRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
 
       setAllPots(pots)
       setEmergencyPot(ep)
+      setTotalIncome(income)
       setGoals((goalsRes.data ?? []) as Goal[])
 
       const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
@@ -182,6 +193,9 @@ export default function MonthlyScreen() {
             <Text style={styles.cycleLabel}>{cycle.label}</Text>
             <Text style={styles.cycleMonthYear}>{cycle.monthYear}</Text>
           </View>
+          <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
+            <Text style={styles.newPotBtnText}>+ Pote</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.navBtn, offset >= 0 && styles.navBtnDisabled]}
             onPress={() => offset < 0 && setOffset(o => o + 1)}
@@ -462,6 +476,14 @@ export default function MonthlyScreen() {
         onClose={() => setEditingTx(null)}
         onSuccess={msg => { setEditingTx(null); handleTxSuccess(msg) }}
       />
+      <NewPotModal
+        visible={showNewPot}
+        onClose={() => setShowNewPot(false)}
+        onSuccess={msg => { setShowNewPot(false); handleTxSuccess(msg); }}
+        totalIncome={totalIncome}
+        cycleStartDate={cycle.start}
+        isRetroactive={offset < 0}
+      />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
     </SafeAreaView>
   )
@@ -488,6 +510,12 @@ const styles = StyleSheet.create({
   navBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.3 },
   navBtnText: { fontSize: 28, color: Colors.primary, fontWeight: '300' },
+  newPotBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.lightBlue, paddingHorizontal: 12,
+    paddingVertical: 6, borderRadius: 20, marginRight: 4,
+  },
+  newPotBtnText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
   cycleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
   cycleMonthYear: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   summaryCard: {

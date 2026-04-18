@@ -30,9 +30,11 @@ type Props = {
   onSuccess: (message: string) => void
   editPot?: Pot
   totalIncome: number
+  cycleStartDate?: Date
+  isRetroactive?: boolean
 }
 
-export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome }: Props) {
+export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome, cycleStartDate, isRetroactive }: Props) {
   const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
@@ -92,6 +94,10 @@ export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome 
     setError(null)
     setLoading(true)
     try {
+      const potCreatedAt = isRetroactive && cycleStartDate
+        ? cycleStartDate.toISOString()
+        : new Date().toISOString()
+
       const payload = {
         user_id: userId,
         name: name.trim(),
@@ -106,7 +112,7 @@ export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome 
         if (err) { setError('Erro ao atualizar: ' + err.message); return }
         onSuccess('Pote atualizado!')
       } else {
-        const { error: err } = await supabase.from('pots').insert(payload)
+        const { error: err } = await supabase.from('pots').insert({ ...payload, created_at: potCreatedAt })
         if (err) { setError('Erro ao criar: ' + err.message); return }
         onSuccess('Pote criado com sucesso!')
       }
@@ -137,6 +143,17 @@ export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome 
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
+            {/* Retroactive banner */}
+            {isRetroactive && cycleStartDate && (
+              <View style={styles.retroBanner}>
+                <Text style={styles.retroText}>
+                  📅 Este pote será criado retroativamente a partir de{' '}
+                  {cycleStartDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}.
+                  Ele aparecerá neste mês e nos seguintes.
+                </Text>
+              </View>
+            )}
 
             {/* Nome */}
             <Text style={styles.label}>Nome do pote</Text>
@@ -324,6 +341,12 @@ const styles = StyleSheet.create({
   },
   emergencyLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   hint: { fontSize: 12, color: Colors.textMuted, marginTop: 2, marginBottom: 4 },
+  retroBanner: {
+    backgroundColor: Colors.lightAmber, borderRadius: 10,
+    padding: 10, marginBottom: 12,
+    flexDirection: 'row',
+  },
+  retroText: { fontSize: 13, color: Colors.warning, flex: 1, lineHeight: 18 },
   errorBox: {
     backgroundColor: Colors.lightRed, borderRadius: 10,
     borderLeftWidth: 3, borderLeftColor: Colors.danger,
