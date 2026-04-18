@@ -126,6 +126,16 @@ export default function PotDetailScreen() {
   const ACTION_BTNS = [
     { icon: '💸', label: 'Gasto', onPress: () => setShowExpense(true) },
     { icon: '💰', label: 'Receita', onPress: () => setShowIncome(true) },
+    {
+      icon: '📷', label: 'Cupom', onPress: () => router.push({
+        pathname: '/ocr',
+        params: {
+          defaultPotId: pot.id,
+          defaultPotName: pot.name,
+          cycleDate: cycle.start.toISOString().split('T')[0],
+        },
+      }),
+    },
     { icon: '✏️', label: 'Editar', onPress: () => setShowEdit(true) },
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]

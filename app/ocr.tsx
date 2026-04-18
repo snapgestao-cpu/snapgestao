@@ -4,7 +4,7 @@ import {
   ScrollView, TextInput, Alert, Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { captureReceipt, pickReceiptFromGallery, processReceipt, OCRItem } from '../lib/ocr'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -19,17 +19,24 @@ type ReviewItem = OCRItem & { potId: string | null }
 
 export default function OCRScreen() {
   const { user } = useAuthStore()
+  const { cycleDate, defaultPotId, defaultPotName } = useLocalSearchParams<{
+    cycleDate?: string
+    defaultPotId?: string
+    defaultPotName?: string
+  }>()
+
+  const initialDate = cycleDate ?? new Date().toISOString().split('T')[0]
 
   const [step, setStep] = useState<OCRStep>('camera')
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
   const [total, setTotal] = useState('')
-  const [receiptDate, setReceiptDate] = useState('')
+  const [receiptDate, setReceiptDate] = useState(initialDate)
   const [items, setItems] = useState<ReviewItem[]>([])
   const [pots, setPots] = useState<Pot[]>([])
   const [simplified, setSimplified] = useState(false)
-  const [singlePotId, setSinglePotId] = useState<string | null>(null)
+  const [singlePotId, setSinglePotId] = useState<string | null>(defaultPotId ?? null)
 
   const loadPots = async () => {
     if (!user) return
@@ -62,9 +69,9 @@ export default function OCRScreen() {
     setReceiptId(result.receipt_id ?? null)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
-    setReceiptDate(result.receipt_date ?? new Date().toISOString().split('T')[0])
+    setReceiptDate(result.receipt_date ?? initialDate)
     setItems(
-      (result.items ?? []).map(i => ({ ...i, potId: null })),
+      (result.items ?? []).map(i => ({ ...i, potId: defaultPotId ?? null })),
     )
     setStep('review')
   }
@@ -158,6 +165,9 @@ export default function OCRScreen() {
         <View style={styles.cameraStep}>
           <Text style={styles.cameraIcon}>🧾</Text>
           <Text style={styles.cameraTitle}>Fotografar cupom fiscal</Text>
+          {defaultPotName ? (
+            <Text style={styles.cameraPotBadge}>📌 Pote: {defaultPotName}</Text>
+          ) : null}
           <Text style={styles.cameraHint}>Posicione o cupom em boa iluminação e enquadre o texto completamente.</Text>
 
           <TouchableOpacity style={styles.primaryBtn} onPress={async () => handleCapture(await captureReceipt())}>
@@ -365,6 +375,11 @@ const styles = StyleSheet.create({
   cameraIcon: { fontSize: 64 },
   cameraTitle: { fontSize: 20, fontWeight: '800', color: Colors.textDark, textAlign: 'center' },
   cameraHint: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  cameraPotBadge: {
+    fontSize: 13, fontWeight: '600', color: Colors.primary,
+    backgroundColor: Colors.lightBlue, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 6,
+  },
   primaryBtn: {
     backgroundColor: Colors.primary, borderRadius: 14,
     paddingHorizontal: 32, paddingVertical: 16, width: '100%', alignItems: 'center',

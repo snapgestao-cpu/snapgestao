@@ -4,6 +4,7 @@ import {
   TouchableOpacity, RefreshControl, Animated,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { NewExpenseModal } from '../../components/NewExpenseModal'
 import { NewIncomeModal } from '../../components/NewIncomeModal'
@@ -133,8 +134,9 @@ export default function MonthlyScreen() {
   const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
 
   const FAB_ITEMS = [
-    { key: 'income', label: 'Registrar receita', color: Colors.success, icon: '↑' },
-    { key: 'expense', label: 'Registrar gasto', color: Colors.danger, icon: '↓' },
+    { key: 'ocr',     label: 'Escanear cupom',   color: Colors.primary,  icon: '📷' },
+    { key: 'income',  label: 'Registrar receita', color: Colors.success,  icon: '↑' },
+    { key: 'expense', label: 'Registrar gasto',   color: Colors.danger,   icon: '↓' },
   ]
 
   // For current cycle use today, for past cycles use cycle start
@@ -145,7 +147,13 @@ export default function MonthlyScreen() {
   const handleFabItem = (key: string) => {
     closeFab()
     if (key === 'expense') setShowExpense(true)
-    else setShowIncome(true)
+    else if (key === 'income') setShowIncome(true)
+    else if (key === 'ocr') {
+      router.push({
+        pathname: '/ocr',
+        params: { cycleDate: cycle.start.toISOString().split('T')[0] },
+      })
+    }
   }
 
   const handleTxSuccess = (msg: string) => {
