@@ -309,10 +309,16 @@ Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two
 - `imageToBase64(uri)` — usa `expo-file-system` com `encoding: 'base64'`
 
 `app/ocr.tsx` — tela de 4 steps:
-1. `camera` — botões de captura/galeria
+1. `camera` — botões de captura/galeria; exibe badge do pote quando vindo de `pot/[id]`
 2. `processing` — spinner enquanto Edge Function processa
 3. `review` — editar merchant/total/data, modo simplificado (total + pote único) ou detalhado (item a item com seletor de pote por linha)
 4. `saving` — insere transações e marca receipt como `processed: true`
+
+Parâmetros de rota aceitos: `cycleDate` (data padrão dos lançamentos), `defaultPotId` (pote pré-selecionado em todos os itens), `defaultPotName` (exibido no badge).
+
+**Pontos de entrada:**
+- FAB da tela Mensal: 3ª opção "📷 Escanear cupom" passa `cycleDate` do ciclo visualizado
+- Tela do pote (`pot/[id]`): botão "📷 Cupom" na barra de ações passa `defaultPotId`, `defaultPotName` e `cycleDate`
 
 `supabase/functions/process-receipt/index.ts` — Edge Function Deno:
 - Chama Google Cloud Vision API (`TEXT_DETECTION` + `DOCUMENT_TEXT_DETECTION`)
