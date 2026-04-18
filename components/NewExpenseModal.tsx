@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
+import { checkCriticalPots } from '../lib/notifications'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix'
 
@@ -141,6 +142,11 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
 
       onSuccess()
       onClose()
+
+      const { user } = useAuthStore.getState()
+      if (user) {
+        checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
+      }
     } finally {
       setLoading(false)
     }

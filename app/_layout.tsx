@@ -3,10 +3,17 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
+import * as Notifications from 'expo-notifications'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getDatabase } from '../lib/database'
+import { getCycle } from '../lib/cycle'
 import { Colors } from '../constants/colors'
+import {
+  registerForPushNotifications,
+  checkCriticalPots,
+  scheduleCycleEndReminder,
+} from '../lib/notifications'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,12 +41,29 @@ export default function RootLayout() {
   }, [])
 
   useEffect(() => {
+    if (!user) return
+
+    registerForPushNotifications()
+    checkCriticalPots(user.id, user.cycle_start ?? 1)
+
+    const cycle = getCycle(user.cycle_start ?? 1, 0)
+    scheduleCycleEndReminder(cycle.end)
+
+    const sub = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notificação recebida:', notification)
+    })
+
+    return () => sub.remove()
+  }, [user?.id])
+
+  useEffect(() => {
     if (isLoading) return
 
     const inAuth = segments[0] === '(auth)'
     const inOnboarding = segments[0] === 'onboarding'
     const inTabs = segments[0] === '(tabs)'
     const inPot = segments[0] === 'pot'
+    const inOCR = segments[0] === 'ocr'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -53,7 +77,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs && !inPot) router.replace('/(tabs)/')
+    if (!inTabs && !inPot && !inOCR) router.replace('/(tabs)/')
   }, [isLoading, isAuthenticated, user, segments])
 
   return (
@@ -70,6 +94,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="pot" />
+          <Stack.Screen name="ocr" />
         </Stack>
       )}
     </QueryClientProvider>
