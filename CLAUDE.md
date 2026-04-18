@@ -178,9 +178,11 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 ### Fase 2 — Pendente
 
-- [ ] Módulo OCR — leitura de cupons fiscais via `lib/ocr.ts` + `components/OCRCamera.tsx` (estrutura existe, Edge Function pendente)
+- [x] Notificações push — `lib/notifications.ts` implementado; integrado em `_layout.tsx` e `NewExpenseModal`
+- [x] Módulo OCR — `lib/ocr.ts`, `app/ocr.tsx`, Edge Function `process-receipt` implementados
+  - **PENDENTE manual no Supabase**: criar bucket `receipts` (Storage → New bucket, public: false)
+  - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>` + `supabase functions deploy process-receipt`
 - [ ] Importação via planilha Excel — parse de `.xlsx` e inserção em batch de transações
-- [ ] Notificações push reais — alertas de pote próximo do limite, vencimento de fatura (toggles de UI já existem)
 - [ ] Exportar dados em CSV/Excel — botão na tela de perfil já existe (mostra "Em breve")
 - [ ] Gamificação e badges — tabela `user_badges` já existe no schema
 - [ ] Edição do nome do usuário no perfil
@@ -288,9 +290,35 @@ Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two
 5. `setUser(savedUser)` → `onboardingDraft.clear()` → `router.replace('/(tabs)/')`
 6. Double-tap protection: guard `if (loading) return` at top of handler
 
+### Notificações push
+
+`lib/notifications.ts`:
+- `registerForPushNotifications()` — solicita permissão e retorna o Expo push token
+- `checkCriticalPots(userId, cycleStart)` — consulta potes do ciclo atual e dispara notificações locais a 70% (⚠️), 80% (🔴) e 100% (🚨) de uso
+- `scheduleCycleEndReminder(cycleEndDate)` — agenda notificação às 20h do último dia do ciclo
+- `sendLocalNotification(title, body, data?)` — dispara notificação imediata
+- Integrado em `app/_layout.tsx` (ao carregar o usuário) e `NewExpenseModal` (após cada gasto)
+- `Notifications.setNotificationHandler` requer `shouldShowBanner: true, shouldShowList: true` além de `shouldShowAlert` (API do Expo)
+
 ### OCR
 
-`lib/ocr.ts` calls a Supabase Edge Function `ocr-receipt` with a base64 image and returns `{ merchant, amount, date, description }`. `components/OCRCamera.tsx` wraps `expo-camera`'s `CameraView` and drives this flow.
+`lib/ocr.ts`:
+- `processReceipt(imageUri, userId)` — converte para base64 e chama Edge Function `process-receipt`
+- `captureReceipt()` / `pickReceiptFromGallery()` — abre câmera ou galeria via `expo-image-picker`
+- `imageToBase64(uri)` — usa `expo-file-system` com `encoding: 'base64'`
+
+`app/ocr.tsx` — tela de 4 steps:
+1. `camera` — botões de captura/galeria
+2. `processing` — spinner enquanto Edge Function processa
+3. `review` — editar merchant/total/data, modo simplificado (total + pote único) ou detalhado (item a item com seletor de pote por linha)
+4. `saving` — insere transações e marca receipt como `processed: true`
+
+`supabase/functions/process-receipt/index.ts` — Edge Function Deno:
+- Chama Google Cloud Vision API (`TEXT_DETECTION` + `DOCUMENT_TEXT_DETECTION`)
+- Extrai: merchant (1ª linha), total (regex por palavra-chave), data (DD/MM/YYYY → YYYY-MM-DD), CNPJ, itens (linhas com valor no final)
+- Salva imagem no bucket `receipts` e registro em `public.receipts`
+- Env vars: `GOOGLE_VISION_KEY`, `SUPABASE_URL` (auto), `SUPABASE_SERVICE_ROLE_KEY` (auto)
+- `tsconfig.json` exclui `supabase/functions` para evitar erros do compilador com imports Deno
 
 ### Types
 
