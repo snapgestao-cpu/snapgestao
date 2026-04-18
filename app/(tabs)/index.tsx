@@ -1,17 +1,26 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import {
+  View, Text, StyleSheet, ScrollView, ActivityIndicator,
+  RefreshControl, TouchableOpacity, Animated,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { PotCard } from '../../components/PotCard'
+import { TransactionItem } from '../../components/TransactionItem'
+import { NewExpenseModal } from '../../components/NewExpenseModal'
+import { NewIncomeModal } from '../../components/NewIncomeModal'
+import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
-import { Pot } from '../../types'
+import { Pot, Transaction } from '../../types'
 
 type PotRow = {
   pot: Pot
   spent: number
   remaining: number
 }
+
+type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
 function getCycleDates(cycleDay: number): { start: string; end: string } {
   const now = new Date()
@@ -30,44 +39,52 @@ function brl(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+const FAB_SIZE = 56
+const MENU_ITEMS = [
+  { key: 'expense', label: 'Registrar gasto', color: Colors.danger, icon: '−' },
+  { key: 'income', label: 'Registrar receita', color: Colors.success, icon: '+' },
+]
+
 export default function DashboardScreen() {
   const { user } = useAuthStore()
 
   const [totalIncome, setTotalIncome] = useState(0)
   const [potsData, setPotsData] = useState<PotRow[]>([])
+  const [recentTxs, setRecentTxs] = useState<TxWithPot[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+
+  const [fabOpen, setFabOpen] = useState(false)
+  const fabAnim = useRef(new Animated.Value(0)).current
+
+  const [showExpense, setShowExpense] = useState(false)
+  const [showIncome, setShowIncome] = useState(false)
+
+  const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
 
   const loadDashboard = useCallback(async () => {
     if (!user) return
     try {
-      // Receita mensal esperada — soma de income_sources, não de transactions
-      const { data: incomeSources, error: incomeErr } = await supabase
+      const { data: incomeSources } = await supabase
         .from('income_sources')
-        .select('amount, name, is_primary')
+        .select('amount')
         .eq('user_id', user.id)
-      if (incomeErr) console.error('Erro ao buscar receitas:', incomeErr)
+      setTotalIncome((incomeSources ?? []).reduce((sum, s) => sum + Number(s.amount), 0))
 
-      const totalReceita = (incomeSources ?? []).reduce((sum, s) => sum + Number(s.amount), 0)
-      setTotalIncome(totalReceita)
-
-      // Pots do usuário
-      const { data: pots, error: potsErr } = await supabase
+      const { data: pots } = await supabase
         .from('pots')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true })
-      if (potsErr) console.error('Erro ao buscar potes:', potsErr)
 
       if (!pots || pots.length === 0) {
         setPotsData([])
+        setRecentTxs([])
         return
       }
 
-      // Datas do ciclo atual
       const { start: cycleStart, end: cycleEnd } = getCycleDates(user.cycle_start ?? 1)
 
-      // Gasto por pote no ciclo atual
       const rows: PotRow[] = await Promise.all(
         pots.map(async (pot) => {
           const { data: txs } = await supabase
@@ -77,14 +94,30 @@ export default function DashboardScreen() {
             .eq('type', 'expense')
             .gte('date', cycleStart)
             .lte('date', cycleEnd)
-
           const spent = (txs ?? []).reduce((sum, t) => sum + Number(t.amount), 0)
           const remaining = (pot.limit_amount ?? 0) - spent
           return { pot: pot as Pot, spent, remaining }
         })
       )
-
       setPotsData(rows)
+
+      const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
+
+      const { data: txsRaw } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', cycleStart)
+        .lte('date', cycleEnd)
+        .order('date', { ascending: false })
+        .limit(10)
+
+      const txs: TxWithPot[] = (txsRaw ?? []).map((tx: any) => ({
+        ...tx,
+        potName: tx.pot_id ? potMap[tx.pot_id]?.name : undefined,
+        potColor: tx.pot_id ? potMap[tx.pot_id]?.color : undefined,
+      }))
+      setRecentTxs(txs)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -101,28 +134,50 @@ export default function DashboardScreen() {
     loadDashboard()
   }
 
+  const toggleFab = () => {
+    const toValue = fabOpen ? 0 : 1
+    Animated.spring(fabAnim, { toValue, useNativeDriver: true, bounciness: 6 }).start()
+    setFabOpen(!fabOpen)
+  }
+
+  const closeFab = () => {
+    if (!fabOpen) return
+    Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start()
+    setFabOpen(false)
+  }
+
+  const handleFabItem = (key: string) => {
+    closeFab()
+    if (key === 'expense') setShowExpense(true)
+    else if (key === 'income') setShowIncome(true)
+  }
+
+  const handleSuccess = (msg: string, color: string) => {
+    loadDashboard()
+    setToast({ message: msg, color })
+  }
+
   const totalExpense = potsData.reduce((sum, r) => sum + r.spent, 0)
 
+  const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        onScrollBeginDrag={closeFab}
       >
         <Text style={styles.greeting}>Olá, {user?.name ?? 'usuário'} 👋</Text>
 
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: Colors.lightGreen }]}>
             <Text style={styles.summaryLabel}>Receitas</Text>
-            <Text style={[styles.summaryValue, { color: Colors.success }]}>
-              {brl(totalIncome)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: Colors.success }]}>{brl(totalIncome)}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: Colors.lightRed }]}>
             <Text style={styles.summaryLabel}>Despesas</Text>
-            <Text style={[styles.summaryValue, { color: Colors.danger }]}>
-              {brl(totalExpense)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: Colors.danger }]}>{brl(totalExpense)}</Text>
           </View>
         </View>
 
@@ -144,7 +199,89 @@ export default function DashboardScreen() {
             />
           ))
         )}
+
+        {!loading && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Lançamentos recentes</Text>
+            {recentTxs.length === 0 ? (
+              <Text style={styles.empty}>Nenhum lançamento neste ciclo.</Text>
+            ) : (
+              <View style={styles.txCard}>
+                {recentTxs.map((tx, i) => (
+                  <TransactionItem
+                    key={tx.id}
+                    transaction={tx}
+                    potName={tx.potName}
+                    potColor={tx.potColor}
+                  />
+                ))}
+              </View>
+            )}
+          </>
+        )}
+
+        <View style={{ height: 96 }} />
       </ScrollView>
+
+      {/* FAB menu items */}
+      {MENU_ITEMS.map((item, i) => {
+        const translateY = fabAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -(FAB_SIZE + 12) * (i + 1)],
+        })
+        const opacity = fabAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
+        return (
+          <Animated.View
+            key={item.key}
+            style={[styles.fabMenuItem, { transform: [{ translateY }], opacity }]}
+            pointerEvents={fabOpen ? 'auto' : 'none'}
+          >
+            <Text style={styles.fabMenuLabel}>{item.label}</Text>
+            <TouchableOpacity
+              style={[styles.fabMinor, { backgroundColor: item.color }]}
+              onPress={() => handleFabItem(item.key)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.fabIcon}>{item.icon}</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )
+      })}
+
+      {/* Main FAB */}
+      <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+        <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
+      </TouchableOpacity>
+
+      {/* Backdrop */}
+      {fabOpen && (
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject as any}
+          activeOpacity={1}
+          onPress={closeFab}
+        />
+      )}
+
+      <NewExpenseModal
+        visible={showExpense}
+        onClose={() => setShowExpense(false)}
+        onSuccess={() => handleSuccess('Gasto registrado!', Colors.danger)}
+        pots={potsData.map(r => r.pot)}
+      />
+
+      <NewIncomeModal
+        visible={showIncome}
+        onClose={() => setShowIncome(false)}
+        onSuccess={() => handleSuccess('Receita registrada!', Colors.success)}
+      />
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          color={toast.color}
+          onHide={() => setToast(null)}
+        />
+      )}
     </SafeAreaView>
   )
 }
@@ -159,5 +296,39 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 18, fontWeight: '700' },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark, marginBottom: 12 },
   loader: { marginTop: 32 },
-  empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 20 },
+  empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 12, marginBottom: 8 },
+  txCard: {
+    backgroundColor: Colors.white, borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  fab: {
+    position: 'absolute', bottom: 28, right: 24,
+    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
+    backgroundColor: Colors.accent,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+    zIndex: 10,
+  },
+  fabMinor: {
+    width: FAB_SIZE - 8, height: FAB_SIZE - 8, borderRadius: (FAB_SIZE - 8) / 2,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
+  },
+  fabMenuItem: {
+    position: 'absolute', bottom: 28, right: 24,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    zIndex: 9,
+  },
+  fabMenuLabel: {
+    backgroundColor: Colors.white, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5,
+    fontSize: 13, fontWeight: '600', color: Colors.textDark,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
+  },
+  fabIcon: { fontSize: 28, color: '#fff', lineHeight: 32, fontWeight: '300' },
 })
