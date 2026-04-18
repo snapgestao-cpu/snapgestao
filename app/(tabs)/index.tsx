@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, TouchableOpacity, Alert,
+  RefreshControl, TouchableOpacity,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -102,7 +102,11 @@ export default function PotsScreen() {
   const cycle = user ? getCycle(user.cycle_start ?? 1, 0) : null
 
   const renderItem = ({ item }: { item: PotRow }) => (
-    <View style={styles.jarCell}>
+    <TouchableOpacity
+      style={styles.jarCell}
+      onPress={() => router.push(`/pot/${item.pot.id}`)}
+      activeOpacity={0.75}
+    >
       <JarPot
         name={item.pot.name}
         color={item.pot.color}
@@ -110,9 +114,13 @@ export default function PotsScreen() {
         spent={item.spent}
         limit={item.pot.limit_amount}
         size={110}
-        onPress={() => router.push(`/pot/${item.pot.id}`)}
       />
-    </View>
+      <Text style={styles.potName} numberOfLines={2}>{item.pot.name}</Text>
+      <Text style={styles.potSpent}>{brl(item.spent)}</Text>
+      {item.pot.limit_amount ? (
+        <Text style={styles.potLimit}>de {brl(item.pot.limit_amount)}</Text>
+      ) : null}
+    </TouchableOpacity>
   )
 
   return (
@@ -213,9 +221,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 7,
   },
   newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  grid: { paddingHorizontal: 16, paddingBottom: 16 },
-  row: { justifyContent: 'space-around', marginBottom: 24 },
-  jarCell: { alignItems: 'center', width: '48%' },
+  grid: { paddingHorizontal: 8, paddingBottom: 16 },
+  row: { justifyContent: 'space-around', paddingHorizontal: 8 },
+  jarCell: {
+    alignItems: 'center', width: '48%',
+    paddingBottom: 20, paddingHorizontal: 4,
+  },
+  potName: {
+    fontSize: 13, fontWeight: '700', color: Colors.textDark,
+    textAlign: 'center', marginTop: 8, marginBottom: 2,
+    paddingHorizontal: 4,
+  },
+  potSpent: { fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
+  potLimit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
   emptyWrapper: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
   emptyText: { fontSize: 15, color: Colors.textMuted, textAlign: 'center', marginBottom: 20 },
   emptyBtn: {
