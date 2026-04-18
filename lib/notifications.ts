@@ -6,7 +6,6 @@ import { getCycle } from './cycle'
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -14,24 +13,18 @@ Notifications.setNotificationHandler({
   }),
 })
 
-export async function registerForPushNotifications(): Promise<string | null> {
-  if (!Device.isDevice) {
-    console.log('Notificações só funcionam em device real')
-    return null
-  }
+export async function registerForPushNotifications(): Promise<void> {
+  if (!Device.isDevice) return
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync()
-  let finalStatus = existingStatus
+  const { status: existing } = await Notifications.getPermissionsAsync()
+  let finalStatus = existing
 
-  if (existingStatus !== 'granted') {
+  if (existing !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync()
     finalStatus = status
   }
 
-  if (finalStatus !== 'granted') {
-    console.log('Permissão de notificação negada')
-    return null
-  }
+  if (finalStatus !== 'granted') return
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('snapgestao', {
@@ -41,9 +34,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
       lightColor: '#0F5EA8',
     })
   }
-
-  const token = await Notifications.getExpoPushTokenAsync()
-  return token.data
+  // Sem getExpoPushTokenAsync — não necessário no Expo Go
 }
 
 export async function sendLocalNotification(

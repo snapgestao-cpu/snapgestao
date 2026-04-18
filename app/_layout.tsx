@@ -93,8 +93,8 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="onboarding" />
-          <Stack.Screen name="pot" />
-          <Stack.Screen name="ocr" />
+          <Stack.Screen name="pot/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="ocr" options={{ headerShown: false }} />
         </Stack>
       )}
     </QueryClientProvider>
