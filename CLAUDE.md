@@ -293,20 +293,20 @@ Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two
 ### Notificações push
 
 `lib/notifications.ts`:
-- `registerForPushNotifications()` — solicita permissão e retorna o Expo push token
+- `registerForPushNotifications()` — solicita permissão via `requestPermissionsAsync()` e configura canal Android; retorna `void` (sem push token remoto)
 - `checkCriticalPots(userId, cycleStart)` — consulta potes do ciclo atual e dispara notificações locais a 70% (⚠️), 80% (🔴) e 100% (🚨) de uso
 - `scheduleCycleEndReminder(cycleEndDate)` — agenda notificação às 20h do último dia do ciclo
 - `sendLocalNotification(title, body, data?)` — dispara notificação imediata
 - Integrado em `app/_layout.tsx` (ao carregar o usuário) e `NewExpenseModal` (após cada gasto)
-- `registerForPushNotifications()` retorna `void` — sem `getExpoPushTokenAsync` (removido: SDK 53 não suporta push remoto no Expo Go)
-- Handler usa `shouldShowBanner` + `shouldShowList` (`shouldShowAlert` foi deprecado no SDK 53)
+- Sem `getExpoPushTokenAsync` — SDK 53 não suporta push remoto no Expo Go
+- Handler usa `shouldShowBanner` + `shouldShowList` (não usar `shouldShowAlert`, deprecado no SDK 53)
 
 ### OCR
 
 `lib/ocr.ts`:
 - `processReceipt(imageUri, userId)` — converte para base64 e chama Edge Function `process-receipt`
 - `captureReceipt()` / `pickReceiptFromGallery()` — abre câmera ou galeria via `expo-image-picker`
-- `imageToBase64(uri)` — usa `expo-file-system` com `encoding: 'base64'`
+- `imageToBase64(uri)` — usa `expo-file-system/legacy` (`readAsStringAsync` + `EncodingType.Base64`); importar de `expo-file-system/legacy`, não do módulo principal (API movida no SDK 54)
 
 `app/ocr.tsx` — tela de 4 steps:
 1. `camera` — botões de captura/galeria; exibe badge do pote quando vindo de `pot/[id]`
