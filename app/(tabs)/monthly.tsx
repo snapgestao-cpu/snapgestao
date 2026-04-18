@@ -454,17 +454,7 @@ export default function MonthlyScreen() {
         initialDate={defaultDate}
       />
 
-      {/* Past cycles: fixed bottom add button */}
-      {offset < 0 && (
-        <View style={styles.pastAddBar}>
-          <TouchableOpacity
-            style={styles.pastAddBtn}
-            onPress={() => setShowExpense(true)}
-          >
-            <Text style={styles.pastAddBtnText}>+ Adicionar lançamento neste mês</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+
       <EditTransactionModal
         visible={!!editingTx}
         transaction={editingTx}
@@ -613,14 +603,4 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
   },
   fabIcon: { fontSize: 24, color: '#fff', lineHeight: 28, fontWeight: '300' },
-  pastAddBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: Colors.white, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  pastAddBtn: {
-    backgroundColor: Colors.primary, borderRadius: 14,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  pastAddBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 })
