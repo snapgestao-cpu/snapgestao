@@ -106,6 +106,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
   - Toggle "Pote de emergência 🛡️" — cor roxa `#534AB7` por padrão; desabilitado se já existir um
   - Preview em tempo real com `PotCard`
   - Modo edição: recebe `editPot?: Pot`, faz `UPDATE` em vez de `INSERT`
+  - **Criação retroativa**: props `cycleStartDate?: Date` + `isRetroactive?: boolean` — exibe banner âmbar e salva `created_at` com a data de início do ciclo selecionado em vez de `now()`
 - Action sheet (Modal fade) ao toque longo no PotCard: editar / ver lançamentos / excluir
 - Exclusão com `Alert.alert` de confirmação; lançamentos vinculados são mantidos
 
@@ -159,7 +160,9 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Lista de transações agrupada por data (Hoje/Ontem/DD MMM) com botão ✏️ por linha
 - `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo
 - Seção "Encerrar ciclo": chips de destino da sobra, seletor de meta, botão de fechamento
-- FAB no ciclo atual; botão fixo "+ Adicionar lançamento neste mês" em ciclos passados
+- FAB verde em todos os ciclos (receita / gasto)
+- Botão "+ Pote" no header de navegação de ciclo → abre `NewPotModal` com `isRetroactive={offset < 0}`
+- Query de potes filtrada por `cycle.end` — potes retroativos aparecem apenas a partir do mês correto
 - `lib/cycle.ts`: `getCycle(cycleStart, offset)` corrigido — end = cycleStart-1 do mês seguinte
 - `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()`
 - SQL: `supabase/migrations/20240418_cycle_rollovers.sql` — executar manualmente no Supabase
