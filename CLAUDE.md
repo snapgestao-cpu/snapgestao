@@ -70,14 +70,17 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Pull-to-refresh; potes filtrados por `deleted_at IS NULL` e `created_at <= cycle.end`
 
 **JarPot** (`components/JarPot.tsx`)
-- ViewBox `0 0 120 150`; mason jar com tampa metálica (estrias), corpo vidro azulado
-- **18 moedas douradas** (#F0A500) em posições fixas orgânicas (6 camadas × 3 colunas), clipped pelo frasco
-- Cada moeda: sombra + corpo + brilho `#FFD04D` + texto "R$" + glint branco
-- **Notas de dinheiro verdes** saindo pela abertura quando `percent >= 70` (2 notas); 3ª nota quando `≥90`
-- Vazio: emoji da categoria desbotado (opacity 0.25) + label "vazio"
-- Percentual: acima das moedas quando <70%, na base do frasco quando ≥70%
-- Reflexo do vidro desenhado por último (sempre visível sobre moedas)
-- Cor do pote (prop `color`) usada apenas na borda do frasco
+- `export default` — importar com `import JarPot from '...'`
+- ViewBox `0 0 100 135`; frasco de vidro com tampa metálica (estrias), corpo transparente
+- **Líquido com topo reto** preenchendo de baixo para cima conforme `percent` (0–100%)
+  - Área útil interna: `y=35` (base da tampa) até `y=122` (fundo) = 87px
+  - `liquidY = 122 - (percent/100) * 87`; Rect clipped pelo path do frasco
+  - Cor: `color` prop até 50% → âmbar `#BA7517` até 80% → vermelho `#E24B4A` acima de 80% → `#A32D2D` em 100%
+  - Linha reta no topo + brilho interno branco (opacity 0.12)
+- Vazio: emoji da categoria desbotado (opacity 0.25) + label "vazio" (opacity 0.4)
+- Percentual: acima do líquido quando `percent ≤ 80`, dentro (branco) quando `> 80`
+- Reflexos de vidro desenhados por cima do líquido; borda do frasco redesenhada no topo de tudo
+- Prop `limit: number | null` — aceita `null` sem erro de tipo
 - Textos nome/gasto/limite renderizados **fora** do SVG em `index.tsx` para não truncar
 
 **Tela de detalhe do pote** (`app/pot/[id].tsx`)
