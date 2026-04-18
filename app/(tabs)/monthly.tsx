@@ -122,9 +122,14 @@ export default function MonthlyScreen() {
   const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
 
   const FAB_ITEMS = [
-    { key: 'expense', label: 'Gasto', color: Colors.danger, icon: '−' },
-    { key: 'income', label: 'Receita', color: Colors.success, icon: '+' },
+    { key: 'income', label: 'Registrar receita', color: Colors.success, icon: '↑' },
+    { key: 'expense', label: 'Registrar gasto', color: Colors.danger, icon: '↓' },
   ]
+
+  // For current cycle use today, for past cycles use cycle start
+  const defaultDate = offset === 0
+    ? new Date().toISOString().split('T')[0]
+    : cycle.startISO
 
   const handleFabItem = (key: string) => {
     closeFab()
@@ -405,8 +410,8 @@ export default function MonthlyScreen() {
         <View style={{ height: 96 }} />
       </ScrollView>
 
-      {/* FAB — current cycle only */}
-      {offset === 0 && FAB_ITEMS.map((item, i) => {
+      {/* FAB — all cycles */}
+      {FAB_ITEMS.map((item, i) => {
         const translateY = fabAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -(FAB_SIZE + 12) * (i + 1)] })
         const opacity = fabAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
         return (
@@ -427,13 +432,11 @@ export default function MonthlyScreen() {
         )
       })}
 
-      {offset === 0 && (
-        <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
-          <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+        <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
+      </TouchableOpacity>
 
-      {fabOpen && offset === 0 && (
+      {fabOpen && (
         <TouchableOpacity style={StyleSheet.absoluteFillObject as any} activeOpacity={1} onPress={closeFab} />
       )}
 
@@ -442,13 +445,13 @@ export default function MonthlyScreen() {
         onClose={() => setShowExpense(false)}
         onSuccess={() => handleTxSuccess('Gasto registrado!')}
         pots={expPots}
-        initialDate={cycle.startISO}
+        initialDate={defaultDate}
       />
       <NewIncomeModal
         visible={showIncome}
         onClose={() => setShowIncome(false)}
         onSuccess={() => handleTxSuccess('Receita registrada!')}
-        initialDate={cycle.startISO}
+        initialDate={defaultDate}
       />
 
       {/* Past cycles: fixed bottom add button */}

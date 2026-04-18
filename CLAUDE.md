@@ -80,6 +80,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Botões de ação: Gasto, Receita, Editar, Excluir
 - Lançamentos do ciclo agrupados por data com botão ✏️ (EditTransactionModal)
 - Soft delete: salva `deleted_at = now()`, não apaga registro
+- Rota: `app/pot/[id].tsx` — registrada no Stack root e guard atualizado para permitir `segments[0] === 'pot'`
 
 **PotCard** (`components/PotCard.tsx`) — mantido para uso em preview no NewPotModal
 
@@ -111,7 +112,8 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - `NewGoalModal`: nome, valor alvo, prazo livre em **anos + meses** (inputs numéricos, não chips fixos), aporte mensal, taxa de juros (default 8%), simulador em tempo real
   - `horizon_years` salvo como decimal (ex: 1 ano 6 meses = 1.5)
   - `totalMonths = anos × 12 + meses` — `n` usado no cálculo FV
-- `GoalDepositModal`: valor, seletor de pote ou "Saldo livre", insere `goal_deposit` transaction + atualiza `current_amount`
+- `GoalDepositModal`: valor, seletor de pote ou "Saldo livre", insere `goal_deposit` transaction + atualiza `current_amount`; card de aviso com saldo disponível do ciclo atual
+- `lib/goalIcons.ts`: `getGoalIcon(name)` — mapeamento de nome para emoji (~40 categorias)
 - `lib/finance.ts`: `calcFV(monthlyDeposit, annualRatePct, years)` + `brl(value)` compartilhados
 
 **Perfil e configurações** (`app/(tabs)/profile.tsx`)
@@ -160,8 +162,8 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - SQL: `supabase/migrations/20240419_pot_soft_delete_and_history.sql` — executar manualmente
 
 **Tab bar** (`app/(tabs)/_layout.tsx`)
-- SVG puro via `react-native-svg`: JarIcon, CalendarIcon, ChartIcon, TargetIcon, UserIcon
-- Todos 22×22px, stroke 1.6–1.8px, cor = `color` prop (muda entre ativo/inativo automaticamente)
+- Emojis coloridos com `opacity` diferente entre ativo/inativo (sem `react-native-svg`)
+- Ícones: 🫙 Potes, 📅 Mensal, 📈 Projeção, 🎯 Metas, 👤 Perfil
 
 ### Fase 2 — Pendente
 

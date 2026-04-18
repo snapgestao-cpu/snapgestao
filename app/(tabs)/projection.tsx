@@ -126,6 +126,23 @@ export default function ProjectionScreen() {
                   </View>
                 )
               })}
+
+              {/* Totals row */}
+              {rows.length > 0 && (() => {
+                const totalInc = rows.reduce((s, r) => s + r.income, 0)
+                const totalExp = rows.reduce((s, r) => s + r.expense, 0)
+                const totalSaldo = totalInc - totalExp
+                return (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalCell, { flex: 2 }]}>TOTAL</Text>
+                    <Text style={[styles.totalCell, { color: Colors.success }]}>{brl(totalInc)}</Text>
+                    <Text style={[styles.totalCell, { color: Colors.danger }]}>{brl(totalExp)}</Text>
+                    <Text style={[styles.totalCell, { color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>
+                      {brl(totalSaldo)}
+                    </Text>
+                  </View>
+                )
+              })()}
             </View>
 
             <Text style={styles.hint}>* Meses futuros usam receita base sem gastos lançados.</Text>
@@ -161,5 +178,11 @@ const styles = StyleSheet.create({
   futureRow: { backgroundColor: Colors.background },
   tableCell: { flex: 1, fontSize: 11, color: Colors.textDark },
   futureCellText: { color: Colors.textMuted, fontStyle: 'italic' },
+  totalRow: {
+    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: Colors.lightBlue,
+    borderTopWidth: 1.5, borderTopColor: Colors.border,
+  },
+  totalCell: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.textDark },
   hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 4 },
 })

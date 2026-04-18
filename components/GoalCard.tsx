@@ -3,11 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'
 import { Goal } from '../types'
 import { calcFV, brl } from '../lib/finance'
+import { getGoalIcon } from '../lib/goalIcons'
 
-const HORIZON_META: Record<number, { color: string; icon: string }> = {
-  5: { color: Colors.success, icon: '🌴' },
-  10: { color: Colors.warning, icon: '🏠' },
-  30: { color: '#534AB7', icon: '🏆' },
+function horizonMeta(years: number): { color: string } {
+  if (years <= 5) return { color: Colors.success }
+  if (years <= 10) return { color: Colors.warning }
+  return { color: '#534AB7' }
+}
+
+function horizonLabel(years: number): string {
+  const totalMonths = Math.round(years * 12)
+  const y = Math.floor(totalMonths / 12)
+  const m = totalMonths % 12
+  if (m === 0) return `${y} ano${y !== 1 ? 's' : ''}`
+  if (y === 0) return `${m} mês${m !== 1 ? 'es' : ''}`
+  return `${y}a ${m}m`
 }
 
 type Props = {
@@ -22,7 +32,8 @@ export function GoalCard({ goal, onDeposit, onLongPress }: Props) {
     : 0
   const percent = Math.round(progress * 100)
 
-  const meta = HORIZON_META[goal.horizon_years] ?? { color: Colors.primary, icon: '🎯' }
+  const meta = horizonMeta(goal.horizon_years)
+  const icon = getGoalIcon(goal.name)
 
   const projectedFV = goal.monthly_deposit && goal.interest_rate
     ? calcFV(goal.monthly_deposit, goal.interest_rate, goal.horizon_years)
@@ -36,12 +47,12 @@ export function GoalCard({ goal, onDeposit, onLongPress }: Props) {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.icon}>{meta.icon}</Text>
+        <Text style={styles.icon}>{icon}</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{goal.name}</Text>
         </View>
         <View style={[styles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
-          <Text style={[styles.horizonText, { color: meta.color }]}>{goal.horizon_years} anos</Text>
+          <Text style={[styles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
         </View>
       </View>
 

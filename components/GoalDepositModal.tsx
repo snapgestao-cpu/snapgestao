@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { brl } from '../lib/finance'
 import { getPotIcon } from '../lib/potIcons'
+import { getCycle } from '../lib/cycle'
 
 type Props = {
   visible: boolean
@@ -27,17 +28,43 @@ export function GoalDepositModal({ visible, goal, onClose, onSuccess }: Props) {
   const [selectedPotId, setSelectedPotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cycleBalance, setCycleBalance] = useState<number | null>(null)
+  const [cycleLabel, setCycleLabel] = useState('')
+
+  const { user } = useAuthStore()
 
   useEffect(() => {
     if (!visible) return
     setAmountDigits('')
     setSelectedPotId(null)
     setError(null)
+    setCycleBalance(null)
 
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) return
+
     supabase.from('pots').select('*').eq('user_id', userId)
       .then(({ data }) => setPots((data as Pot[]) ?? []))
+
+    // Fetch cycle balance for warning
+    if (user) {
+      const cycle = getCycle(user.cycle_start ?? 1, 0)
+      setCycleLabel(cycle.monthYear)
+      Promise.all([
+        supabase.from('income_sources').select('amount').eq('user_id', userId),
+        supabase.from('transactions').select('type,amount')
+          .eq('user_id', userId)
+          .gte('date', cycle.startISO).lte('date', cycle.endISO),
+      ]).then(([srcRes, txRes]) => {
+        const baseIncome = ((srcRes.data ?? []) as any[])
+          .reduce((s, r) => s + Number(r.amount), 0)
+        const txs = (txRes.data ?? []) as any[]
+        const extraIncome = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+        const expense = txs.filter(t => t.type === 'expense' || t.type === 'goal_deposit')
+          .reduce((s, t) => s + Number(t.amount), 0)
+        setCycleBalance(baseIncome + extraIncome - expense)
+      })
+    }
   }, [visible])
 
   const handleSave = async () => {
@@ -132,6 +159,25 @@ export function GoalDepositModal({ visible, goal, onClose, onSuccess }: Props) {
               textAlign="center"
             />
 
+            {/* Warning card */}
+            <View style={styles.warningCard}>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.warningTitle}>Este valor sairá do mês corrente</Text>
+                <Text style={styles.warningText}>
+                  {centsToFloat(amountDigits) > 0
+                    ? `${brl(centsToFloat(amountDigits))} será descontado do ciclo de ${cycleLabel}`
+                    : `O valor será descontado do ciclo de ${cycleLabel}`
+                  }
+                </Text>
+                {cycleBalance !== null && (
+                  <Text style={styles.warningBalance}>
+                    Saldo disponível: {brl(cycleBalance)}
+                  </Text>
+                )}
+              </View>
+            </View>
+
             {/* De qual pote? */}
             <Text style={styles.label}>De qual pote? <Text style={styles.optional}>(opcional)</Text></Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
@@ -221,6 +267,15 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
   chipTextActive: { color: Colors.primary },
+  warningCard: {
+    backgroundColor: '#FEF4E4', borderWidth: 0.5, borderColor: '#FAC775',
+    borderRadius: 10, padding: 12, marginBottom: 16,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+  },
+  warningIcon: { fontSize: 16 },
+  warningTitle: { fontSize: 13, fontWeight: '600', color: '#B7700E', marginBottom: 3 },
+  warningText: { fontSize: 12, color: '#B7700E' },
+  warningBalance: { fontSize: 12, color: '#B7700E', marginTop: 4, fontWeight: '500' },
   errorBox: {
     backgroundColor: Colors.lightRed, borderRadius: 10,
     borderLeftWidth: 3, borderLeftColor: Colors.danger,

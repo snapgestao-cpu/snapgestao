@@ -39,6 +39,7 @@ export default function RootLayout() {
     const inAuth = segments[0] === '(auth)'
     const inOnboarding = segments[0] === 'onboarding'
     const inTabs = segments[0] === '(tabs)'
+    const inPot = segments[0] === 'pot'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -52,7 +53,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs) router.replace('/(tabs)/')
+    if (!inTabs && !inPot) router.replace('/(tabs)/')
   }, [isLoading, isAuthenticated, user, segments])
 
   return (
@@ -68,6 +69,7 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="onboarding" />
+          <Stack.Screen name="pot" />
         </Stack>
       )}
     </QueryClientProvider>
