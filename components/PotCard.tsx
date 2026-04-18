@@ -10,13 +10,14 @@ type Props = {
   spent: number
   remaining: number
   onPress?: () => void
+  onLongPress?: () => void
 }
 
 function brl(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export function PotCard({ name, color, limit_amount, spent, remaining, onPress }: Props) {
+export function PotCard({ name, color, limit_amount, spent, remaining, onPress, onLongPress }: Props) {
   const limit = limit_amount ?? 0
   const progress = limit > 0 ? Math.min(spent / limit, 1) : 0
   const pct = progress * 100
@@ -32,8 +33,9 @@ export function PotCard({ name, color, limit_amount, spent, remaining, onPress }
     <TouchableOpacity
       style={[styles.card, { borderLeftColor: color }]}
       onPress={onPress}
-      activeOpacity={onPress ? 0.8 : 1}
-      disabled={!onPress}
+      onLongPress={onLongPress}
+      activeOpacity={onPress || onLongPress ? 0.8 : 1}
+      disabled={!onPress && !onLongPress}
     >
       <View style={styles.header}>
         <View style={[styles.iconBadge, { backgroundColor: color + '26' }]}>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  RefreshControl, TouchableOpacity, Animated,
+  RefreshControl, TouchableOpacity, Animated, Modal, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
@@ -9,6 +9,7 @@ import { PotCard } from '../../components/PotCard'
 import { TransactionItem } from '../../components/TransactionItem'
 import { NewExpenseModal } from '../../components/NewExpenseModal'
 import { NewIncomeModal } from '../../components/NewIncomeModal'
+import { NewPotModal } from '../../components/NewPotModal'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
@@ -54,13 +55,24 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
+  // FAB
   const [fabOpen, setFabOpen] = useState(false)
   const fabAnim = useRef(new Animated.Value(0)).current
 
+  // Transaction modals
   const [showExpense, setShowExpense] = useState(false)
   const [showIncome, setShowIncome] = useState(false)
 
+  // Pot modals
+  const [showNewPot, setShowNewPot] = useState(false)
+  const [editingPot, setEditingPot] = useState<Pot | null>(null)
+  const [potAction, setPotAction] = useState<Pot | null>(null)
+
+  // Toast
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
+
+  // Transaction filter by pot
+  const [filterPotId, setFilterPotId] = useState<string | null>(null)
 
   const loadDashboard = useCallback(async () => {
     if (!user) return
@@ -157,9 +169,39 @@ export default function DashboardScreen() {
     setToast({ message: msg, color })
   }
 
-  const totalExpense = potsData.reduce((sum, r) => sum + r.spent, 0)
+  const handleDeletePot = () => {
+    if (!potAction) return
+    const pot = potAction
+    Alert.alert(
+      'Excluir pote',
+      `Deseja excluir o pote "${pot.name}"? Os lançamentos vinculados serão mantidos.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            setPotAction(null)
+            const { error } = await supabase.from('pots').delete().eq('id', pot.id)
+            if (error) {
+              setToast({ message: 'Erro ao excluir pote.', color: Colors.danger })
+            } else {
+              loadDashboard()
+              setToast({ message: `Pote "${pot.name}" excluído.`, color: Colors.textMuted })
+            }
+          },
+        },
+      ]
+    )
+  }
 
+  const totalExpense = potsData.reduce((sum, r) => sum + r.spent, 0)
   const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
+
+  const filteredPot = filterPotId ? potsData.find(r => r.pot.id === filterPotId)?.pot : null
+  const displayedTxs = filterPotId
+    ? recentTxs.filter(tx => tx.pot_id === filterPotId)
+    : recentTxs
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -181,7 +223,16 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Meus potes</Text>
+        {/* Meus potes header */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Meus potes</Text>
+          <TouchableOpacity
+            onPress={() => setShowNewPot(true)}
+            style={styles.newPotBtn}
+          >
+            <Text style={styles.newPotBtnText}>+ Novo pote</Text>
+          </TouchableOpacity>
+        </View>
 
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={styles.loader} />
@@ -196,18 +247,29 @@ export default function DashboardScreen() {
               limit_amount={pot.limit_amount}
               spent={spent}
               remaining={remaining}
+              onLongPress={() => setPotAction(pot)}
             />
           ))
         )}
 
         {!loading && (
           <>
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Lançamentos recentes</Text>
-            {recentTxs.length === 0 ? (
+            {/* Lançamentos recentes header */}
+            <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+              <Text style={styles.sectionTitle}>
+                {filteredPot ? `Lançamentos — ${filteredPot.name}` : 'Lançamentos recentes'}
+              </Text>
+              {filteredPot && (
+                <TouchableOpacity onPress={() => setFilterPotId(null)} style={styles.clearFilterBtn}>
+                  <Text style={styles.clearFilterText}>Ver todos</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {displayedTxs.length === 0 ? (
               <Text style={styles.empty}>Nenhum lançamento neste ciclo.</Text>
             ) : (
               <View style={styles.txCard}>
-                {recentTxs.map((tx, i) => (
+                {displayedTxs.map(tx => (
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
@@ -253,7 +315,7 @@ export default function DashboardScreen() {
         <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
       </TouchableOpacity>
 
-      {/* Backdrop */}
+      {/* FAB backdrop */}
       {fabOpen && (
         <TouchableOpacity
           style={StyleSheet.absoluteFillObject as any}
@@ -262,6 +324,42 @@ export default function DashboardScreen() {
         />
       )}
 
+      {/* Pot action sheet */}
+      <Modal visible={!!potAction} transparent animationType="fade" onRequestClose={() => setPotAction(null)}>
+        <TouchableOpacity
+          style={styles.actionBackdrop}
+          activeOpacity={1}
+          onPress={() => setPotAction(null)}
+        >
+          <View style={styles.actionSheet}>
+            <Text style={styles.actionTitle}>{potAction?.name}</Text>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => { setEditingPot(potAction); setPotAction(null) }}
+            >
+              <Text style={styles.actionBtnText}>✏️  Editar pote</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => { setFilterPotId(potAction?.id ?? null); setPotAction(null) }}
+            >
+              <Text style={styles.actionBtnText}>📋  Ver lançamentos</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={handleDeletePot}>
+              <Text style={[styles.actionBtnText, { color: Colors.danger }]}>🗑  Excluir pote</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtnCancel} onPress={() => setPotAction(null)}>
+              <Text style={styles.actionCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Transaction modals */}
       <NewExpenseModal
         visible={showExpense}
         onClose={() => setShowExpense(false)}
@@ -273,6 +371,23 @@ export default function DashboardScreen() {
         visible={showIncome}
         onClose={() => setShowIncome(false)}
         onSuccess={() => handleSuccess('Receita registrada!', Colors.success)}
+      />
+
+      {/* Pot creation modal */}
+      <NewPotModal
+        visible={showNewPot}
+        onClose={() => setShowNewPot(false)}
+        onSuccess={msg => handleSuccess(msg, Colors.primary)}
+        totalIncome={totalIncome}
+      />
+
+      {/* Pot edit modal */}
+      <NewPotModal
+        visible={!!editingPot}
+        onClose={() => setEditingPot(null)}
+        onSuccess={msg => handleSuccess(msg, Colors.primary)}
+        editPot={editingPot ?? undefined}
+        totalIncome={totalIncome}
       />
 
       {toast && (
@@ -294,7 +409,22 @@ const styles = StyleSheet.create({
   summaryCard: { flex: 1, borderRadius: 12, padding: 14 },
   summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
   summaryValue: { fontSize: 18, fontWeight: '700' },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark, marginBottom: 12 },
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark },
+  newPotBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.lightBlue,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+  },
+  newPotBtnText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
+  clearFilterBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: Colors.lightBlue, borderRadius: 20,
+  },
+  clearFilterText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
   loader: { marginTop: 32 },
   empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 12, marginBottom: 8 },
   txCard: {
@@ -331,4 +461,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
   },
   fabIcon: { fontSize: 28, color: '#fff', lineHeight: 32, fontWeight: '300' },
+  actionBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  actionSheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32,
+  },
+  actionTitle: {
+    fontSize: 15, fontWeight: '700', color: Colors.textDark,
+    textAlign: 'center', paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border, marginBottom: 4,
+  },
+  actionBtn: {
+    paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  actionBtnText: { fontSize: 16, fontWeight: '500', color: Colors.textDark },
+  actionBtnCancel: {
+    paddingVertical: 16, alignItems: 'center', marginTop: 4,
+  },
+  actionCancelText: { fontSize: 16, fontWeight: '600', color: Colors.textMuted },
 })

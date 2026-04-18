@@ -64,14 +64,34 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 **Dashboard**
 - Cards de receita (soma de `income_sources`) e despesa (ciclo atual)
-- Lista de potes com `PotCard`
+- Lista de potes com `PotCard` + botão "+ Novo pote"
 - Pull-to-refresh
+- FAB animado (Animated.spring) com menu "Registrar gasto" / "Registrar receita"
+- Seção "Lançamentos recentes" (últimos 10 do ciclo) filtrável por pote
+- Toast de feedback após ações (cores: danger=gasto, success=receita, primary=pote)
 
 **PotCard**
 - Ícone automático por categoria (`lib/potIcons.ts`, ~80 mapeamentos)
 - Borda lateral esquerda colorida com a cor do pote
 - Barra de progresso tricolor (verde/âmbar/vermelho)
-- 12 cores disponíveis para potes
+- `onLongPress` abre action sheet (editar / ver lançamentos / excluir)
+
+**Módulo de Lançamentos**
+- `components/NewExpenseModal.tsx` — gasto com seleção de pote, data, forma de pagamento, cartão de crédito, estabelecimento, `is_need`
+- `components/NewIncomeModal.tsx` — receita com fonte, data, forma de recebimento
+- `components/TransactionItem.tsx` — Hoje/Ontem/DD/MM, badge do pote, `brl()` formatter
+- `components/Toast.tsx` — fade animado posicionado abaixo do safe-area top
+
+**Gestão de Potes**
+- `components/NewPotModal.tsx` — criar e editar potes
+  - Sugestões rápidas em chips (Alimentação, Moradia, Transporte…)
+  - Limite por valor fixo ou % da renda (calcula valor com base em `income_sources`)
+  - Paleta de 12 cores exportada como `POT_COLORS`
+  - Toggle "Pote de emergência 🛡️" — cor roxa `#534AB7` por padrão; desabilitado se já existir um
+  - Preview em tempo real com `PotCard`
+  - Modo edição: recebe `editPot?: Pot`, faz `UPDATE` em vez de `INSERT`
+- Action sheet (Modal fade) ao toque longo no PotCard: editar / ver lançamentos / excluir
+- Exclusão com `Alert.alert` de confirmação; lançamentos vinculados são mantidos
 
 **Bugs corrigidos**
 - `storage.removeItem is not a function` (SecureStore adapter)
@@ -79,15 +99,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Modal step2 corrompendo layout no Android (overlay/sheet como irmãos)
 - Token inválido travando em loop de loading
 - Potes duplicando ao tocar duas vezes no botão
-- Campos inexistentes (`icon`, `mesada_active`) no insert de potes
-
-### Próxima fase — Lançamentos
-
-- [ ] Botão FAB no dashboard (+ Gasto, + Receita, Escanear Cupom)
-- [ ] Modal de novo gasto com seleção de pote e data
-- [ ] Modal de nova receita
-- [ ] Lista de lançamentos recentes no dashboard
-- [ ] Atualização em tempo real dos saldos dos potes após lançamento
+- Campos inexistentes (`icon`, `mesada_active`) no insert de potes — **nunca incluir no INSERT/UPDATE**
 
 ## Architecture
 
