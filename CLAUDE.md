@@ -98,6 +98,34 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Tabela mês a mês com receita, despesa e saldo projetados
 - Dados calculados com base em `income_sources` e potes do ciclo atual
 
+**Metas de longo prazo** (`app/(tabs)/goals.tsx`)
+- Tela com summary cards (total alocado, total projetado com juros compostos)
+- Timeline visual horizontal: Hoje → 5 anos → 10 anos → 30 anos com marcadores coloridos
+- `GoalCard`: ícone + badge colorido por horizonte (🌴5y=verde, 🏠10y=âmbar, 🏆30y=roxo), barra de progresso, aporte e projeção, botão "Transferir valor"
+- `NewGoalModal`: nome, valor alvo, horizonte (chips), aporte mensal, taxa de juros (default 8%), simulador em tempo real com FV = PMT × ((1+r)^n - 1) / r
+- `GoalDepositModal`: valor, seletor de pote ou "Saldo livre", insere `goal_deposit` transaction + atualiza `current_amount`
+- Toque longo no GoalCard abre action sheet (editar / depositar / excluir)
+- `lib/finance.ts`: `calcFV(monthlyDeposit, annualRatePct, years)` + `brl(value)` compartilhados
+
+**Perfil e configurações** (`app/(tabs)/profile.tsx`)
+- Header: avatar com iniciais, nome, email (de `supabase.auth.getUser()`), badge do ciclo
+- Summary: saldo inicial, potes ativos, total em metas
+- Configurações em grupos: Conta, Potes e Cartões, Notificações, Dados, Sobre
+- Edição inline do ciclo mensal (dialog com TextInput centrado) → `UPDATE users`
+- Toggles de notificação (estado local por ora)
+- Limpar dados de teste: `DELETE transactions WHERE user_id`
+- Logout com `Alert` de confirmação
+
+**Gestão de cartões** (`components/CreditCardModal.tsx`)
+- Lista cartões com nome, últimos 4 dígitos, fechamento/vencimento, limite
+- Formulário add/edit: nome, last_four, closing_day, due_day, credit_limit (opcional)
+- DELETE com Alert de confirmação
+
+**Fontes de receita** (`components/IncomeSourcesModal.tsx`)
+- Lista fontes com badge "Principal" na fonte primária, total mensal em destaque
+- Formulário add/edit: nome, tipo (chips), valor, dia de recebimento, checkbox "Fonte principal"
+- DELETE com Alert, callback `onChanged` para recarregar dashboard após alterações
+
 **Bugs corrigidos**
 - `storage.removeItem is not a function` (SecureStore adapter)
 - Botão de confirmar saltando no Android (KAV removido das telas)
@@ -109,13 +137,13 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ### Fase 2 — Pendente
 
 - [ ] Receita na projeção: corrigir contabilização (usar transações reais do ciclo, não apenas `income_sources`)
-- [ ] Tela de Metas de longo prazo (`app/(tabs)/goals.tsx`) — criar, acompanhar e depositar em metas
-- [ ] Tela de Perfil e configurações (`app/(tabs)/profile.tsx`) — editar nome, ciclo, fontes de receita, logout
-- [ ] Gestão de cartões de crédito — CRUD de `credit_cards`, fatura consolidada por cartão
 - [ ] Módulo OCR — leitura de cupons fiscais via `lib/ocr.ts` + `components/OCRCamera.tsx` (estrutura existe, Edge Function pendente)
 - [ ] Importação via planilha Excel — parse de `.xlsx` e inserção em batch de transações
-- [ ] Notificações push — alertas de pote próximo do limite, vencimento de fatura
+- [ ] Notificações push reais — alertas de pote próximo do limite, vencimento de fatura (toggles de UI já existem)
+- [ ] Exportar dados em CSV/Excel — botão na tela de perfil já existe (mostra "Em breve")
 - [ ] Gamificação e badges — tabela `user_badges` já existe no schema
+- [ ] Edição do nome do usuário no perfil
+- [ ] Fatura consolidada por cartão de crédito
 
 ## Architecture
 

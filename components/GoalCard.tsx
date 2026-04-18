@@ -2,35 +2,89 @@ import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'
 import { Goal } from '../types'
+import { calcFV, brl } from '../lib/finance'
+
+const HORIZON_META: Record<number, { color: string; icon: string }> = {
+  5: { color: Colors.success, icon: '🌴' },
+  10: { color: Colors.warning, icon: '🏠' },
+  30: { color: '#534AB7', icon: '🏆' },
+}
 
 type Props = {
   goal: Goal
-  onPress?: () => void
+  onDeposit?: () => void
+  onLongPress?: () => void
 }
 
-export function GoalCard({ goal, onPress }: Props) {
+export function GoalCard({ goal, onDeposit, onLongPress }: Props) {
   const progress = goal.target_amount > 0
     ? Math.min(goal.current_amount / goal.target_amount, 1)
     : 0
   const percent = Math.round(progress * 100)
 
+  const meta = HORIZON_META[goal.horizon_years] ?? { color: Colors.primary, icon: '🎯' }
+
+  const projectedFV = goal.monthly_deposit && goal.interest_rate
+    ? calcFV(goal.monthly_deposit, goal.interest_rate, goal.horizon_years)
+    : null
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={[styles.card, { borderLeftColor: meta.color }]}
+      onLongPress={onLongPress}
+      activeOpacity={0.85}
+    >
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={1}>{goal.name}</Text>
-        <Text style={styles.horizon}>{goal.horizon_years} anos</Text>
+        <Text style={styles.icon}>{meta.icon}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name} numberOfLines={1}>{goal.name}</Text>
+        </View>
+        <View style={[styles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
+          <Text style={[styles.horizonText, { color: meta.color }]}>{goal.horizon_years} anos</Text>
+        </View>
       </View>
 
-      <View style={styles.amounts}>
-        <Text style={styles.current}>R$ {goal.current_amount.toFixed(2)}</Text>
-        <Text style={styles.target}>/ R$ {goal.target_amount.toFixed(2)}</Text>
+      {/* Amounts */}
+      <View style={styles.amountRow}>
+        <Text style={styles.current}>{brl(goal.current_amount)}</Text>
+        <Text style={styles.target}> de {brl(goal.target_amount)}</Text>
       </View>
 
+      {/* Progress bar */}
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${percent}%` }]} />
+        <View
+          style={[styles.progressFill, { width: `${percent}%`, backgroundColor: meta.color }]}
+        />
       </View>
-
       <Text style={styles.percent}>{percent}% concluído</Text>
+
+      {/* Monthly deposit + projection */}
+      {(goal.monthly_deposit || projectedFV) ? (
+        <View style={styles.simRow}>
+          {goal.monthly_deposit ? (
+            <Text style={styles.simText}>
+              Aporte: <Text style={styles.simValue}>{brl(goal.monthly_deposit)}/mês</Text>
+            </Text>
+          ) : null}
+          {projectedFV ? (
+            <Text style={styles.simText}>
+              Projeção: <Text style={[styles.simValue, { color: meta.color }]}>{brl(projectedFV)}</Text>
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Deposit button */}
+      {onDeposit && (
+        <TouchableOpacity
+          style={[styles.depositBtn, { borderColor: meta.color }]}
+          onPress={onDeposit}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.depositBtnText, { color: meta.color }]}>+ Transferir valor</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   )
 }
@@ -39,6 +93,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardBg,
     borderRadius: 12,
+    borderTopLeftRadius: 3,
+    borderBottomLeftRadius: 3,
+    borderLeftWidth: 3,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -47,36 +104,28 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  icon: { fontSize: 22 },
+  name: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  horizonBadge: {
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
   },
-  name: { fontSize: 15, fontWeight: '600', color: Colors.textDark, flex: 1 },
-  horizon: {
-    fontSize: 12,
-    color: Colors.primary,
-    backgroundColor: Colors.lightBlue,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  amounts: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 10 },
-  current: { fontSize: 18, fontWeight: '700', color: Colors.textDark },
-  target: { fontSize: 13, color: Colors.textMuted, marginLeft: 4 },
+  horizonText: { fontSize: 11, fontWeight: '700' },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
+  current: { fontSize: 20, fontWeight: '800', color: Colors.textDark },
+  target: { fontSize: 13, color: Colors.textMuted },
   progressTrack: {
-    height: 8,
-    backgroundColor: Colors.border,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 6,
+    height: 8, backgroundColor: Colors.border,
+    borderRadius: 4, overflow: 'hidden', marginBottom: 4,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 4,
+  progressFill: { height: '100%', borderRadius: 4 },
+  percent: { fontSize: 11, color: Colors.textMuted, marginBottom: 10 },
+  simRow: { gap: 4, marginBottom: 10 },
+  simText: { fontSize: 12, color: Colors.textMuted },
+  simValue: { fontWeight: '700', color: Colors.textDark },
+  depositBtn: {
+    borderWidth: 1.5, borderRadius: 10,
+    paddingVertical: 9, alignItems: 'center',
   },
-  percent: { fontSize: 12, color: Colors.textMuted },
+  depositBtnText: { fontSize: 13, fontWeight: '700' },
 })
