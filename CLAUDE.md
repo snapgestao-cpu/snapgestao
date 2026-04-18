@@ -86,12 +86,17 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - `components/NewPotModal.tsx` — criar e editar potes
   - Sugestões rápidas em chips (Alimentação, Moradia, Transporte…)
   - Limite por valor fixo ou % da renda (calcula valor com base em `income_sources`)
-  - Paleta de 12 cores exportada como `POT_COLORS`
+  - Paleta de 12 cores exportada como `POT_COLORS` (importar de `NewPotModal` onde necessário)
   - Toggle "Pote de emergência 🛡️" — cor roxa `#534AB7` por padrão; desabilitado se já existir um
   - Preview em tempo real com `PotCard`
   - Modo edição: recebe `editPot?: Pot`, faz `UPDATE` em vez de `INSERT`
 - Action sheet (Modal fade) ao toque longo no PotCard: editar / ver lançamentos / excluir
 - Exclusão com `Alert.alert` de confirmação; lançamentos vinculados são mantidos
+
+**Tela de Projeção** (`app/(tabs)/projection.tsx`)
+- Gráfico de linha 12 meses com `react-native-svg` + `react-native-chart-kit`
+- Tabela mês a mês com receita, despesa e saldo projetados
+- Dados calculados com base em `income_sources` e potes do ciclo atual
 
 **Bugs corrigidos**
 - `storage.removeItem is not a function` (SecureStore adapter)
@@ -100,6 +105,17 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Token inválido travando em loop de loading
 - Potes duplicando ao tocar duas vezes no botão
 - Campos inexistentes (`icon`, `mesada_active`) no insert de potes — **nunca incluir no INSERT/UPDATE**
+
+### Fase 2 — Pendente
+
+- [ ] Receita na projeção: corrigir contabilização (usar transações reais do ciclo, não apenas `income_sources`)
+- [ ] Tela de Metas de longo prazo (`app/(tabs)/goals.tsx`) — criar, acompanhar e depositar em metas
+- [ ] Tela de Perfil e configurações (`app/(tabs)/profile.tsx`) — editar nome, ciclo, fontes de receita, logout
+- [ ] Gestão de cartões de crédito — CRUD de `credit_cards`, fatura consolidada por cartão
+- [ ] Módulo OCR — leitura de cupons fiscais via `lib/ocr.ts` + `components/OCRCamera.tsx` (estrutura existe, Edge Function pendente)
+- [ ] Importação via planilha Excel — parse de `.xlsx` e inserção em batch de transações
+- [ ] Notificações push — alertas de pote próximo do limite, vencimento de fatura
+- [ ] Gamificação e badges — tabela `user_badges` já existe no schema
 
 ## Architecture
 
@@ -144,7 +160,7 @@ Never call `supabase` directly from a component. Exceptions:
 
 **Cycle filtering** — `getCycleDates(user.cycle_start)` returns `{ start, end }` as ISO date strings. All per-pot expense queries use `.gte('date', start).lte('date', end)`.
 
-**`PotCard`** receives `spent` and `remaining` as props (calculated by parent). Progress bar: green (`Colors.success`) below 50%, amber (`Colors.warning`) 50–80%, red (`Colors.danger`) above 80%. Values formatted with `toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })`.
+**`PotCard`** receives flat props: `name, color, limit_amount?, spent, remaining, onPress?, onLongPress?`. `spent` and `remaining` are calculated by the parent — never passed as a `Pot` object. Progress bar: green below 50%, amber 50–80%, red above 80%. Values formatted with `toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })`. `onLongPress` triggers the parent's action sheet (edit / filter transactions / delete).
 
 ### Offline layer
 
@@ -231,14 +247,9 @@ All shared types in `types/index.ts`: `User`, `Pot`, `Transaction`, `Goal`, `Cre
 
 **Pot icon mapping** (`lib/potIcons.ts`): `getPotIcon(name)` maps pot names to emojis — exact match first, then partial match (substring in either direction), then `'💰'` fallback. ~80 category mappings covering alimentação, moradia, transporte, saúde, educação, lazer, pets, finanças, beleza, tecnologia, família, etc.
 
-**Real-time PotCard preview** in `onboarding/step3.tsx`: renders a `PotCard` with `spent=0`, `remaining=centsToFloat(limitDigits)` so the user sees the card update as they type the name and pick a color. Reuse this pattern in any future pot creation/edit screen.
+**Real-time PotCard preview** in `onboarding/step3.tsx` and `NewPotModal`: renders a `PotCard` with `spent=0`, `remaining=centsToFloat(limitDigits)` so the user sees the card update as they type the name and pick a color. Use this pattern in any future pot creation/edit screen.
 
-**Pot color palette** (12 colors, used in onboarding/step3 and any future pot creation screen):
-```
-'#0F5EA8' '#1D9E75' '#E24B4A' '#BA7517' '#534AB7' '#D4537E'
-'#0891B2' '#059669' '#DC6803' '#7C3AED' '#DB2777' '#374151'
-```
-Display as a grid of 36px circles with `gap: 10`, `flexWrap: 'wrap'`. Selected circle gets `borderWidth: 3, borderColor: white` + shadow/elevation.
+**Pot color palette** — 12 colors exported as `POT_COLORS` from `components/NewPotModal.tsx`. Import from there to stay in sync. Display as a grid of 36px circles with `gap: 10`, `flexWrap: 'wrap'`. Selected circle gets `borderWidth: 3, borderColor: white` + shadow/elevation.
 
 ## Known Android bugs (fixed — do not reintroduce)
 
