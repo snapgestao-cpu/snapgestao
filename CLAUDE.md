@@ -70,14 +70,15 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Pull-to-refresh; potes filtrados por `deleted_at IS NULL` e `created_at <= cycle.end`
 
 **JarPot** (`components/JarPot.tsx`)
-- SVG puro via `react-native-svg`; frasco com tampa e reflexo de vidro
-- **Moedas empilhadas** em vez de líquido: até 8 moedas com elipse 3D (sombra + corpo + brilho + "R$" + glint)
-- Coin color: 0–49% = cor original, 50–79% = âmbar, 80–99% = vermelho, 100%+ = vermelho escuro
-- Overflow (≥100%): 2 moedas extras saindo pela tampa, rotacionadas
-- Vazio: emoji da categoria desbotado (opacity 0.3) + label "vazio"
-- `darkenColor(hex)` e `lightenColor(hex)`: ajustes RGB para efeito 3D
-- Props: `name, color, percent, spent, limit, size?, onPress?` (textos movidos para o pai)
-- Grid: nome + gasto + limite renderizados fora do SVG no `index.tsx` para não cortar
+- ViewBox `0 0 120 150`; mason jar com tampa metálica (estrias), corpo vidro azulado
+- **18 moedas douradas** (#F0A500) em posições fixas orgânicas (6 camadas × 3 colunas), clipped pelo frasco
+- Cada moeda: sombra + corpo + brilho `#FFD04D` + texto "R$" + glint branco
+- **Notas de dinheiro verdes** saindo pela abertura quando `percent >= 70` (2 notas); 3ª nota quando `≥90`
+- Vazio: emoji da categoria desbotado (opacity 0.25) + label "vazio"
+- Percentual: acima das moedas quando <70%, na base do frasco quando ≥70%
+- Reflexo do vidro desenhado por último (sempre visível sobre moedas)
+- Cor do pote (prop `color`) usada apenas na borda do frasco
+- Textos nome/gasto/limite renderizados **fora** do SVG em `index.tsx` para não truncar
 
 **Tela de detalhe do pote** (`app/pot/[id].tsx`)
 - JarPot 150px centralizado + valores gastos

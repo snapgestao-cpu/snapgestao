@@ -113,7 +113,7 @@ export default function PotsScreen() {
         percent={item.percent}
         spent={item.spent}
         limit={item.pot.limit_amount}
-        size={110}
+        size={120}
       />
       <Text style={styles.potName} numberOfLines={2}>{item.pot.name}</Text>
       <Text style={styles.potSpent}>{brl(item.spent)}</Text>
@@ -225,15 +225,15 @@ const styles = StyleSheet.create({
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
   jarCell: {
     alignItems: 'center', width: '48%',
-    paddingBottom: 20, paddingHorizontal: 4,
+    paddingBottom: 24, paddingHorizontal: 6,
   },
   potName: {
     fontSize: 13, fontWeight: '700', color: Colors.textDark,
-    textAlign: 'center', marginTop: 8, marginBottom: 2,
-    paddingHorizontal: 4,
+    textAlign: 'center', marginTop: 6, marginBottom: 2,
+    paddingHorizontal: 4, lineHeight: 18,
   },
-  potSpent: { fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
-  potLimit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
+  potSpent: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
+  potLimit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 1 },
   emptyWrapper: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
   emptyText: { fontSize: 15, color: Colors.textMuted, textAlign: 'center', marginBottom: 20 },
   emptyBtn: {
