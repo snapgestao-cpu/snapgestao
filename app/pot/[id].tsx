@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, router } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import { JarPot } from '../../components/JarPot'
+import JarPot from '../../components/JarPot'
 import { NewExpenseModal } from '../../components/NewExpenseModal'
 import { NewIncomeModal } from '../../components/NewIncomeModal'
 import { NewPotModal } from '../../components/NewPotModal'

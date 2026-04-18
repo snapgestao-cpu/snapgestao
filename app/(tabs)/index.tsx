@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import { JarPot } from '../../components/JarPot'
+import JarPot from '../../components/JarPot'
 import { NewPotModal } from '../../components/NewPotModal'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
