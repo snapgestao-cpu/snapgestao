@@ -88,7 +88,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Botões de ação: Gasto, Receita, Editar, Excluir
 - Lançamentos do ciclo agrupados por data com botão ✏️ (EditTransactionModal)
 - Soft delete: salva `deleted_at = now()`, não apaga registro
-- Rota: `app/pot/[id].tsx` — registrada no Stack root e guard atualizado para permitir `segments[0] === 'pot'`
+- Rota: `app/pot/[id].tsx` — registrada no Stack root como `name="pot/[id]"` (não `"pot"`) e guard permite `segments[0] === 'pot'`
 
 **PotCard** (`components/PotCard.tsx`) — mantido para uso em preview no NewPotModal
 
@@ -298,7 +298,8 @@ Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two
 - `scheduleCycleEndReminder(cycleEndDate)` — agenda notificação às 20h do último dia do ciclo
 - `sendLocalNotification(title, body, data?)` — dispara notificação imediata
 - Integrado em `app/_layout.tsx` (ao carregar o usuário) e `NewExpenseModal` (após cada gasto)
-- `Notifications.setNotificationHandler` requer `shouldShowBanner: true, shouldShowList: true` além de `shouldShowAlert` (API do Expo)
+- `registerForPushNotifications()` retorna `void` — sem `getExpoPushTokenAsync` (removido: SDK 53 não suporta push remoto no Expo Go)
+- Handler usa `shouldShowBanner` + `shouldShowList` (`shouldShowAlert` foi deprecado no SDK 53)
 
 ### OCR
 
