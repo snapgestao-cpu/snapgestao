@@ -44,10 +44,19 @@ export type Goal = {
   name: string
   target_amount: number
   current_amount: number
-  horizon_years: 5 | 10 | 30
+  horizon_years: number
   target_date: string | null
   interest_rate: number | null
   monthly_deposit: number | null
+}
+
+export type PotLimitHistory = {
+  id: string
+  pot_id: string
+  user_id: string
+  limit_amount: number
+  valid_from: string
+  created_at: string
 }
 
 export type CreditCard = {

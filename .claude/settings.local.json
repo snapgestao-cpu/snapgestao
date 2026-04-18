@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude auth *)",
+      "Bash(npm install *)",
+      "Bash(npx expo *)",
+      "Bash(kill %1)",
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git remote *)"
+    ]
+  }
+}

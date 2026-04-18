@@ -1,491 +1,236 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  RefreshControl, TouchableOpacity, Animated, Modal, Alert,
+  View, Text, StyleSheet, FlatList, ActivityIndicator,
+  RefreshControl, TouchableOpacity, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import { PotCard } from '../../components/PotCard'
-import { TransactionItem } from '../../components/TransactionItem'
-import { NewExpenseModal } from '../../components/NewExpenseModal'
-import { NewIncomeModal } from '../../components/NewIncomeModal'
+import { JarPot } from '../../components/JarPot'
 import { NewPotModal } from '../../components/NewPotModal'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
-import { Pot, Transaction } from '../../types'
 import { getCycle } from '../../lib/cycle'
+import { Pot } from '../../types'
+import { brl } from '../../lib/finance'
 
 type PotRow = {
   pot: Pot
   spent: number
   remaining: number
+  percent: number
 }
 
-type TxWithPot = Transaction & { potName?: string; potColor?: string }
-
-
-function brl(value: number) {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-const FAB_SIZE = 56
-const MENU_ITEMS = [
-  { key: 'expense', label: 'Registrar gasto', color: Colors.danger, icon: '−' },
-  { key: 'income', label: 'Registrar receita', color: Colors.success, icon: '+' },
-]
-
-export default function DashboardScreen() {
+export default function PotsScreen() {
   const { user } = useAuthStore()
 
-  const [totalIncome, setTotalIncome] = useState(0)
   const [potsData, setPotsData] = useState<PotRow[]>([])
-  const [recentTxs, setRecentTxs] = useState<TxWithPot[]>([])
+  const [emergencyPot, setEmergencyPot] = useState<Pot | null>(null)
+  const [emergencyBalance, setEmergencyBalance] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
-  // FAB
-  const [fabOpen, setFabOpen] = useState(false)
-  const fabAnim = useRef(new Animated.Value(0)).current
-
-  // Transaction modals
-  const [showExpense, setShowExpense] = useState(false)
-  const [showIncome, setShowIncome] = useState(false)
-
-  // Pot modals
   const [showNewPot, setShowNewPot] = useState(false)
   const [editingPot, setEditingPot] = useState<Pot | null>(null)
-  const [potAction, setPotAction] = useState<Pot | null>(null)
-
-  // Toast
+  const [totalIncome, setTotalIncome] = useState(0)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
 
-  // Transaction filter by pot
-  const [filterPotId, setFilterPotId] = useState<string | null>(null)
-
-  const loadDashboard = useCallback(async () => {
+  const loadPots = useCallback(async () => {
     if (!user) return
     try {
-      const { data: incomeSources } = await supabase
-        .from('income_sources')
-        .select('amount')
-        .eq('user_id', user.id)
-      setTotalIncome((incomeSources ?? []).reduce((sum, s) => sum + Number(s.amount), 0))
-
-      const { data: pots } = await supabase
-        .from('pots')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-
-      if (!pots || pots.length === 0) {
-        setPotsData([])
-        setRecentTxs([])
-        return
-      }
-
       const cycle = getCycle(user.cycle_start ?? 1, 0)
-      const cycleStart = cycle.startISO
-      const cycleEnd = cycle.endISO
+
+      const [sourcesRes, potsRes, epRes] = await Promise.all([
+        supabase.from('income_sources').select('amount').eq('user_id', user.id),
+        supabase.from('pots').select('*')
+          .eq('user_id', user.id)
+          .eq('is_emergency', false)
+          .is('deleted_at', null)
+          .lte('created_at', cycle.end.toISOString())
+          .order('created_at', { ascending: true }),
+        supabase.from('pots').select('*')
+          .eq('user_id', user.id).eq('is_emergency', true)
+          .is('deleted_at', null).maybeSingle(),
+      ])
+
+      const income = ((sourcesRes.data ?? []) as any[])
+        .reduce((s, r) => s + Number(r.amount), 0)
+      setTotalIncome(income)
+
+      const pots = (potsRes.data ?? []) as Pot[]
+      const ep = epRes.data as Pot | null
+      setEmergencyPot(ep)
 
       const rows: PotRow[] = await Promise.all(
         pots.map(async (pot) => {
           const { data: txs } = await supabase
-            .from('transactions')
-            .select('amount')
-            .eq('pot_id', pot.id)
-            .eq('type', 'expense')
-            .gte('date', cycleStart)
-            .lte('date', cycleEnd)
-          const spent = (txs ?? []).reduce((sum, t) => sum + Number(t.amount), 0)
-          const remaining = (pot.limit_amount ?? 0) - spent
-          return { pot: pot as Pot, spent, remaining }
+            .from('transactions').select('amount')
+            .eq('pot_id', pot.id).eq('type', 'expense')
+            .gte('date', cycle.startISO).lte('date', cycle.endISO)
+          const spent = ((txs ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
+          const limit = pot.limit_amount ?? 0
+          const remaining = limit - spent
+          const percent = limit > 0 ? (spent / limit) * 100 : 0
+          return { pot, spent, remaining, percent }
         })
       )
       setPotsData(rows)
 
-      const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
-
-      const { data: txsRaw } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('date', cycleStart)
-        .lte('date', cycleEnd)
-        .order('date', { ascending: false })
-        .limit(10)
-
-      const txs: TxWithPot[] = (txsRaw ?? []).map((tx: any) => ({
-        ...tx,
-        potName: tx.pot_id ? potMap[tx.pot_id]?.name : undefined,
-        potColor: tx.pot_id ? potMap[tx.pot_id]?.color : undefined,
-      }))
-      setRecentTxs(txs)
+      if (ep) {
+        const { data: epTxs } = await supabase
+          .from('transactions').select('amount,type').eq('pot_id', ep.id)
+        const bal = ((epTxs ?? []) as any[]).reduce((s: number, t: any) =>
+          t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0)
+        setEmergencyBalance(bal)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }, [user?.id])
 
-  useEffect(() => {
-    setLoading(true)
-    loadDashboard()
-  }, [loadDashboard])
+  useEffect(() => { setLoading(true); loadPots() }, [loadPots])
 
-  const onRefresh = () => {
-    setRefreshing(true)
-    loadDashboard()
+  const onRefresh = () => { setRefreshing(true); loadPots() }
+
+  const handleSuccess = (msg: string) => {
+    loadPots()
+    setToast({ message: msg, color: Colors.primary })
   }
 
-  const toggleFab = () => {
-    const toValue = fabOpen ? 0 : 1
-    Animated.spring(fabAnim, { toValue, useNativeDriver: true, bounciness: 6 }).start()
-    setFabOpen(!fabOpen)
-  }
+  const cycle = user ? getCycle(user.cycle_start ?? 1, 0) : null
 
-  const closeFab = () => {
-    if (!fabOpen) return
-    Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true }).start()
-    setFabOpen(false)
-  }
-
-  const handleFabItem = (key: string) => {
-    closeFab()
-    if (key === 'expense') setShowExpense(true)
-    else if (key === 'income') setShowIncome(true)
-  }
-
-  const handleSuccess = (msg: string, color: string) => {
-    loadDashboard()
-    setToast({ message: msg, color })
-  }
-
-  const handleDeletePot = () => {
-    if (!potAction) return
-    const pot = potAction
-    Alert.alert(
-      'Excluir pote',
-      `Deseja excluir o pote "${pot.name}"? Os lançamentos vinculados serão mantidos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: async () => {
-            setPotAction(null)
-            const { error } = await supabase.from('pots').delete().eq('id', pot.id)
-            if (error) {
-              setToast({ message: 'Erro ao excluir pote.', color: Colors.danger })
-            } else {
-              loadDashboard()
-              setToast({ message: `Pote "${pot.name}" excluído.`, color: Colors.textMuted })
-            }
-          },
-        },
-      ]
-    )
-  }
-
-  const totalExpense = potsData.reduce((sum, r) => sum + r.spent, 0)
-  const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
-
-  const filteredPot = filterPotId ? potsData.find(r => r.pot.id === filterPotId)?.pot : null
-  const displayedTxs = filterPotId
-    ? recentTxs.filter(tx => tx.pot_id === filterPotId)
-    : recentTxs
+  const renderItem = ({ item }: { item: PotRow }) => (
+    <View style={styles.jarCell}>
+      <JarPot
+        name={item.pot.name}
+        color={item.pot.color}
+        percent={item.percent}
+        spent={item.spent}
+        limit={item.pot.limit_amount}
+        size={110}
+        onPress={() => router.push(`/pot/${item.pot.id}`)}
+      />
+    </View>
+  )
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        onScrollBeginDrag={closeFab}
-      >
-        <View style={styles.headerRow}>
-          <Text style={styles.greeting}>Olá, {user?.name ?? 'usuário'} 👋</Text>
-          <View style={styles.cycleBadge}>
-            <Text style={styles.cycleBadgeText}>
-              {user ? getCycle(user.cycle_start ?? 1, 0).label : ''}
-            </Text>
-          </View>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
+          <Text style={styles.monthLabel}>
+            {cycle ? cycle.monthYear : ''}
+          </Text>
         </View>
-
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, { backgroundColor: Colors.lightGreen }]}>
-            <Text style={styles.summaryLabel}>Receitas</Text>
-            <Text style={[styles.summaryValue, { color: Colors.success }]}>{brl(totalIncome)}</Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: Colors.lightRed }]}>
-            <Text style={styles.summaryLabel}>Despesas</Text>
-            <Text style={[styles.summaryValue, { color: Colors.danger }]}>{brl(totalExpense)}</Text>
-          </View>
-        </View>
-
-        {/* Meus potes header */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Meus potes</Text>
-          <TouchableOpacity
-            onPress={() => setShowNewPot(true)}
-            style={styles.newPotBtn}
-          >
-            <Text style={styles.newPotBtnText}>+ Novo pote</Text>
+        <View style={styles.headerRight}>
+          {cycle && (
+            <View style={styles.cycleBadge}>
+              <Text style={styles.cycleBadgeText}>{cycle.label}</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
+            <Text style={styles.newPotBtnText}>+ Pote</Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        {loading ? (
-          <ActivityIndicator color={Colors.primary} style={styles.loader} />
-        ) : potsData.length === 0 ? (
-          <Text style={styles.empty}>Nenhum pote criado ainda.</Text>
-        ) : (
-          potsData.map(({ pot, spent, remaining }) => (
-            <PotCard
-              key={pot.id}
-              name={pot.name}
-              color={pot.color}
-              limit_amount={pot.limit_amount}
-              spent={spent}
-              remaining={remaining}
-              onLongPress={() => setPotAction(pot)}
-            />
-          ))
-        )}
-
-        {!loading && (
-          <>
-            {/* Lançamentos recentes header */}
-            <View style={[styles.sectionHeader, { marginTop: 8 }]}>
-              <Text style={styles.sectionTitle}>
-                {filteredPot ? `Lançamentos — ${filteredPot.name}` : 'Lançamentos recentes'}
-              </Text>
-              {filteredPot && (
-                <TouchableOpacity onPress={() => setFilterPotId(null)} style={styles.clearFilterBtn}>
-                  <Text style={styles.clearFilterText}>Ver todos</Text>
-                </TouchableOpacity>
-              )}
+      {loading ? (
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
+      ) : (
+        <FlatList
+          data={potsData}
+          keyExtractor={item => item.pot.id}
+          numColumns={2}
+          renderItem={renderItem}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.row}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          ListEmptyComponent={
+            <View style={styles.emptyWrapper}>
+              <Text style={styles.emptyText}>Nenhum pote criado ainda.</Text>
+              <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewPot(true)}>
+                <Text style={styles.emptyBtnText}>Criar meu primeiro pote</Text>
+              </TouchableOpacity>
             </View>
-            {displayedTxs.length === 0 ? (
-              <Text style={styles.empty}>Nenhum lançamento neste ciclo.</Text>
-            ) : (
-              <View style={styles.txCard}>
-                {displayedTxs.map(tx => (
-                  <TransactionItem
-                    key={tx.id}
-                    transaction={tx}
-                    potName={tx.potName}
-                    potColor={tx.potColor}
-                  />
-                ))}
-              </View>
-            )}
-          </>
-        )}
-
-        <View style={{ height: 96 }} />
-      </ScrollView>
-
-      {/* FAB menu items */}
-      {MENU_ITEMS.map((item, i) => {
-        const translateY = fabAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -(FAB_SIZE + 12) * (i + 1)],
-        })
-        const opacity = fabAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
-        return (
-          <Animated.View
-            key={item.key}
-            style={[styles.fabMenuItem, { transform: [{ translateY }], opacity }]}
-            pointerEvents={fabOpen ? 'auto' : 'none'}
-          >
-            <Text style={styles.fabMenuLabel}>{item.label}</Text>
-            <TouchableOpacity
-              style={[styles.fabMinor, { backgroundColor: item.color }]}
-              onPress={() => handleFabItem(item.key)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.fabIcon}>{item.icon}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )
-      })}
-
-      {/* Main FAB */}
-      <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
-        <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
-      </TouchableOpacity>
-
-      {/* FAB backdrop */}
-      {fabOpen && (
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject as any}
-          activeOpacity={1}
-          onPress={closeFab}
+          }
+          ListFooterComponent={
+            emergencyPot ? (
+              <TouchableOpacity
+                style={styles.emergencyCard}
+                onPress={() => router.push(`/pot/${emergencyPot.id}`)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.emergencyIcon}>🛡️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.emergencyTitle}>Emergência</Text>
+                  <Text style={styles.emergencyBalance}>Saldo: {brl(emergencyBalance)}</Text>
+                </View>
+                <Text style={styles.emergencyArrow}>›</Text>
+              </TouchableOpacity>
+            ) : <View style={{ height: 96 }} />
+          }
         />
       )}
 
-      {/* Pot action sheet */}
-      <Modal visible={!!potAction} transparent animationType="fade" onRequestClose={() => setPotAction(null)}>
-        <TouchableOpacity
-          style={styles.actionBackdrop}
-          activeOpacity={1}
-          onPress={() => setPotAction(null)}
-        >
-          <View style={styles.actionSheet}>
-            <Text style={styles.actionTitle}>{potAction?.name}</Text>
-
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => { setEditingPot(potAction); setPotAction(null) }}
-            >
-              <Text style={styles.actionBtnText}>✏️  Editar pote</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => { setFilterPotId(potAction?.id ?? null); setPotAction(null) }}
-            >
-              <Text style={styles.actionBtnText}>📋  Ver lançamentos</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionBtn} onPress={handleDeletePot}>
-              <Text style={[styles.actionBtnText, { color: Colors.danger }]}>🗑  Excluir pote</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionBtnCancel} onPress={() => setPotAction(null)}>
-              <Text style={styles.actionCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Transaction modals */}
-      <NewExpenseModal
-        visible={showExpense}
-        onClose={() => setShowExpense(false)}
-        onSuccess={() => handleSuccess('Gasto registrado!', Colors.danger)}
-        pots={potsData.map(r => r.pot)}
-      />
-
-      <NewIncomeModal
-        visible={showIncome}
-        onClose={() => setShowIncome(false)}
-        onSuccess={() => handleSuccess('Receita registrada!', Colors.success)}
-      />
-
-      {/* Pot creation modal */}
       <NewPotModal
         visible={showNewPot}
         onClose={() => setShowNewPot(false)}
-        onSuccess={msg => handleSuccess(msg, Colors.primary)}
+        onSuccess={handleSuccess}
         totalIncome={totalIncome}
       />
-
-      {/* Pot edit modal */}
       <NewPotModal
         visible={!!editingPot}
         onClose={() => setEditingPot(null)}
-        onSuccess={msg => handleSuccess(msg, Colors.primary)}
+        onSuccess={handleSuccess}
         editPot={editingPot ?? undefined}
         totalIncome={totalIncome}
       />
-
-      {toast && (
-        <Toast
-          message={toast.message}
-          color={toast.color}
-          onHide={() => setToast(null)}
-        />
-      )}
+      {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  container: { padding: 20 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 },
-  greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark, flex: 1 },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
+    backgroundColor: Colors.background,
+  },
+  greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark },
+  monthLabel: { fontSize: 14, color: Colors.textMuted, marginTop: 2 },
+  headerRight: { alignItems: 'flex-end', gap: 6 },
   cycleBadge: {
     backgroundColor: Colors.lightBlue, borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 5, marginTop: 4, marginLeft: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
   },
   cycleBadgeText: { fontSize: 11, fontWeight: '600', color: Colors.primary },
-  summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  summaryCard: { flex: 1, borderRadius: 12, padding: 14 },
-  summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
-  summaryValue: { fontSize: 18, fontWeight: '700' },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 12,
-  },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark },
   newPotBtn: {
+    backgroundColor: Colors.primary, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  grid: { paddingHorizontal: 16, paddingBottom: 16 },
+  row: { justifyContent: 'space-around', marginBottom: 24 },
+  jarCell: { alignItems: 'center', width: '48%' },
+  emptyWrapper: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
+  emptyText: { fontSize: 15, color: Colors.textMuted, textAlign: 'center', marginBottom: 20 },
+  emptyBtn: {
+    backgroundColor: Colors.primary, borderRadius: 14,
+    paddingHorizontal: 24, paddingVertical: 14,
+  },
+  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  emergencyCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.lightBlue,
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: '#F3F0FF', borderRadius: 14,
+    marginHorizontal: 16, marginBottom: 96, marginTop: 8,
+    padding: 16, borderLeftWidth: 3, borderLeftColor: '#534AB7',
   },
-  newPotBtnText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
-  clearFilterBtn: {
-    paddingHorizontal: 10, paddingVertical: 4,
-    backgroundColor: Colors.lightBlue, borderRadius: 20,
-  },
-  clearFilterText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
-  loader: { marginTop: 32 },
-  empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 12, marginBottom: 8 },
-  txCard: {
-    backgroundColor: Colors.white, borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-  },
-  fab: {
-    position: 'absolute', bottom: 28, right: 24,
-    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
-    backgroundColor: Colors.accent,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
-    zIndex: 10,
-  },
-  fabMinor: {
-    width: FAB_SIZE - 8, height: FAB_SIZE - 8, borderRadius: (FAB_SIZE - 8) / 2,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
-  },
-  fabMenuItem: {
-    position: 'absolute', bottom: 28, right: 24,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    zIndex: 9,
-  },
-  fabMenuLabel: {
-    backgroundColor: Colors.white, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 5,
-    fontSize: 13, fontWeight: '600', color: Colors.textDark,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
-  },
-  fabIcon: { fontSize: 28, color: '#fff', lineHeight: 32, fontWeight: '300' },
-  actionBackdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  actionSheet: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32,
-  },
-  actionTitle: {
-    fontSize: 15, fontWeight: '700', color: Colors.textDark,
-    textAlign: 'center', paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border, marginBottom: 4,
-  },
-  actionBtn: {
-    paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  actionBtnText: { fontSize: 16, fontWeight: '500', color: Colors.textDark },
-  actionBtnCancel: {
-    paddingVertical: 16, alignItems: 'center', marginTop: 4,
-  },
-  actionCancelText: { fontSize: 16, fontWeight: '600', color: Colors.textMuted },
+  emergencyIcon: { fontSize: 26, marginRight: 14 },
+  emergencyTitle: { fontSize: 14, fontWeight: '700', color: '#534AB7' },
+  emergencyBalance: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
+  emergencyArrow: { fontSize: 22, color: '#534AB7', fontWeight: '300' },
 })

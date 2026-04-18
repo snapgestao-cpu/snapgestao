@@ -405,8 +405,8 @@ export default function MonthlyScreen() {
         <View style={{ height: 96 }} />
       </ScrollView>
 
-      {/* FAB */}
-      {FAB_ITEMS.map((item, i) => {
+      {/* FAB — current cycle only */}
+      {offset === 0 && FAB_ITEMS.map((item, i) => {
         const translateY = fabAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -(FAB_SIZE + 12) * (i + 1)] })
         const opacity = fabAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
         return (
@@ -427,11 +427,13 @@ export default function MonthlyScreen() {
         )
       })}
 
-      <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
-        <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
-      </TouchableOpacity>
+      {offset === 0 && (
+        <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+          <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
+        </TouchableOpacity>
+      )}
 
-      {fabOpen && (
+      {fabOpen && offset === 0 && (
         <TouchableOpacity style={StyleSheet.absoluteFillObject as any} activeOpacity={1} onPress={closeFab} />
       )}
 
@@ -448,6 +450,18 @@ export default function MonthlyScreen() {
         onSuccess={() => handleTxSuccess('Receita registrada!')}
         initialDate={cycle.startISO}
       />
+
+      {/* Past cycles: fixed bottom add button */}
+      {offset < 0 && (
+        <View style={styles.pastAddBar}>
+          <TouchableOpacity
+            style={styles.pastAddBtn}
+            onPress={() => setShowExpense(true)}
+          >
+            <Text style={styles.pastAddBtnText}>+ Adicionar lançamento neste mês</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <EditTransactionModal
         visible={!!editingTx}
         transaction={editingTx}
@@ -596,4 +610,14 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
   },
   fabIcon: { fontSize: 24, color: '#fff', lineHeight: 28, fontWeight: '300' },
+  pastAddBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: Colors.white, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  pastAddBtn: {
+    backgroundColor: Colors.primary, borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  pastAddBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 })

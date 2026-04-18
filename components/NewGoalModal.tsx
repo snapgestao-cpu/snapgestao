@@ -11,12 +11,6 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { calcFV, brl } from '../lib/finance'
 
-const HORIZONS: { years: 5 | 10 | 30; label: string; icon: string; color: string }[] = [
-  { years: 5, label: '5 anos', icon: '🌴', color: Colors.success },
-  { years: 10, label: '10 anos', icon: '🏠', color: Colors.warning },
-  { years: 30, label: '30 anos', icon: '🏆', color: '#534AB7' },
-]
-
 type Props = {
   visible: boolean
   onClose: () => void
@@ -24,12 +18,20 @@ type Props = {
   editGoal?: Goal
 }
 
+function horizonLabel(years: number, months: number): string {
+  const parts: string[] = []
+  if (years > 0) parts.push(`${years} ano${years !== 1 ? 's' : ''}`)
+  if (months > 0) parts.push(`${months} mês${months !== 1 ? 'es' : ''}`)
+  return parts.length > 0 ? parts.join(' e ') : '0 meses'
+}
+
 export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
   const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
   const [targetDigits, setTargetDigits] = useState('')
-  const [horizon, setHorizon] = useState<5 | 10 | 30>(5)
+  const [horizonYears, setHorizonYears] = useState('5')
+  const [horizonMonths, setHorizonMonths] = useState('0')
   const [depositDigits, setDepositDigits] = useState('')
   const [rateStr, setRateStr] = useState('8')
   const [loading, setLoading] = useState(false)
@@ -40,33 +42,42 @@ export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
     if (editGoal) {
       setName(editGoal.name)
       setTargetDigits(String(Math.round(editGoal.target_amount * 100)))
-      setHorizon(editGoal.horizon_years)
+      const totalMonths = Math.round(editGoal.horizon_years * 12)
+      setHorizonYears(String(Math.floor(totalMonths / 12)))
+      setHorizonMonths(String(totalMonths % 12))
       setDepositDigits(editGoal.monthly_deposit ? String(Math.round(editGoal.monthly_deposit * 100)) : '')
       setRateStr(editGoal.interest_rate ? String(editGoal.interest_rate) : '8')
     } else {
       setName('')
       setTargetDigits('')
-      setHorizon(5)
+      setHorizonYears('5')
+      setHorizonMonths('0')
       setDepositDigits('')
       setRateStr('8')
     }
     setError(null)
   }, [visible])
 
+  const yrs = Math.max(0, parseInt(horizonYears || '0'))
+  const mos = Math.max(0, Math.min(11, parseInt(horizonMonths || '0')))
+  const totalMonths = yrs * 12 + mos
+  const horizonDecimal = totalMonths / 12
+
   const monthlyDeposit = centsToFloat(depositDigits)
   const annualRate = Number(rateStr || '0')
-  const projectedFV = calcFV(monthlyDeposit, annualRate, horizon)
+  const projectedFV = calcFV(monthlyDeposit, annualRate, horizonDecimal)
 
   const handleSave = async () => {
     const target = centsToFloat(targetDigits)
     if (!name.trim()) { setError('Informe o nome da meta.'); return }
     if (target <= 0) { setError('Informe um valor alvo maior que zero.'); return }
+    if (totalMonths <= 0) { setError('Informe um prazo maior que zero.'); return }
 
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) { setError('Sessão inválida.'); return }
 
     const targetDate = new Date()
-    targetDate.setFullYear(targetDate.getFullYear() + horizon)
+    targetDate.setMonth(targetDate.getMonth() + totalMonths)
 
     setError(null)
     setLoading(true)
@@ -75,11 +86,10 @@ export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
         user_id: userId,
         name: name.trim(),
         target_amount: target,
-        horizon_years: horizon,
+        horizon_years: horizonDecimal,
         monthly_deposit: monthlyDeposit > 0 ? monthlyDeposit : null,
         interest_rate: annualRate > 0 ? annualRate : null,
         target_date: targetDate.toISOString().split('T')[0],
-        current_amount: editGoal ? undefined : 0,
       }
 
       if (editGoal) {
@@ -136,24 +146,38 @@ export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
               placeholderTextColor={Colors.textMuted}
             />
 
-            <Text style={styles.label}>Horizonte</Text>
+            <Text style={styles.label}>
+              Prazo — <Text style={styles.labelHighlight}>{horizonLabel(yrs, mos)}</Text>
+            </Text>
             <View style={styles.horizonRow}>
-              {HORIZONS.map(h => (
-                <TouchableOpacity
-                  key={h.years}
-                  style={[
-                    styles.horizonChip,
-                    { borderColor: h.color },
-                    horizon === h.years && { backgroundColor: h.color },
-                  ]}
-                  onPress={() => setHorizon(h.years)}
-                >
-                  <Text style={styles.horizonIcon}>{h.icon}</Text>
-                  <Text style={[styles.horizonLabel, { color: horizon === h.years ? '#fff' : h.color }]}>
-                    {h.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <View style={styles.horizonField}>
+                <Text style={styles.horizonFieldLabel}>Anos</Text>
+                <TextInput
+                  style={styles.horizonInput}
+                  value={horizonYears}
+                  onChangeText={t => setHorizonYears(t.replace(/\D/g, '').slice(0, 3))}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={Colors.textMuted}
+                  textAlign="center"
+                />
+              </View>
+              <Text style={styles.horizonSep}>e</Text>
+              <View style={styles.horizonField}>
+                <Text style={styles.horizonFieldLabel}>Meses</Text>
+                <TextInput
+                  style={styles.horizonInput}
+                  value={horizonMonths}
+                  onChangeText={t => {
+                    const v = parseInt(t.replace(/\D/g, '') || '0')
+                    setHorizonMonths(String(Math.min(11, v)))
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={Colors.textMuted}
+                  textAlign="center"
+                />
+              </View>
             </View>
 
             <Text style={styles.label}>Aporte mensal planejado</Text>
@@ -176,16 +200,15 @@ export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
               placeholderTextColor={Colors.textMuted}
             />
 
-            {/* Simulador */}
-            {monthlyDeposit > 0 && (
+            {monthlyDeposit > 0 && totalMonths > 0 && (
               <View style={styles.simulator}>
-                <Text style={styles.simTitle}>Simulação</Text>
+                <Text style={styles.simTitle}>SIMULAÇÃO</Text>
                 <Text style={styles.simMain}>
                   Com {brl(monthlyDeposit)}/mês você terá{' '}
                   <Text style={styles.simHighlight}>{brl(projectedFV)}</Text>
                 </Text>
                 <Text style={styles.simSub}>
-                  em {horizon} anos · taxa de {annualRate}% ao ano
+                  em {horizonLabel(yrs, mos)} · taxa de {annualRate}% ao ano
                 </Text>
                 {projectedFV >= centsToFloat(targetDigits) && centsToFloat(targetDigits) > 0 ? (
                   <Text style={styles.simSuccess}>✓ Você alcança a meta!</Text>
@@ -226,11 +249,8 @@ const styles = StyleSheet.create({
   kav: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    maxHeight: '92%',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 12, maxHeight: '92%',
   },
   handle: {
     width: 40, height: 4, borderRadius: 2,
@@ -240,18 +260,22 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800', color: Colors.textDark },
   closeIcon: { fontSize: 18, color: Colors.textMuted },
   label: { fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 6, marginTop: 8 },
+  labelHighlight: { color: Colors.primary, fontWeight: '700' },
   input: {
     backgroundColor: Colors.background, borderRadius: 10, borderWidth: 1.5,
     borderColor: Colors.border, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, color: Colors.textDark, marginBottom: 4,
   },
-  horizonRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  horizonChip: {
-    flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14,
-    borderWidth: 2, backgroundColor: Colors.white,
+  horizonRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  horizonField: { flex: 1, alignItems: 'center' },
+  horizonFieldLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 4, fontWeight: '600' },
+  horizonInput: {
+    width: '100%', backgroundColor: Colors.background, borderRadius: 10,
+    borderWidth: 1.5, borderColor: Colors.primary,
+    paddingVertical: 12, fontSize: 22, fontWeight: '700', color: Colors.textDark,
+    textAlign: 'center',
   },
-  horizonIcon: { fontSize: 22, marginBottom: 4 },
-  horizonLabel: { fontSize: 12, fontWeight: '700' },
+  horizonSep: { fontSize: 16, color: Colors.textMuted, fontWeight: '600', paddingTop: 20 },
   simulator: {
     backgroundColor: Colors.lightBlue, borderRadius: 12,
     padding: 14, marginTop: 12, marginBottom: 8,

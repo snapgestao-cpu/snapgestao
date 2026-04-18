@@ -62,19 +62,26 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Step 3: primeiro pote + cor + preview em tempo real
 - Salva em `users`, `income_sources` e `pots` no Supabase
 
-**Dashboard**
-- Cards de receita (soma de `income_sources`) e despesa (ciclo atual)
-- Lista de potes com `PotCard` + botão "+ Novo pote"
-- Pull-to-refresh
-- FAB animado (Animated.spring) com menu "Registrar gasto" / "Registrar receita"
-- Seção "Lançamentos recentes" (últimos 10 do ciclo) filtrável por pote
-- Toast de feedback após ações (cores: danger=gasto, success=receita, primary=pote)
+**Tela de Potes** (`app/(tabs)/index.tsx`)
+- Header com saudação, mês corrente e badge do ciclo + botão "+ Pote"
+- Grid 2 colunas com `JarPot` (frasco SVG) por pote
+- Ao tocar: navega para `app/pot/[id].tsx` (rota dinâmica)
+- Pote de emergência separado no rodapé como card horizontal
+- Pull-to-refresh; potes filtrados por `deleted_at IS NULL` e `created_at <= cycle.end`
 
-**PotCard**
-- Ícone automático por categoria (`lib/potIcons.ts`, ~80 mapeamentos)
-- Borda lateral esquerda colorida com a cor do pote
-- Barra de progresso tricolor (verde/âmbar/vermelho)
-- `onLongPress` abre action sheet (editar / ver lançamentos / excluir)
+**JarPot** (`components/JarPot.tsx`)
+- SVG puro via `react-native-svg`; frasco com tampa, reflexo de vidro e líquido animado
+- Liquid color: 0–49% = cor original, 50–79% = âmbar, 80–99% = vermelho, 100%+ = vermelho escuro
+- Props: `name, color, percent, spent, limit, size?, onPress?`
+- Centro: emoji da categoria quando vazio, percentual quando cheio
+
+**Tela de detalhe do pote** (`app/pot/[id].tsx`)
+- JarPot 150px centralizado + valores gastos
+- Botões de ação: Gasto, Receita, Editar, Excluir
+- Lançamentos do ciclo agrupados por data com botão ✏️ (EditTransactionModal)
+- Soft delete: salva `deleted_at = now()`, não apaga registro
+
+**PotCard** (`components/PotCard.tsx`) — mantido para uso em preview no NewPotModal
 
 **Módulo de Lançamentos**
 - `components/NewExpenseModal.tsx` — gasto com seleção de pote, data, forma de pagamento, cartão de crédito, estabelecimento, `is_need`
@@ -100,11 +107,11 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 **Metas de longo prazo** (`app/(tabs)/goals.tsx`)
 - Tela com summary cards (total alocado, total projetado com juros compostos)
-- Timeline visual horizontal: Hoje → 5 anos → 10 anos → 30 anos com marcadores coloridos
-- `GoalCard`: ícone + badge colorido por horizonte (🌴5y=verde, 🏠10y=âmbar, 🏆30y=roxo), barra de progresso, aporte e projeção, botão "Transferir valor"
-- `NewGoalModal`: nome, valor alvo, horizonte (chips), aporte mensal, taxa de juros (default 8%), simulador em tempo real com FV = PMT × ((1+r)^n - 1) / r
+- `GoalCard`: barra de progresso, aporte e projeção, botão "Transferir valor"
+- `NewGoalModal`: nome, valor alvo, prazo livre em **anos + meses** (inputs numéricos, não chips fixos), aporte mensal, taxa de juros (default 8%), simulador em tempo real
+  - `horizon_years` salvo como decimal (ex: 1 ano 6 meses = 1.5)
+  - `totalMonths = anos × 12 + meses` — `n` usado no cálculo FV
 - `GoalDepositModal`: valor, seletor de pote ou "Saldo livre", insere `goal_deposit` transaction + atualiza `current_amount`
-- Toque longo no GoalCard abre action sheet (editar / depositar / excluir)
 - `lib/finance.ts`: `calcFV(monthlyDeposit, annualRatePct, years)` + `brl(value)` compartilhados
 
 **Perfil e configurações** (`app/(tabs)/profile.tsx`)
@@ -136,17 +143,25 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 **Controle mensal** (`app/(tabs)/monthly.tsx`)
 - Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
-- Card escuro de resumo: receita base + receita extra, despesas, saldo, débito/sobra de ciclos anteriores
+- Card escuro de resumo: receita base + receita extra + rollover anterior, despesas, saldo
 - Alerta âmbar se gasto > 80% da renda disponível
 - Tabela de potes com progresso, gasto e limite por pote
 - Lista de transações agrupada por data (Hoje/Ontem/DD MMM) com botão ✏️ por linha
-- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo (expense vs income)
-- Seção "Encerrar ciclo": chips de destino da sobra (meta / emergência / renda / descartar), seletor de meta, botão de fechamento
-- Seção pote de emergência: saldo acumulado de todas as transações deste pote
-- FAB igual ao dashboard (registrar gasto / receita) com `initialDate` do ciclo atual
-- `lib/cycle.ts`: `getCycle(cycleStart, offset)` → `CycleInfo` com ISO strings; `formatDateShort(iso)` → Hoje/Ontem/DD MMM
-- `lib/cycleClose.ts`: `calculateCycleSummary()` e `processCycleClose()` com upsert em `cycle_rollovers`
-- SQL migration: `supabase/migrations/20240418_cycle_rollovers.sql` — criar tabela `cycle_rollovers` manualmente no Supabase SQL editor
+- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo
+- Seção "Encerrar ciclo": chips de destino da sobra, seletor de meta, botão de fechamento
+- FAB no ciclo atual; botão fixo "+ Adicionar lançamento neste mês" em ciclos passados
+- `lib/cycle.ts`: `getCycle(cycleStart, offset)` corrigido — end = cycleStart-1 do mês seguinte
+- `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()`
+- SQL: `supabase/migrations/20240418_cycle_rollovers.sql` — executar manualmente no Supabase
+
+**Soft delete e histórico de limites**
+- `pots.deleted_at`: soft delete — query sempre filtra `.is('deleted_at', null)`
+- `pot_limit_history`: registra mudanças de limite com `valid_from` por ciclo
+- SQL: `supabase/migrations/20240419_pot_soft_delete_and_history.sql` — executar manualmente
+
+**Tab bar** (`app/(tabs)/_layout.tsx`)
+- SVG puro via `react-native-svg`: JarIcon, CalendarIcon, ChartIcon, TargetIcon, UserIcon
+- Todos 22×22px, stroke 1.6–1.8px, cor = `color` prop (muda entre ativo/inativo automaticamente)
 
 ### Fase 2 — Pendente
 
