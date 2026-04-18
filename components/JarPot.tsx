@@ -10,186 +10,257 @@ type Props = {
   name: string
   color: string
   percent: number
-  spent: number
-  limit: number | null
+  spent?: number
+  limit?: number | null
   size?: number
   onPress?: () => void
 }
 
-const COIN_POSITIONS = [
-  // Layer 1 — bottom
-  { cx: 35, cy: 128, rx: 16, ry: 5 },
-  { cx: 60, cy: 126, rx: 16, ry: 5 },
-  { cx: 84, cy: 128, rx: 15, ry: 5 },
-  // Layer 2
-  { cx: 28, cy: 115, rx: 15, ry: 5 },
-  { cx: 52, cy: 113, rx: 16, ry: 5 },
-  { cx: 76, cy: 116, rx: 15, ry: 5 },
-  { cx: 92, cy: 114, rx: 14, ry: 5 },
-  // Layer 3
-  { cx: 38, cy: 102, rx: 16, ry: 5 },
-  { cx: 63, cy: 100, rx: 15, ry: 5 },
-  { cx: 86, cy: 103, rx: 14, ry: 5 },
-  // Layer 4
-  { cx: 30, cy: 89, rx: 15, ry: 5 },
-  { cx: 55, cy: 87, rx: 16, ry: 5 },
-  { cx: 79, cy: 90, rx: 15, ry: 5 },
-  // Layer 5
-  { cx: 42, cy: 76, rx: 16, ry: 5 },
-  { cx: 67, cy: 74, rx: 15, ry: 5 },
-  { cx: 88, cy: 77, rx: 14, ry: 5 },
-  // Layer 6 — top
-  { cx: 33, cy: 63, rx: 15, ry: 5 },
-  { cx: 58, cy: 61, rx: 16, ry: 5 },
-  { cx: 82, cy: 64, rx: 14, ry: 5 },
+// ─── Coin positions: bottom-to-top order (higher cy = bottom) ──────────────
+// 24 coins total across 8 rows. Row 1 = bottom, Row 8 = top.
+const COINS = [
+  // Row 1 — base
+  { cx: 28, cy: 122, rx: 14, ry: 5 },
+  { cx: 52, cy: 120, rx: 15, ry: 5 },
+  { cx: 77, cy: 122, rx: 14, ry: 5 },
+  { cx: 98, cy: 121, rx: 12, ry: 4.5 },
+
+  // Row 2
+  { cx: 20, cy: 111, rx: 13, ry: 4.5 },
+  { cx: 44, cy: 109, rx: 15, ry: 5 },
+  { cx: 68, cy: 111, rx: 14, ry: 5 },
+  { cx: 91, cy: 110, rx: 13, ry: 4.5 },
+
+  // Row 3
+  { cx: 32, cy: 100, rx: 14, ry: 5 },
+  { cx: 57, cy: 98,  rx: 15, ry: 5 },
+  { cx: 82, cy: 100, rx: 14, ry: 5 },
+
+  // Row 4
+  { cx: 21, cy: 89,  rx: 13, ry: 4.5 },
+  { cx: 46, cy: 87,  rx: 15, ry: 5 },
+  { cx: 71, cy: 89,  rx: 14, ry: 5 },
+  { cx: 94, cy: 88,  rx: 12, ry: 4.5 },
+
+  // Row 5
+  { cx: 34, cy: 78,  rx: 14, ry: 5 },
+  { cx: 59, cy: 76,  rx: 15, ry: 5 },
+  { cx: 84, cy: 78,  rx: 14, ry: 5 },
+
+  // Row 6
+  { cx: 23, cy: 67,  rx: 13, ry: 4.5 },
+  { cx: 48, cy: 65,  rx: 14, ry: 5 },
+  { cx: 73, cy: 67,  rx: 14, ry: 5 },
+  { cx: 95, cy: 66,  rx: 12, ry: 4.5 },
+
+  // Row 7
+  { cx: 37, cy: 56,  rx: 14, ry: 5 },
+  { cx: 62, cy: 54,  rx: 15, ry: 5 },
 ]
 
-const TOTAL_COINS = COIN_POSITIONS.length
+const TOTAL = COINS.length // 24
+
+// Jar interior clip path
+const JAR_CLIP = "M 18 36 Q 12 36 11 44 L 8 126 Q 8 134 22 134 L 98 134 Q 112 134 112 126 L 109 44 Q 108 36 102 36 Z"
 
 export function JarPot({ name, color, percent, size = 120, onPress }: Props) {
-  const id = name.replace(/\W/g, '').slice(0, 12) || 'pot'
-  const visibleCoins = percent <= 0 ? 0
-    : Math.max(1, Math.min(TOTAL_COINS, Math.ceil((Math.min(percent, 100) / 100) * TOTAL_COINS)))
+  const id = name.replace(/\W/g, '').slice(0, 10) || 'jar'
+  const pct = Math.max(0, percent)
 
-  // Y position of topmost coin
-  const topCoinY = visibleCoins > 0 ? COIN_POSITIONS[visibleCoins - 1].cy : 134
-  const percentY = Math.max(50, topCoinY - 8)
+  const visibleCoins = pct <= 0 ? 0
+    : Math.max(1, Math.min(TOTAL, Math.ceil((Math.min(pct, 100) / 100) * TOTAL)))
+
+  const topCoin = visibleCoins > 0 ? COINS[visibleCoins - 1] : null
+  const pctLabelY = topCoin ? Math.max(46, topCoin.cy - 10) : 85
+
+  const showBills = pct >= 55
+  const showBill3 = pct >= 82
 
   const scale = size / 120
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={onPress ? 0.75 : 1} disabled={!onPress}>
       <View style={{ width: size, alignItems: 'center' }}>
-        <Svg width={120 * scale} height={150 * scale} viewBox="0 0 120 150">
+        <Svg
+          width={120 * scale}
+          height={148 * scale}
+          viewBox="0 0 120 148"
+        >
           <Defs>
             <ClipPath id={`jar-${id}`}>
-              <Path d="M28 35 Q22 35 20 42 L18 125 Q18 134 30 134 L90 134 Q102 134 102 125 L100 42 Q98 35 92 35 Z" />
+              <Path d={JAR_CLIP} />
             </ClipPath>
           </Defs>
 
-          {/* ── LID ── */}
-          <Rect x="25" y="22" width="70" height="8" rx="3"
-            fill="#E8E8E8" stroke="#CCCCCC" strokeWidth="1" />
-          <Rect x="28" y="15" width="64" height="10" rx="4"
-            fill="#F0F0F0" stroke="#CCCCCC" strokeWidth="1" />
-          {[35, 45, 55, 65, 75, 85].map(x => (
-            <Line key={x} x1={x} y1="16" x2={x} y2="29"
-              stroke="#DDDDDD" strokeWidth="0.8" />
-          ))}
-
-          {/* ── JAR BODY — glass fill ── */}
+          {/* ── GLASS BODY FILL ─────────────────────────────── */}
           <Path
-            d="M28 35 Q22 35 20 42 L18 125 Q18 134 30 134 L90 134 Q102 134 102 125 L100 42 Q98 35 92 35 Z"
-            fill="rgba(200,230,255,0.15)"
-            stroke={color} strokeWidth="2.5"
+            d={JAR_CLIP}
+            fill="rgba(185,225,248,0.22)"
+            stroke="none"
           />
 
-          {/* ── COINS (clipped inside jar) ── */}
+          {/* ── COINS (clipped inside jar) ───────────────────── */}
           <G clipPath={`url(#jar-${id})`}>
-            {COIN_POSITIONS.slice(0, visibleCoins).map((pos, i) => (
+            {COINS.slice(0, visibleCoins).map((c, i) => (
               <G key={i}>
-                {/* Coin shadow */}
-                <Ellipse cx={pos.cx} cy={pos.cy + 3} rx={pos.rx} ry={pos.ry - 1}
-                  fill="rgba(0,0,0,0.2)" />
+                {/* Under-shadow */}
+                <Ellipse cx={c.cx} cy={c.cy + 3} rx={c.rx - 1} ry={c.ry - 1}
+                  fill="rgba(0,0,0,0.18)" />
                 {/* Coin body */}
-                <Ellipse cx={pos.cx} cy={pos.cy} rx={pos.rx} ry={pos.ry}
-                  fill="#F0A500" stroke="#C47F00" strokeWidth="0.8" />
-                {/* Top shine */}
-                <Ellipse cx={pos.cx} cy={pos.cy - 1} rx={pos.rx - 2} ry={pos.ry - 1}
-                  fill="#FFD04D" opacity="0.6" />
-                {/* R$ label */}
-                <SvgText x={pos.cx} y={pos.cy + 2} textAnchor="middle"
-                  fontSize="5.5" fontWeight="bold" fill="#7A4F00" opacity="0.9">
-                  R$
+                <Ellipse cx={c.cx} cy={c.cy} rx={c.rx} ry={c.ry}
+                  fill="#F5C118" stroke="#B8860B" strokeWidth="0.9" />
+                {/* Top sheen */}
+                <Ellipse cx={c.cx} cy={c.cy - 1.2} rx={c.rx - 2.5} ry={c.ry - 1.8}
+                  fill="#FFE566" opacity="0.65" />
+                {/* $ label */}
+                <SvgText
+                  x={c.cx} y={c.cy + 2}
+                  textAnchor="middle"
+                  fontSize="5.5" fontWeight="bold"
+                  fill="#7A4A00" opacity="0.88"
+                >
+                  $
                 </SvgText>
-                {/* Glint */}
+                {/* Glint streak */}
                 <Line
-                  x1={pos.cx - pos.rx + 4} y1={pos.cy - 1}
-                  x2={pos.cx - pos.rx + 8} y2={pos.cy - 2}
-                  stroke="#FFF5CC" strokeWidth="1.2"
-                  strokeLinecap="round" opacity="0.8"
+                  x1={c.cx - c.rx + 3} y1={c.cy - 1.5}
+                  x2={c.cx - c.rx + 7} y2={c.cy - 2.8}
+                  stroke="#FFFBE8" strokeWidth="1.3"
+                  strokeLinecap="round" opacity="0.75"
                 />
               </G>
             ))}
+
+            {/* ── BILLS ───────────────────────────────────────── */}
+            {showBills && (
+              <G>
+                {/* Bill 1 — left, tilted */}
+                <Path d="M 22 52 L 58 44 L 61 59 L 25 68 Z"
+                  fill="#7DC88A" stroke="#4E9A5A" strokeWidth="0.9" opacity="0.93" />
+                <Ellipse cx={42} cy={56} rx={7} ry={4.5}
+                  fill="none" stroke="#4E9A5A" strokeWidth="0.9" />
+                <SvgText x={42} y={58} textAnchor="middle"
+                  fontSize="5.5" fontWeight="bold" fill="#3A7A44">$</SvgText>
+                <Line x1="25" y1="48" x2="56" y2="46"
+                  stroke="#4E9A5A" strokeWidth="0.6" opacity="0.4" />
+                <Line x1="27" y1="64" x2="59" y2="56"
+                  stroke="#4E9A5A" strokeWidth="0.6" opacity="0.4" />
+
+                {/* Bill 2 — right, tilted opposite */}
+                <Path d="M 62 41 L 97 47 L 95 62 L 60 56 Z"
+                  fill="#7DC88A" stroke="#4E9A5A" strokeWidth="0.9" opacity="0.88" />
+                <Ellipse cx={79} cy={52} rx={7} ry={4.5}
+                  fill="none" stroke="#4E9A5A" strokeWidth="0.9" />
+                <SvgText x={79} y={54} textAnchor="middle"
+                  fontSize="5.5" fontWeight="bold" fill="#3A7A44">$</SvgText>
+                <Line x1="63" y1="59" x2="93" y2="60"
+                  stroke="#4E9A5A" strokeWidth="0.6" opacity="0.4" />
+              </G>
+            )}
+
+            {/* Bill 3 — center tall */}
+            {showBill3 && (
+              <G>
+                <Path d="M 46 34 L 76 37 L 75 52 L 45 49 Z"
+                  fill="#6DC078" stroke="#4E9A5A" strokeWidth="0.9" opacity="0.85" />
+                <Ellipse cx={61} cy={43} rx={6} ry={4}
+                  fill="none" stroke="#4E9A5A" strokeWidth="0.8" />
+                <SvgText x={61} y={45} textAnchor="middle"
+                  fontSize="5" fontWeight="bold" fill="#3A7A44">$</SvgText>
+              </G>
+            )}
           </G>
 
-          {/* ── BILLS spilling out (percent >= 70) ── */}
-          {percent >= 70 && (
-            <G>
-              {/* Bill 1 — tilted left */}
-              <Path d="M32 38 L55 33 L58 45 L35 50 Z"
-                fill="#85C17E" stroke="#5A9A52" strokeWidth="0.8" opacity="0.9" />
-              <Ellipse cx={45} cy={41} rx={5} ry={3.5}
-                fill="none" stroke="#5A9A52" strokeWidth="0.8" />
-              <Line x1="35" y1="36" x2="53" y2="36"
-                stroke="#5A9A52" strokeWidth="0.5" opacity="0.5" />
-              <Line x1="37" y1="47" x2="55" y2="43"
-                stroke="#5A9A52" strokeWidth="0.5" opacity="0.5" />
-
-              {/* Bill 2 — tilted right */}
-              <Path d="M62 31 L85 35 L83 47 L60 43 Z"
-                fill="#85C17E" stroke="#5A9A52" strokeWidth="0.8" opacity="0.85" />
-              <Ellipse cx={73} cy={39} rx={5} ry={3.5}
-                fill="none" stroke="#5A9A52" strokeWidth="0.8" />
-              <Line x1="63" y1="44" x2="82" y2="46"
-                stroke="#5A9A52" strokeWidth="0.5" opacity="0.5" />
-
-              {/* Bill 3 — center, only when >= 90 */}
-              {percent >= 90 && (
-                <Path d="M50 26 L70 28 L69 40 L49 38 Z"
-                  fill="#6DB566" stroke="#5A9A52" strokeWidth="0.8" opacity="0.8" />
-              )}
-            </G>
-          )}
-
-          {/* ── GLASS REFLECTION (always on top) ── */}
-          <Path d="M26 40 Q24 40 24 45 L23 80"
-            fill="none" stroke="#fff"
-            strokeWidth="3" strokeLinecap="round" opacity="0.25" />
-          <Path d="M26 88 L25 105"
-            fill="none" stroke="#fff"
-            strokeWidth="2" strokeLinecap="round" opacity="0.2" />
-
-          {/* ── JAR BORDER on top ── */}
+          {/* ── INNER GLASS WALLS (drawn over coins) ─────────── */}
+          {/* Left wall shimmer */}
           <Path
-            d="M28 35 Q22 35 20 42 L18 125 Q18 134 30 134 L90 134 Q102 134 102 125 L100 42 Q98 35 92 35 Z"
+            d="M 18 36 Q 12 36 11 44 L 8 126"
             fill="none"
-            stroke={color} strokeWidth="2.5"
+            stroke="rgba(200,235,255,0.55)"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+          {/* Right wall shimmer */}
+          <Path
+            d="M 102 36 Q 108 36 109 44 L 112 126"
+            fill="none"
+            stroke="rgba(200,235,255,0.35)"
+            strokeWidth="6"
+            strokeLinecap="round"
           />
 
-          {/* ── EMPTY STATE ── */}
-          {percent <= 0 && (
+          {/* ── JAR OUTLINE ──────────────────────────────────── */}
+          <Path
+            d={JAR_CLIP}
+            fill="none"
+            stroke={color}
+            strokeWidth="2.5"
+          />
+
+          {/* ── GLASS HIGHLIGHT REFLECTIONS ──────────────────── */}
+          <Path
+            d="M 15 48 Q 14 48 13 54 L 11 94"
+            fill="none"
+            stroke="white"
+            strokeWidth="4"
+            strokeLinecap="round"
+            opacity="0.38"
+          />
+          <Path
+            d="M 12 102 L 10 120"
+            fill="none"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            opacity="0.28"
+          />
+
+          {/* ── LID ──────────────────────────────────────────── */}
+          {/* Lid band */}
+          <Rect x="14" y="25" width="92" height="13" rx="3.5"
+            fill="#E4ECEE" stroke="#AABBBE" strokeWidth="1.1" />
+          {/* Lid cap */}
+          <Rect x="10" y="12" width="100" height="15" rx="5"
+            fill="#EEF4F5" stroke="#AABBBE" strokeWidth="1.3" />
+          {/* Lid top shine */}
+          <Rect x="15" y="15" width="90" height="6" rx="3"
+            fill="white" opacity="0.55" />
+          {/* Lid band texture lines */}
+          {[24, 36, 48, 60, 72, 84, 96].map(x => (
+            <Line key={x} x1={x} y1="26" x2={x} y2="37"
+              stroke="#BECDCF" strokeWidth="0.8" opacity="0.7" />
+          ))}
+
+          {/* ── EMPTY STATE ──────────────────────────────────── */}
+          {pct <= 0 && (
             <G>
-              <SvgText x="60" y="95" textAnchor="middle"
-                fontSize="30" opacity="0.25">
+              <SvgText x="60" y="98" textAnchor="middle"
+                fontSize="30" opacity="0.18">
                 {getPotIcon(name)}
               </SvgText>
-              <SvgText x="60" y="115" textAnchor="middle"
-                fontSize="10" fill={color} opacity="0.35">
+              <SvgText x="60" y="118" textAnchor="middle"
+                fontSize="10" fill={color} opacity="0.28" fontWeight="600">
                 vazio
               </SvgText>
             </G>
           )}
 
-          {/* ── PERCENT label ── */}
-          {percent > 0 && percent < 70 && (
+          {/* ── PERCENT LABEL ────────────────────────────────── */}
+          {pct > 0 && (
             <SvgText
               x="60"
-              y={percentY}
+              y={showBills ? 126 : pctLabelY}
               textAnchor="middle"
-              fontSize="14"
+              fontSize="13"
               fontWeight="bold"
-              fill={percent >= 80 ? '#E24B4A' : percent >= 50 ? '#BA7517' : '#7A4F00'}
+              fill={
+                pct >= 90 ? '#C0392B'
+                  : pct >= 60 ? '#9A6200'
+                  : '#7A4A00'
+              }
               opacity="0.9"
             >
-              {`${Math.round(percent)}%`}
-            </SvgText>
-          )}
-          {percent >= 70 && (
-            <SvgText x="60" y="125" textAnchor="middle"
-              fontSize="11" fontWeight="bold"
-              fill="#7A4F00" opacity="0.8">
-              {`${Math.round(percent)}%`}
+              {`${Math.round(pct)}%`}
             </SvgText>
           )}
         </Svg>
