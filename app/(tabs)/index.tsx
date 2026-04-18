@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import JarPot from '../../components/JarPot'
+import { JarPot } from '../../components/JarPot'
 import { NewPotModal } from '../../components/NewPotModal'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -115,11 +115,6 @@ export default function PotsScreen() {
         limit={item.pot.limit_amount}
         size={120}
       />
-      <Text style={styles.potName} numberOfLines={2}>{item.pot.name}</Text>
-      <Text style={styles.potSpent}>{brl(item.spent)}</Text>
-      {item.pot.limit_amount ? (
-        <Text style={styles.potLimit}>de {brl(item.pot.limit_amount)}</Text>
-      ) : null}
     </TouchableOpacity>
   )
 
