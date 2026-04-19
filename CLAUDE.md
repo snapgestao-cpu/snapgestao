@@ -207,6 +207,15 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - `expo-file-system/legacy` (writeAsStringAsync) + `expo-sharing` (shareAsync)
 - Botão "Exportar IR YYYY (CSV)" no grupo Dados do perfil
 
+**Compras parceladas**
+- `types/index.ts`: `Transaction` ganhou `installment_total INT | null`, `installment_number INT | null`, `installment_group_id UUID | null`
+- SQL já executado no Supabase: `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS installment_total INT, ...` + índice `idx_transactions_installment`
+- `NewExpenseModal`: quando `paymentMethod === 'credit'`, exibe toggle "Compra parcelada?" + Slider 2–24x + preview do valor por parcela. Ao salvar, cria `installments` linhas via `.insert([...])` com `billing_date` calculado por offset de mês e `installment_group_id` compartilhado
+- `TransactionItem`: badge azul `N/Mx` quando `installment_total > 1`
+- `EditTransactionModal`: ao excluir parcela (`installment_group_id != null`) pergunta "Só esta" ou "Todas as restantes" — usa `.gte('installment_number', current)` para deletar em batch
+- `ImportFileModal`: detecta coluna `parcelas` no Excel; se > 1 expande em N rows com `installment_group_id` compartilhado; badge `Nx` no preview; contagem "X linhas → Y lançamentos"
+- `projection.tsx`: query usa `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...)')` para cada ciclo — parcelas aparecem no mês correto de vencimento
+
 ### Fase 4 — Pendente
 - [ ] Glossário financeiro
 - [ ] Testes e validações finais
