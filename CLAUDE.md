@@ -146,24 +146,34 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Token inválido travando em loop de loading
 - Potes duplicando ao tocar duas vezes no botão
 - Campos inexistentes (`icon`, `mesada_active`) no insert de potes — **nunca incluir no INSERT/UPDATE**
+- **Exclusão de pote** (`app/pot/[id].tsx`): antes do soft delete, deleta transações `type='expense'` do ciclo atual vinculadas ao pote via `.gte('date', startStr).lte('date', endStr)` — outros ciclos não são afetados; Alert exibe datas do ciclo no formato DD/MM/YYYY
+- **Pote obrigatório** (`NewExpenseModal`): label exibe `*`; ao tentar salvar sem pote, exibe erro inline; quando lista de potes está vazia, exibe mensagem + botão "Criar pote →" que fecha o modal e navega para `/(tabs)/`
+- **Encerrar ciclo em meses anteriores** (`monthly.tsx`): seção "Encerrar ciclo" aparece para qualquer ciclo não encerrado (removida condição `offset === 0`); `isCycleClosed` carregado do DB via `cycle_rollovers.processed`; após fechar ciclo passado, executa loop de cascata `for (let i = offset+1; i <= 0; i++) await recalculateRollover(...)` para recalcular rollovers dependentes
+- **Saldo do ciclo** (`lib/cycleClose.ts`): crédito usa `billing_date`, demais usam `date` (query `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...')`); `totalDebt = cycleSaldo < 0 ? abs(cycleSaldo) : 0`; `totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0` — baseado no saldo geral, não soma de excedentes por pote
+- **Potes em ciclos anteriores** (`monthly.tsx`): query de potes usa `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` em vez de `.is('deleted_at', null)` — potes excluídos após o início do ciclo ainda aparecem no histórico daquele ciclo
+- **Alertas simplificados** (`monthly.tsx`): dois cards separados — (1) card vermelho se `cycleSaldo < 0` com valor do déficit; (2) card âmbar se `cycleSaldo >= 0` e algum pote excedeu limite, listando potes excedidos com valor; removida mensagem "próximo mês" para potes
+- **`recalculateRollover`** (`lib/cycleClose.ts`): nova exportação — verifica se ciclo já foi encerrado (`processed = true`), recalcula summary e faz upsert preservando `surplus_action`/`surplus_goal_id`; usada na cascata de fechamento retroativo
 
 **Controle mensal** (`app/(tabs)/monthly.tsx`)
 - Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
 - Card escuro de resumo: receita base + receita extra + rollover anterior, despesas, saldo
-- Alerta âmbar se gasto > 80% da renda disponível
-- Tabela de potes com progresso, gasto e limite por pote
+- Dois alertas separados: saldo negativo (vermelho) e pote excedido (âmbar) — ver "Bugs corrigidos"
+- Tabela de potes com ScrollView horizontal — colunas Pote(130px) | Orçado(100px) | Gasto(100px) | Saldo(100px), minWidth 430px
+- Query de transações usa `.or(billing_date/date)` para crédito vs outros métodos
+- Query de potes usa `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` para incluir potes históricos
 - Lista de transações agrupada por data (Hoje/Ontem/DD MMM) com botão ✏️ por linha
-- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo
-- Seção "Encerrar ciclo": chips de destino da sobra, seletor de meta, botão de fechamento
-- FAB verde em todos os ciclos (receita / gasto)
+- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo; para parcelados pergunta "Só esta" vs "Todas as restantes"
+- Seção "Encerrar ciclo": disponível em **qualquer** ciclo não encerrado; chips de destino da sobra, seletor de meta, botão de fechamento; `isCycleClosed` carregado do DB
+- Após encerrar ciclo passado: cascata `recalculateRollover` do offset+1 até 0
+- FAB verde em todos os ciclos (receita / gasto / cupom / arquivo)
 - Botão "+ Pote" no header de navegação de ciclo → abre `NewPotModal` com `isRetroactive={offset < 0}`
 - Query de potes filtrada por `cycle.end` — potes retroativos aparecem apenas a partir do mês correto
-- `lib/cycle.ts`: `getCycle(cycleStart, offset)` corrigido — end = cycleStart-1 do mês seguinte
-- `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()`
+- `lib/cycle.ts`: `getCycle(cycleStart, offset)` — end = cycleStart-1 do mês seguinte
+- `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()` + `recalculateRollover()`
 - SQL: `supabase/migrations/20240418_cycle_rollovers.sql` — executar manualmente no Supabase
 
 **Soft delete e histórico de limites**
-- `pots.deleted_at`: soft delete — query sempre filtra `.is('deleted_at', null)`
+- `pots.deleted_at`: soft delete — dashboard/onboarding filtra `.is('deleted_at', null)`; consultas históricas usam `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` para incluir potes que existiam durante o ciclo
 - `pot_limit_history`: registra mudanças de limite com `valid_from` por ciclo
 - SQL: `supabase/migrations/20240419_pot_soft_delete_and_history.sql` — executar manualmente
 
