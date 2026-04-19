@@ -122,7 +122,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 **Perfil e configurações** (`app/(tabs)/profile.tsx`)
 - Header: avatar com iniciais, nome, email (de `supabase.auth.getUser()`), badge do ciclo
-- Summary: saldo inicial, potes ativos, total em metas
+- Summary: saldo atual do ciclo (verde/vermelho), metas ativas, meta prioritária com % e barra
 - Configurações em grupos: Conta, Potes e Cartões, Notificações, Dados, Sobre
 - Edição inline do ciclo mensal (dialog com TextInput centrado) → `UPDATE users`
 - Toggles de notificação (estado local por ora)
@@ -153,6 +153,8 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - **Potes em ciclos anteriores** (`monthly.tsx`): query de potes usa `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` em vez de `.is('deleted_at', null)` — potes excluídos após o início do ciclo ainda aparecem no histórico daquele ciclo
 - **Alertas simplificados** (`monthly.tsx`): dois cards separados — (1) card vermelho se `cycleSaldo < 0` com valor do déficit; (2) card âmbar se `cycleSaldo >= 0` e algum pote excedeu limite, listando potes excedidos com valor; removida mensagem "próximo mês" para potes
 - **`recalculateRollover`** (`lib/cycleClose.ts`): nova exportação — verifica se ciclo já foi encerrado (`processed = true`), recalcula summary e faz upsert preservando `surplus_action`/`surplus_goal_id`; usada na cascata de fechamento retroativo
+- **Cards do perfil** (`profile.tsx`): card 1 = "Saldo atual" via `calculateCycleSummary` (verde se positivo, vermelho se negativo); card 2 = "Metas ativas" (contagem de metas com `current_amount < target_amount`); card 3 = "Meta prioritária" com percentual de conclusão e barra de progresso (meta com `target_date` mais próxima; fallback: maior % de conclusão; exibe `—` se nenhuma)
+- **Potes fantasmas na tela Mensal** (`monthly.tsx`): query `.or('deleted_at.is.null,...')` substituída por duas queries separadas — `activePotsRes` (`.is('deleted_at', null)`) + `deletedPotsRes` (`.not('deleted_at', 'is', null).gte('deleted_at', cycle.startISO)`); ciclo atual usa só `activePots`; ciclos anteriores une as duas listas
 
 **Controle mensal** (`app/(tabs)/monthly.tsx`)
 - Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
