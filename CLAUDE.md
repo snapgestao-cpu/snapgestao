@@ -186,10 +186,22 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
   - **PENDENTE manual no Supabase**: criar bucket `receipts` (Storage → New bucket, public: false)
   - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>`
 
-### Fase 3 — Pendente
+### Fase 3 — Concluído
 
-- [ ] Gamificação e badges — tabela `user_badges` já existe no schema
+**Gamificação e badges**
+- `lib/badges.ts`: 10 badges definidas (`ALL_BADGES`), `checkAndGrantBadges(userId, cycleStart)` verifica e concede automaticamente, `getEarnedBadgeKeys(userId)` para consulta
+- `components/BadgeToast.tsx`: toast animado slide-in + fadeOut (3s por badge), fila de badges processada sequencialmente
+- `app/achievements.tsx`: tela stack (não tab) com progress geral, desafio do mês (cupons), badges conquistadas/bloqueadas em grid 2 colunas
+- `app/(tabs)/profile.tsx`: seção "Conquistas" com preview das 3 últimas badges e link para `/achievements`
+- Integração automática: `_layout.tsx` (startup), `NewPotModal` (criar pote), `NewGoalModal` (criar meta), `ocr.tsx` (após salvar cupom), `monthly.tsx` (após encerrar ciclo)
+- `NewPotModal` e `NewGoalModal`: prop `onBadges?: (badges: Badge[]) => void` para retornar badges novas ao parent
+
+**Correção Projeção**
+- `app/(tabs)/projection.tsx`: tabela em `ScrollView horizontal` com colunas de largura fixa (72px mês, 108px valores) — fix de valores longos (R$ 17.000,00) sobrescrevendo colunas adjacentes
+
+### Fase 4 — Pendente
 - [ ] Importação via planilha Excel (+Arquivo) — parse de `.xlsx` e inserção em batch de transações
+
 - [ ] Exportação para IR — botão na tela de perfil já existe (mostra "Em breve")
 - [ ] Glossário financeiro
 - [ ] Testes e validações finais
