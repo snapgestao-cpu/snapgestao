@@ -101,22 +101,55 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
 
   const handleDelete = () => {
     if (!transaction) return
-    Alert.alert(
-      'Excluir lançamento',
-      'Deseja excluir este lançamento? Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            const { error: err } = await supabase.from('transactions').delete().eq('id', transaction.id)
-            if (err) { setError('Erro ao excluir: ' + err.message); return }
-            onSuccess('Lançamento excluído.')
-            onClose()
+
+    if (transaction.installment_group_id) {
+      Alert.alert(
+        'Excluir parcela',
+        'Deseja excluir apenas esta parcela ou todas as parcelas restantes?',
+        [
+          {
+            text: 'Só esta',
+            onPress: async () => {
+              const { error: err } = await supabase.from('transactions').delete().eq('id', transaction.id)
+              if (err) { setError('Erro ao excluir: ' + err.message); return }
+              onSuccess('Parcela excluída.')
+              onClose()
+            },
           },
-        },
-      ]
-    )
+          {
+            text: 'Todas as restantes',
+            style: 'destructive',
+            onPress: async () => {
+              const { error: err } = await supabase.from('transactions')
+                .delete()
+                .eq('installment_group_id', transaction.installment_group_id)
+                .gte('installment_number', transaction.installment_number ?? 1)
+              if (err) { setError('Erro ao excluir: ' + err.message); return }
+              onSuccess('Parcelas restantes excluídas.')
+              onClose()
+            },
+          },
+          { text: 'Cancelar', style: 'cancel' },
+        ]
+      )
+    } else {
+      Alert.alert(
+        'Excluir lançamento',
+        'Deseja excluir este lançamento? Esta ação não pode ser desfeita.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Excluir', style: 'destructive',
+            onPress: async () => {
+              const { error: err } = await supabase.from('transactions').delete().eq('id', transaction.id)
+              if (err) { setError('Erro ao excluir: ' + err.message); return }
+              onSuccess('Lançamento excluído.')
+              onClose()
+            },
+          },
+        ]
+      )
+    }
   }
 
   if (!transaction) return null

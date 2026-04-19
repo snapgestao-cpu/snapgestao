@@ -56,6 +56,13 @@ export function TransactionItem({ transaction, potName, potColor, onPress }: Pro
               </Text>
             </View>
           )}
+          {transaction.installment_total != null && transaction.installment_total > 1 && (
+            <View style={styles.installBadge}>
+              <Text style={styles.installBadgeText}>
+                {transaction.installment_number}/{transaction.installment_total}x
+              </Text>
+            </View>
+          )}
         </View>
       </View>
       <Text style={[styles.amount, { color: amountColor }]}>
@@ -84,4 +91,9 @@ const styles = StyleSheet.create({
   },
   potBadgeText: { fontSize: 11, color: Colors.textDark, fontWeight: '500' },
   amount: { fontSize: 15, fontWeight: '700' },
+  installBadge: {
+    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: Colors.lightBlue,
+  },
+  installBadgeText: { fontSize: 10, color: Colors.primary, fontWeight: '700' },
 })

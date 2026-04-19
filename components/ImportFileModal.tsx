@@ -13,11 +13,12 @@ import { brl } from '../lib/finance'
 import { Pot } from '../types'
 
 type ImportRow = {
-  date: string       // YYYY-MM-DD
+  date: string
   description: string
   amount: number
   type: 'expense' | 'income'
   potId: string | null
+  installmentTotal: number  // 1 = à vista
 }
 
 type Step = 'pick' | 'preview' | 'assign' | 'saving' | 'done'
@@ -35,17 +36,12 @@ type Props = {
 function parseDate(raw: any): string {
   if (!raw) return new Date().toISOString().split('T')[0]
   if (typeof raw === 'number') {
-    // Excel serial date
     const d = XLSX.SSF.parse_date_code(raw)
-    const m = String(d.m).padStart(2, '0')
-    const dy = String(d.d).padStart(2, '0')
-    return `${d.y}-${m}-${dy}`
+    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
   }
   const s = String(raw).trim()
-  // DD/MM/YYYY
   const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
-  // YYYY-MM-DD already
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
   return new Date().toISOString().split('T')[0]
 }
@@ -56,34 +52,43 @@ function parseAmount(raw: any): number {
   return Math.abs(parseFloat(s) || 0)
 }
 
-function detectType(raw: any, amount: number): 'expense' | 'income' {
-  if (typeof raw === 'number') return raw < 0 ? 'income' : 'expense'
-  return 'expense'
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
 }
 
 function parseSheet(data: any[][]): ImportRow[] {
   if (data.length < 2) return []
   const header = data[0].map((h: any) => String(h ?? '').toLowerCase().trim())
+  const colIdx = (names: string[]) =>
+    names.reduce<number>((found, n) => found >= 0 ? found : header.findIndex(h => h.includes(n)), -1)
 
-  const colIdx = (names: string[]) => names.reduce<number>((found, n) => found >= 0 ? found : header.findIndex(h => h.includes(n)), -1)
-
-  const dateCol   = colIdx(['data', 'date'])
-  const descCol   = colIdx(['descri', 'desc', 'hist', 'memo'])
-  const amtCol    = colIdx(['valor', 'amount', 'value', 'total'])
-  const typeCol   = colIdx(['tipo', 'type'])
+  const dateCol    = colIdx(['data', 'date'])
+  const descCol    = colIdx(['descri', 'desc', 'hist', 'memo'])
+  const amtCol     = colIdx(['valor', 'amount', 'value', 'total'])
+  const typeCol    = colIdx(['tipo', 'type'])
+  const installCol = colIdx(['parcela', 'parcel', 'installment'])
 
   if (amtCol < 0) return []
 
   return data.slice(1).filter(row => row[amtCol] != null).map(row => {
     const rawAmt = row[amtCol]
     const amount = parseAmount(rawAmt)
-    const type = typeCol >= 0 ? (String(row[typeCol] ?? '').toLowerCase().includes('recei') ? 'income' : 'expense') : detectType(rawAmt, amount)
+    const type: 'expense' | 'income' = typeCol >= 0
+      ? (String(row[typeCol] ?? '').toLowerCase().includes('recei') ? 'income' : 'expense')
+      : (typeof rawAmt === 'number' && rawAmt < 0 ? 'income' : 'expense')
+    const installmentTotal = installCol >= 0
+      ? (parseInt(String(row[installCol] ?? '1')) || 1)
+      : 1
     return {
       date: parseDate(dateCol >= 0 ? row[dateCol] : null),
       description: descCol >= 0 ? String(row[descCol] ?? '').trim() : 'Importado',
       amount,
       type,
       potId: null,
+      installmentTotal: type === 'expense' ? installmentTotal : 1,
     }
   }).filter(r => r.amount > 0)
 }
@@ -96,13 +101,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
 
-  const reset = () => {
-    setStep('pick')
-    setRows([])
-    setFilename('')
-    setGlobalPotId(null)
-  }
-
+  const reset = () => { setStep('pick'); setRows([]); setFilename(''); setGlobalPotId(null) }
   const handleClose = () => { reset(); onClose() }
 
   const pickFile = async () => {
@@ -143,15 +142,39 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const saveAll = async () => {
     setSaving(true)
     try {
-      const inserts = rows.map(r => ({
-        user_id: userId,
-        pot_id: r.potId,
-        date: r.date,
-        description: r.description,
-        amount: r.amount,
-        type: r.type,
-        payment_method: 'other',
-      }))
+      const inserts: any[] = []
+
+      for (const r of rows) {
+        if (r.installmentTotal > 1) {
+          const groupId = genUUID()
+          const installmentValue = Math.round((r.amount / r.installmentTotal) * 100) / 100
+          for (let i = 0; i < r.installmentTotal; i++) {
+            inserts.push({
+              user_id: userId,
+              pot_id: r.potId,
+              date: r.date,
+              description: `${r.description} (${i + 1}/${r.installmentTotal})`,
+              amount: installmentValue,
+              type: r.type,
+              payment_method: 'credit',
+              installment_total: r.installmentTotal,
+              installment_number: i + 1,
+              installment_group_id: groupId,
+            })
+          }
+        } else {
+          inserts.push({
+            user_id: userId,
+            pot_id: r.potId,
+            date: r.date,
+            description: r.description,
+            amount: r.amount,
+            type: r.type,
+            payment_method: 'other',
+          })
+        }
+      }
+
       const { error } = await supabase.from('transactions').insert(inserts)
       if (error) throw error
       setSavedCount(inserts.length)
@@ -163,15 +186,26 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     }
   }
 
+  const totalTransactions = rows.reduce((s, r) => s + r.installmentTotal, 0)
+
   const renderPreviewRow = ({ item, index }: { item: ImportRow; index: number }) => (
     <View style={styles.previewRow}>
       <View style={{ flex: 1 }}>
         <Text style={styles.previewDesc} numberOfLines={1}>{item.description}</Text>
         <Text style={styles.previewMeta}>{item.date}</Text>
       </View>
-      <Text style={[styles.previewAmt, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
-        {item.type === 'income' ? '+' : '-'}{brl(item.amount)}
-      </Text>
+      <View style={{ alignItems: 'flex-end', gap: 3 }}>
+        <Text style={[styles.previewAmt, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
+          {item.type === 'income' ? '+' : '-'}{brl(item.amount)}
+        </Text>
+        {item.installmentTotal > 1 && (
+          <View style={styles.installBadge}>
+            <Text style={styles.installBadgeText}>
+              {item.installmentTotal}x de {brl(item.amount / item.installmentTotal)}
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   )
 
@@ -179,7 +213,14 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     <View style={styles.assignRow}>
       <View style={{ flex: 1, marginBottom: 4 }}>
         <Text style={styles.previewDesc} numberOfLines={1}>{item.description}</Text>
-        <Text style={styles.previewMeta}>{item.date} · {item.type === 'income' ? '+' : '-'}{brl(item.amount)}</Text>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 }}>
+          <Text style={styles.previewMeta}>{item.date} · {item.type === 'income' ? '+' : '-'}{brl(item.amount)}</Text>
+          {item.installmentTotal > 1 && (
+            <View style={styles.installBadge}>
+              <Text style={styles.installBadgeText}>{item.installmentTotal}x</Text>
+            </View>
+          )}
+        </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
         <TouchableOpacity
@@ -209,7 +250,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         <View style={styles.header}>
           <Text style={styles.title}>
             {step === 'pick' ? 'Importar Planilha' :
-             step === 'preview' ? `${rows.length} transações` :
+             step === 'preview' ? `${rows.length} linhas encontradas` :
              step === 'assign' ? 'Atribuir potes' :
              step === 'done' ? 'Concluído' : 'Salvando...'}
           </Text>
@@ -223,9 +264,19 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           <View style={styles.pickContainer}>
             <Text style={styles.pickEmoji}>📊</Text>
             <Text style={styles.pickTitle}>Arquivo Excel (.xlsx)</Text>
-            <Text style={styles.pickSubtitle}>
-              A planilha deve ter colunas: Data, Descrição, Valor{'\n'}Formatos aceitos: DD/MM/YYYY, YYYY-MM-DD, serial Excel
-            </Text>
+
+            <View style={styles.colReference}>
+              <Text style={styles.colRefTitle}>Colunas esperadas no arquivo:</Text>
+              <Text style={styles.colRefCode}>
+                tipo | descrição | data | valor |{'\n'}
+                pagamento | estabelecimento | parcelas
+              </Text>
+              <Text style={styles.colRefNote}>
+                * parcelas: número inteiro (ex: 3 = 3x).{'\n'}
+                * Deixar vazio ou 1 para compra à vista.
+              </Text>
+            </View>
+
             <TouchableOpacity style={styles.primaryBtn} onPress={pickFile}>
               <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
             </TouchableOpacity>
@@ -239,7 +290,9 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               <Text style={styles.filenameText}>📄 {filename}</Text>
             </View>
 
-            <Text style={styles.sectionLabel}>Prévia ({rows.length} linhas)</Text>
+            <Text style={styles.sectionLabel}>
+              Prévia ({rows.length} linhas → {totalTransactions} lançamentos)
+            </Text>
             <FlatList
               data={rows.slice(0, 50)}
               keyExtractor={(_, i) => String(i)}
@@ -249,7 +302,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             />
 
             <View style={styles.sectionLabel2}>
-              <Text style={styles.sectionLabel}>Atribuir pote padrão (opcional)</Text>
+              <Text style={styles.sectionLabel}>Pote padrão (opcional)</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.potScroll}>
               <TouchableOpacity
@@ -285,7 +338,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         {/* STEP: assign */}
         {step === 'assign' && (
           <View style={{ flex: 1 }}>
-            <Text style={styles.sectionLabel}>Ajuste o pote por transação</Text>
+            <Text style={styles.sectionLabel}>Ajuste o pote por linha ({totalTransactions} lançamentos)</Text>
             <FlatList
               data={rows}
               keyExtractor={(_, i) => String(i)}
@@ -298,17 +351,12 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
                 <Text style={styles.secondaryBtnText}>← Voltar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={saveAll} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Importar {rows.length} lançamentos</Text>}
+                {saving
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.primaryBtnText}>Importar {totalTransactions} lançamentos</Text>
+                }
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-
-        {/* STEP: saving */}
-        {step === 'saving' && (
-          <View style={styles.pickContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={[styles.pickSubtitle, { marginTop: 16 }]}>Salvando lançamentos...</Text>
           </View>
         )}
 
@@ -340,14 +388,20 @@ const styles = StyleSheet.create({
   pickContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   pickEmoji: { fontSize: 56 },
   pickTitle: { fontSize: 18, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
-  pickSubtitle: { fontSize: 13, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  colReference: {
+    backgroundColor: Colors.background, borderRadius: 10, padding: 12,
+    width: '100%', borderWidth: 1, borderColor: Colors.border,
+  },
+  colRefTitle: { fontSize: 12, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
+  colRefCode: { fontSize: 11, color: Colors.textMuted, fontFamily: 'monospace', lineHeight: 18 },
+  colRefNote: { fontSize: 11, color: Colors.textMuted, marginTop: 6, lineHeight: 16 },
   filenameBadge: {
     margin: 16, padding: 10, borderRadius: 8,
     backgroundColor: Colors.lightBlue, alignItems: 'center',
   },
   filenameText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: Colors.textDark, paddingHorizontal: 16, paddingVertical: 8 },
-  sectionLabel2: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 8 },
+  sectionLabel2: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 4 },
   previewRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 16,
@@ -355,8 +409,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
   previewDesc: { fontSize: 13, fontWeight: '500', color: Colors.textDark },
-  previewMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  previewMeta: { fontSize: 11, color: Colors.textMuted },
   previewAmt: { fontSize: 13, fontWeight: '700', marginLeft: 8 },
+  installBadge: {
+    backgroundColor: Colors.lightBlue, borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  installBadgeText: { fontSize: 10, color: Colors.primary, fontWeight: '700' },
   assignRow: {
     paddingVertical: 10, paddingHorizontal: 16,
     borderBottomWidth: 1, borderBottomColor: Colors.border,

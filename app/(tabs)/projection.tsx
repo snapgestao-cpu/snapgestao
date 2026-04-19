@@ -45,9 +45,13 @@ export default function ProjectionScreen() {
       for (let offset = -5; offset <= 0; offset++) {
         const cycle = getCycle(user.cycle_start ?? 1, offset)
         const { data: txs } = await supabase
-          .from('transactions').select('type,amount')
+          .from('transactions')
+          .select('type,amount,payment_method,billing_date,date')
           .eq('user_id', user.id)
-          .gte('date', cycle.startISO).lte('date', cycle.endISO)
+          .or(
+            `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
+            `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
+          )
         const incomeActual = ((txs ?? []) as any[])
           .filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
         const expense = ((txs ?? []) as any[])

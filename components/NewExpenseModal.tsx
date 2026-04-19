@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native'
+import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../constants/colors'
 import { Pot, CreditCard } from '../types'
@@ -11,6 +12,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
 import { checkCriticalPots } from '../lib/notifications'
+import { brl } from '../lib/finance'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix'
 
@@ -36,12 +38,19 @@ function isoToDisplay(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
-function calcBillingDate(txISO: string, card: CreditCard): string {
+function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   const [y, m, d] = txISO.split('-').map(Number)
-  const due = d <= card.closing_day
-    ? new Date(y, m - 1, card.due_day)
-    : new Date(y, m, card.due_day)
-  return due.toISOString().split('T')[0]
+  let month0 = d <= card.closing_day ? m - 1 : m  // 0-indexed
+  let year = y
+  month0 += offset
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
+}
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
 }
 
 export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate }: Props) {
@@ -57,6 +66,8 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
   const [isNeed, setIsNeed] = useState<boolean | null>(null)
+  const [isInstallment, setIsInstallment] = useState(false)
+  const [installments, setInstallments] = useState(2)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -73,11 +84,13 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setSelectedCardId(null)
     setMerchant('')
     setIsNeed(null)
+    setIsInstallment(false)
+    setInstallments(2)
     setError(null)
   }, [visible])
 
   useEffect(() => {
-    if (paymentMethod !== 'credit') return
+    if (paymentMethod !== 'credit') { setIsInstallment(false); return }
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) return
     supabase.from('credit_cards').select('*').eq('user_id', userId)
@@ -101,8 +114,8 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   }
 
   const handleSave = async () => {
-    const amount = centsToFloat(amountDigits)
-    if (amount <= 0) { setError('Informe um valor maior que zero.'); return }
+    const totalAmount = centsToFloat(amountDigits)
+    if (totalAmount <= 0) { setError('Informe um valor maior que zero.'); return }
     if (!selectedPotId) { setError('Selecione um pote.'); return }
 
     const userId = useAuthStore.getState().session?.user?.id
@@ -111,25 +124,31 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setError(null)
     setLoading(true)
     try {
-      let billing_date: string | null = null
-      if (paymentMethod === 'credit' && selectedCardId) {
-        const card = cards.find(c => c.id === selectedCardId)
-        if (card) billing_date = calcBillingDate(dateISO, card)
-      }
+      const card = cards.find(c => c.id === selectedCardId)
+      const groupId = isInstallment ? genUUID() : null
+      const totalParcelas = isInstallment ? installments : 1
+      const installmentValue = totalAmount / totalParcelas
 
-      const { error: txErr } = await supabase.from('transactions').insert({
+      const rows = Array.from({ length: totalParcelas }, (_, i) => ({
         user_id: userId,
         pot_id: selectedPotId,
-        card_id: paymentMethod === 'credit' ? selectedCardId : null,
-        type: 'expense',
-        amount,
-        description: description.trim() || null,
+        card_id: paymentMethod === 'credit' ? (selectedCardId ?? null) : null,
+        type: 'expense' as const,
+        amount: Math.round(installmentValue * 100) / 100,
+        description: isInstallment
+          ? `${description.trim() || merchant.trim() || 'Compra'} (${i + 1}/${totalParcelas})`
+          : (description.trim() || null),
         merchant: merchant.trim() || null,
         date: dateISO,
-        billing_date,
+        billing_date: card ? calcBillingDate(dateISO, card, i) : null,
         payment_method: paymentMethod,
         is_need: isNeed,
-      })
+        installment_total: isInstallment ? totalParcelas : null,
+        installment_number: isInstallment ? i + 1 : null,
+        installment_group_id: groupId,
+      }))
+
+      const { error: txErr } = await supabase.from('transactions').insert(rows)
       if (txErr) { setError('Erro ao salvar: ' + txErr.message); return }
 
       if (merchant.trim()) {
@@ -144,13 +163,14 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
       onClose()
 
       const { user } = useAuthStore.getState()
-      if (user) {
-        checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
-      }
+      if (user) checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
     } finally {
       setLoading(false)
     }
   }
+
+  const totalAmount = centsToFloat(amountDigits)
+  const installmentValue = isInstallment && installments > 1 ? totalAmount / installments : 0
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -236,7 +256,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
               ))}
             </View>
 
-            {/* Cartão de crédito */}
+            {/* Cartão + Parcelamento */}
             {paymentMethod === 'credit' && (
               <>
                 <Text style={styles.label}>Cartão</Text>
@@ -256,6 +276,49 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
+                )}
+
+                {/* Toggle parcelado */}
+                <View style={styles.installToggleRow}>
+                  <Text style={styles.installToggleLabel}>Compra parcelada?</Text>
+                  <Switch
+                    value={isInstallment}
+                    onValueChange={setIsInstallment}
+                    trackColor={{ false: Colors.border, true: Colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                {/* Número de parcelas */}
+                {isInstallment && (
+                  <View style={styles.installBox}>
+                    <Text style={styles.installSliderLabel}>Número de parcelas</Text>
+                    <View style={styles.installSliderRow}>
+                      <Slider
+                        style={{ flex: 1 }}
+                        minimumValue={2}
+                        maximumValue={24}
+                        step={1}
+                        value={installments}
+                        onValueChange={v => setInstallments(Math.round(v))}
+                        minimumTrackTintColor={Colors.primary}
+                        maximumTrackTintColor={Colors.border}
+                        thumbTintColor={Colors.primary}
+                      />
+                      <Text style={styles.installCount}>{installments}x</Text>
+                    </View>
+
+                    {totalAmount > 0 && (
+                      <View style={styles.installPreview}>
+                        <Text style={styles.installPreviewLabel}>Valor de cada parcela:</Text>
+                        <Text style={styles.installPreviewValue}>{brl(installmentValue)}</Text>
+                      </View>
+                    )}
+
+                    <Text style={styles.installHint}>
+                      Serão criados {installments} lançamentos automáticos nos próximos meses
+                    </Text>
+                  </View>
                 )}
               </>
             )}
@@ -303,7 +366,9 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
           >
             {loading
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.saveBtnText}>Registrar gasto</Text>
+              : <Text style={styles.saveBtnText}>
+                  {isInstallment ? `Registrar ${installments} parcelas` : 'Registrar gasto'}
+                </Text>
             }
           </TouchableOpacity>
         </View>
@@ -359,6 +424,26 @@ const styles = StyleSheet.create({
   potChipIcon: { fontSize: 16 },
   potChipText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
   hint: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
+  installToggleRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 4, marginBottom: 12,
+  },
+  installToggleLabel: { fontSize: 14, color: Colors.textDark, fontWeight: '500' },
+  installBox: {
+    backgroundColor: Colors.background, borderRadius: 12,
+    padding: 14, marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  installSliderLabel: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
+  installSliderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  installCount: { fontSize: 16, fontWeight: '700', color: Colors.primary, minWidth: 36, textAlign: 'right' },
+  installPreview: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: Colors.lightBlue, borderRadius: 10, padding: 12, marginTop: 10,
+  },
+  installPreviewLabel: { fontSize: 13, color: Colors.primary },
+  installPreviewValue: { fontSize: 14, fontWeight: '700', color: Colors.primary },
+  installHint: { fontSize: 11, color: Colors.textMuted, marginTop: 8, textAlign: 'center' },
   needRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   needBtn: {
     flex: 1, paddingVertical: 12, borderRadius: 12,

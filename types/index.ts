@@ -35,6 +35,9 @@ export type Transaction = {
   billing_date: string | null
   payment_method: 'cash' | 'debit' | 'credit' | 'pix' | 'transfer'
   is_need: boolean | null
+  installment_total: number | null
+  installment_number: number | null
+  installment_group_id: string | null
   created_at: string
 }
 
