@@ -178,7 +178,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 ### Fase 2 — Pendente
 
-- [x] Notificações push — `lib/notifications.ts` implementado; integrado em `_layout.tsx` e `NewExpenseModal`
+- [x] Notificações — `lib/notifications.ts` usa `Alert` nativo (expo-notifications removido; push para produção)
 - [x] Módulo OCR — `lib/ocr.ts`, `app/ocr.tsx`, Edge Function `process-receipt` implementados
   - **PENDENTE manual no Supabase**: criar bucket `receipts` (Storage → New bucket, public: false)
   - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>` + `supabase functions deploy process-receipt`
@@ -290,16 +290,14 @@ Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two
 5. `setUser(savedUser)` → `onboardingDraft.clear()` → `router.replace('/(tabs)/')`
 6. Double-tap protection: guard `if (loading) return` at top of handler
 
-### Notificações push
+### Notificações
 
-`lib/notifications.ts`:
-- `registerForPushNotifications()` — solicita permissão via `requestPermissionsAsync()` e configura canal Android; retorna `void` (sem push token remoto)
-- `checkCriticalPots(userId, cycleStart)` — consulta potes do ciclo atual e dispara notificações locais a 70% (⚠️), 80% (🔴) e 100% (🚨) de uso
-- `scheduleCycleEndReminder(cycleEndDate)` — agenda notificação às 20h do último dia do ciclo
-- `sendLocalNotification(title, body, data?)` — dispara notificação imediata
+`lib/notifications.ts` — **expo-notifications foi removido** (incompatível com Expo Go SDK 53):
+- `sendLocalNotification(title, body)` — usa `Alert.alert` no Expo Go; em produção substituir por expo-notifications
+- `checkCriticalPots(userId, cycleStart)` — consulta potes do ciclo e dispara alert a 70% (⚠️), 80% (🔴) e 100% (🚨)
+- `registerForPushNotifications()` / `scheduleCycleEndReminder()` — no-ops; implementar com expo-notifications no build de produção
 - Integrado em `app/_layout.tsx` (ao carregar o usuário) e `NewExpenseModal` (após cada gasto)
-- Sem `getExpoPushTokenAsync` — SDK 53 não suporta push remoto no Expo Go
-- Handler usa `shouldShowBanner` + `shouldShowList` (não usar `shouldShowAlert`, deprecado no SDK 53)
+- `app/_layout.tsx` **não importa** expo-notifications diretamente
 
 ### OCR
 
