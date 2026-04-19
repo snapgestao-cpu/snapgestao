@@ -1,23 +1,47 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const CORS = {
+const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Verificar Authorization header
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Não autorizado' }),
+        { status: 401, headers: corsHeaders },
+      )
+    }
+
+    // Client com token do usuário para autenticação
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Usuário não autenticado' }),
+        { status: 401, headers: corsHeaders },
+      )
+    }
+
     const { imageBase64, userId } = await req.json()
 
-    if (!imageBase64 || !userId) {
+    if (!imageBase64) {
       return new Response(
         JSON.stringify({ error: 'Dados inválidos' }),
-        { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } },
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
@@ -26,7 +50,7 @@ serve(async (req) => {
     if (!visionKey) {
       return new Response(
         JSON.stringify({ error: 'GOOGLE_VISION_KEY não configurada.' }),
-        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
@@ -48,6 +72,15 @@ serve(async (req) => {
     )
 
     const visionData = await visionRes.json()
+
+    if (!visionRes.ok) {
+      console.error('Vision API error:', visionData)
+      return new Response(
+        JSON.stringify({ error: 'Erro na Vision API', details: visionData }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     const fullText: string = visionData.responses?.[0]?.fullTextAnnotation?.text ?? ''
 
     // ── 2. Parse text ──────────────────────────────────────────────────────
@@ -86,27 +119,28 @@ serve(async (req) => {
         !/TOTAL|SUBTOTAL|DESCONTO|TROCO|TAXA|CNPJ|CPF/i.test(item.name),
       )
 
-    // ── 3. Supabase: save image + receipt ──────────────────────────────────
-    const supabase = createClient(
+    // ── 3. Supabase admin: save image + receipt ────────────────────────────
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    const imagePath = `${userId}/${Date.now()}.jpg`
+    const effectiveUserId = userId ?? user.id
+    const imagePath = `${effectiveUserId}/${Date.now()}.jpg`
     const imageBytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0))
 
-    await supabase.storage
+    await supabaseAdmin.storage
       .from('receipts')
       .upload(imagePath, imageBytes, { contentType: 'image/jpeg' })
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = supabaseAdmin.storage
       .from('receipts')
       .getPublicUrl(imagePath)
 
-    const { data: receipt, error: dbErr } = await supabase
+    const { data: receipt, error: dbErr } = await supabaseAdmin
       .from('receipts')
       .insert({
-        user_id: userId,
+        user_id: effectiveUserId,
         image_url: urlData.publicUrl,
         ocr_data: { fullText, lines, items },
         total,
@@ -121,7 +155,7 @@ serve(async (req) => {
     if (dbErr) {
       return new Response(
         JSON.stringify({ error: 'Erro ao salvar recibo: ' + dbErr.message }),
-        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
@@ -136,12 +170,13 @@ serve(async (req) => {
         image_url: urlData.publicUrl,
         raw_text: fullText,
       }),
-      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
+    console.error('Erro geral:', err)
     return new Response(
-      JSON.stringify({ error: 'Erro ao processar cupom', details: String(err) }),
-      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: 'Erro interno', details: String(err) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })
