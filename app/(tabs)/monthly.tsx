@@ -71,27 +71,17 @@ export default function MonthlyScreen() {
     if (!user) return
     try {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
-      const [txRes, activePotsRes, deletedPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
+      const [txRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .or(
             `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
             `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
           )
           .order('date', { ascending: false }),
-        // Potes ativos (sem deleted_at)
         supabase.from('pots').select('*')
           .eq('user_id', user.id)
           .eq('is_emergency', false)
-          .is('deleted_at', null)
           .lte('created_at', cycle.end.toISOString())
-          .order('created_at', { ascending: true }),
-        // Potes excluídos que existiam durante o ciclo (deleted_at >= cycle.start)
-        supabase.from('pots').select('*')
-          .eq('user_id', user.id)
-          .eq('is_emergency', false)
-          .not('deleted_at', 'is', null)
-          .lte('created_at', cycle.end.toISOString())
-          .gte('deleted_at', cycle.startISO)
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
@@ -102,10 +92,7 @@ export default function MonthlyScreen() {
       ])
 
       const txs = (txRes.data ?? []) as Transaction[]
-      const activePots = (activePotsRes.data ?? []) as Pot[]
-      const deletedPots = (deletedPotsRes.data ?? []) as Pot[]
-      // Ciclo atual: só potes ativos; ciclos anteriores: inclui potes excluídos que existiam no período
-      const pots = offset === 0 ? activePots : [...activePots, ...deletedPots]
+      const pots = (allPotsRes.data ?? []) as Pot[]
       const ep = epRes.data as Pot | null
       const income = ((sourcesRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
 
@@ -209,8 +196,7 @@ export default function MonthlyScreen() {
     }
   }
 
-  // Potes sem deleted_at para lançamentos novos; allPots inclui soft-deleted ativos no ciclo (para tabela)
-  const expPots = allPots.filter(p => !p.is_emergency && !p.deleted_at)
+  const expPots = allPots.filter(p => !p.is_emergency)
   const txGroups = groupTransactions(transactions)
 
   return (

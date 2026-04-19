@@ -51,12 +51,10 @@ export default function PotsScreen() {
         supabase.from('pots').select('*')
           .eq('user_id', user.id)
           .eq('is_emergency', false)
-          .is('deleted_at', null)
           .lte('created_at', cycle.end.toISOString())
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*')
-          .eq('user_id', user.id).eq('is_emergency', true)
-          .is('deleted_at', null).maybeSingle(),
+          .eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
       ])
 
       const income = ((sourcesRes.data ?? []) as any[])

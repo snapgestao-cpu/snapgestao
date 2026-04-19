@@ -68,7 +68,7 @@ export async function checkAndGrantBadges(
     { data: monthReceipts },
     { data: transactions },
   ] = await Promise.all([
-    supabase.from('pots').select('id, limit_amount').eq('user_id', userId).is('deleted_at', null),
+    supabase.from('pots').select('id, limit_amount').eq('user_id', userId),
     supabase.from('goals').select('id').eq('user_id', userId).limit(1),
     supabase.from('receipts').select('id').eq('user_id', userId).eq('processed', true).limit(1),
     supabase.from('receipts').select('id').eq('user_id', userId)

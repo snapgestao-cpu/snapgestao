@@ -84,22 +84,27 @@ export default function PotDetailScreen() {
   const handleDelete = () => {
     if (!pot || !user) return
     const cycle = getCycle(user.cycle_start ?? 1, 0)
-    const startStr = cycle.startISO
-    const endStr = cycle.endISO
-    const fmt = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
     Alert.alert(
       'Excluir pote',
-      `Excluir "${pot.name}" vai apagar os gastos vinculados apenas no ciclo atual (${fmt(cycle.start)} a ${fmt(cycle.end)}). Outros meses não serão afetados. Continuar?`,
+      `Excluir "${pot.name}" vai remover o pote e apagar os gastos do ciclo atual. Lançamentos de meses anteriores ficam preservados. Continuar?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Excluir', style: 'destructive',
           onPress: async () => {
-            await supabase.from('transactions').delete()
-              .eq('pot_id', pot.id).eq('type', 'expense')
-              .gte('date', startStr).lte('date', endStr)
-            await supabase.from('pots').update({ deleted_at: new Date().toISOString() }).eq('id', pot.id)
-            router.back()
+            try {
+              // Deletar gastos do ciclo atual vinculados ao pote
+              await supabase.from('transactions').delete()
+                .eq('pot_id', pot.id).eq('type', 'expense')
+                .gte('date', cycle.startISO).lte('date', cycle.endISO)
+              // Delete físico — transactions de ciclos anteriores ficam com pot_id = null (SET NULL)
+              const { error } = await supabase.from('pots').delete()
+                .eq('id', pot.id).eq('user_id', user.id)
+              if (error) throw error
+              router.back()
+            } catch {
+              Alert.alert('Erro', 'Não foi possível excluir o pote.')
+            }
           },
         },
       ]

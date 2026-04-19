@@ -20,7 +20,6 @@ export async function checkCriticalPots(userId: string, cycleStart: number) {
     .select('*')
     .eq('user_id', userId)
     .eq('is_emergency', false)
-    .is('deleted_at', null)
 
   if (!pots) return
 

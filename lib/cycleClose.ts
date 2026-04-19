@@ -30,20 +30,11 @@ export async function calculateCycleSummary(
   userId: string,
   cycle: CycleInfo
 ): Promise<CycleSummary> {
-  const [sourceRes, activePotsRes, deletedPotsRes, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
+  const [sourceRes, potsRes, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
     supabase.from('income_sources').select('amount').eq('user_id', userId),
 
-    // Potes ativos (sem deleted_at)
     supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false)
-      .is('deleted_at', null)
       .lte('created_at', cycle.end.toISOString())
-      .order('created_at', { ascending: true }),
-
-    // Potes excluídos que existiam durante o ciclo (deleted_at >= cycle.start)
-    supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false)
-      .not('deleted_at', 'is', null)
-      .lte('created_at', cycle.end.toISOString())
-      .gte('deleted_at', cycle.startISO)
       .order('created_at', { ascending: true }),
 
     supabase.from('cycle_rollovers').select('*')
@@ -66,10 +57,7 @@ export async function calculateCycleSummary(
   ])
 
   const monthlyIncome = ((sourceRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
-  const pots = [
-    ...((activePotsRes.data ?? []) as any[]),
-    ...((deletedPotsRes.data ?? []) as any[]),
-  ]
+  const pots = (potsRes.data ?? []) as any[]
   const rollover = rolloverRes.data as any
   const totalIncome = ((incomeRes.data ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
 
