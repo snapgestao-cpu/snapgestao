@@ -191,13 +191,23 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Integração automática: `_layout.tsx` (startup), `NewPotModal` (criar pote), `NewGoalModal` (criar meta), `ocr.tsx` (após salvar cupom), `monthly.tsx` (após encerrar ciclo)
 - `NewPotModal` e `NewGoalModal`: prop `onBadges?: (badges: Badge[]) => void` para retornar badges novas ao parent
 
-**Correção Projeção**
-- `app/(tabs)/projection.tsx`: tabela em `ScrollView horizontal` com colunas de largura fixa (72px mês, 108px valores) — fix de valores longos (R$ 17.000,00) sobrescrevendo colunas adjacentes
+**Correção tabelas — ScrollView horizontal**
+- `app/(tabs)/projection.tsx`: colunas fixas (72px mês, 108px valores)
+- `app/(tabs)/monthly.tsx`: tabela de potes com ScrollView horizontal — colunas Pote(130px) | Orçado(100px) | Gasto(100px) | Saldo(100px), minWidth 430px
+
+**Importação Excel** (`components/ImportFileModal.tsx`)
+- 5 steps: pick → preview → assign → saving → done
+- `expo-document-picker` + `xlsx` parse — detecta colunas Data/Descrição/Valor automaticamente
+- Atribuição de pote global (chip) ou por linha (ScrollView horizontal de chips)
+- Insert em batch via `supabase.from('transactions').insert([])`
+- Acessível via FAB "📊 +Arquivo" em `app/(tabs)/monthly.tsx`
+
+**Exportação IR CSV** (`app/(tabs)/profile.tsx`)
+- `handleExportarIR()` — busca transações do ano anterior, gera CSV com cabeçalho Data/Descrição/Estabelecimento/Pote/Tipo/Valor
+- `expo-file-system/legacy` (writeAsStringAsync) + `expo-sharing` (shareAsync)
+- Botão "Exportar IR YYYY (CSV)" no grupo Dados do perfil
 
 ### Fase 4 — Pendente
-- [ ] Importação via planilha Excel (+Arquivo) — parse de `.xlsx` e inserção em batch de transações
-
-- [ ] Exportação para IR — botão na tela de perfil já existe (mostra "Em breve")
 - [ ] Glossário financeiro
 - [ ] Testes e validações finais
 - [ ] Build de produção (EAS)
