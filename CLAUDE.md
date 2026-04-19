@@ -176,17 +176,24 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Emojis coloridos com `opacity` diferente entre ativo/inativo (sem `react-native-svg`)
 - Ícones: 🫙 Potes, 📅 Mensal, 📈 Projeção, 🎯 Metas, 👤 Perfil
 
-### Fase 2 — Pendente
+### Fase 2 — Concluído
 
-- [x] Notificações — `lib/notifications.ts` usa `Alert` nativo (expo-notifications removido; push para produção)
-- [x] Módulo OCR — `lib/ocr.ts`, `app/ocr.tsx`, Edge Function `process-receipt` implementados
+- [x] Notificações locais — `lib/notifications.ts` usa `Alert` nativo (expo-notifications removido; push para produção)
+- [x] Módulo OCR completo:
+  - `lib/ocr.ts` com captura (câmera/galeria) e processamento
+  - `app/ocr.tsx` com 4 steps (camera → processing → review → saving)
+  - Edge Function `process-receipt` deployada — autenticação via Authorization header + ANON_KEY (JWT ES256 corrigido)
   - **PENDENTE manual no Supabase**: criar bucket `receipts` (Storage → New bucket, public: false)
-  - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>` + `supabase functions deploy process-receipt`
-- [ ] Importação via planilha Excel — parse de `.xlsx` e inserção em batch de transações
-- [ ] Exportar dados em CSV/Excel — botão na tela de perfil já existe (mostra "Em breve")
+  - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>`
+
+### Fase 3 — Pendente
+
 - [ ] Gamificação e badges — tabela `user_badges` já existe no schema
-- [ ] Edição do nome do usuário no perfil
-- [ ] Fatura consolidada por cartão de crédito
+- [ ] Importação via planilha Excel (+Arquivo) — parse de `.xlsx` e inserção em batch de transações
+- [ ] Exportação para IR — botão na tela de perfil já existe (mostra "Em breve")
+- [ ] Glossário financeiro
+- [ ] Testes e validações finais
+- [ ] Build de produção (EAS)
 
 ## Architecture
 
