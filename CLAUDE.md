@@ -154,7 +154,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - **Alertas simplificados** (`monthly.tsx`): dois cards separados — (1) card vermelho se `cycleSaldo < 0` com valor do déficit; (2) card âmbar se `cycleSaldo >= 0` e algum pote excedeu limite, listando potes excedidos com valor; removida mensagem "próximo mês" para potes
 - **`recalculateRollover`** (`lib/cycleClose.ts`): nova exportação — verifica se ciclo já foi encerrado (`processed = true`), recalcula summary e faz upsert preservando `surplus_action`/`surplus_goal_id`; usada na cascata de fechamento retroativo
 - **Cards do perfil** (`profile.tsx`): card 1 = "Saldo atual" via `calculateCycleSummary` (verde se positivo, vermelho se negativo); card 2 = "Metas ativas" (contagem de metas com `current_amount < target_amount`); card 3 = "Meta prioritária" com percentual de conclusão e barra de progresso (meta com `target_date` mais próxima; fallback: maior % de conclusão; exibe `—` se nenhuma)
-- **Potes fantasmas na tela Mensal** — causa raiz: `calculateCycleSummary` em `lib/cycleClose.ts` usava `.or('deleted_at.is.null,...')` que não funciona corretamente no Supabase JS SDK. Corrigido com duas queries separadas (`.is('deleted_at', null)` + `.not('deleted_at', 'is', null).gte('deleted_at', cycle.startISO)`); mesma solução aplicada em `monthly.tsx` (`allPotsRes`), `hooks/usePots.ts` (filtro faltante) e `NewPotModal` (check de emergência). **Nunca usar `.or()` com `is.null` no Supabase JS — sempre queries separadas.**
+- **Potes fantasmas — solução definitiva** (`app/pot/[id].tsx`): substituído soft delete (`deleted_at`) por **DELETE físico**. Ao excluir um pote: (1) deleta expenses do ciclo atual, (2) `supabase.from('pots').delete()`. Transactions de ciclos anteriores ficam com `pot_id = null` (FK `ON DELETE SET NULL`). Todas as queries de potes simplificadas — sem nenhum filtro `deleted_at`. **SQL obrigatório**: executar `supabase/migrations/20240420_pots_physical_delete.sql` no Supabase (altera FK `transactions.pot_id` para `ON DELETE SET NULL`). A coluna `pots.deleted_at` ainda existe no schema mas não é mais usada.
 
 **Controle mensal** (`app/(tabs)/monthly.tsx`)
 - Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
@@ -174,10 +174,10 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()` + `recalculateRollover()`
 - SQL: `supabase/migrations/20240418_cycle_rollovers.sql` — executar manualmente no Supabase
 
-**Soft delete e histórico de limites**
-- `pots.deleted_at`: soft delete — dashboard/onboarding filtra `.is('deleted_at', null)`; consultas históricas usam `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` para incluir potes que existiam durante o ciclo
-- `pot_limit_history`: registra mudanças de limite com `valid_from` por ciclo
-- SQL: `supabase/migrations/20240419_pot_soft_delete_and_history.sql` — executar manualmente
+**Exclusão de potes e histórico de limites**
+- `pots`: exclusão é **DELETE físico** — `supabase.from('pots').delete().eq('id', id)`. Transactions de ciclos anteriores ficam com `pot_id = null` (FK `ON DELETE SET NULL`, ver migration 20240420). A coluna `pots.deleted_at` existe mas não é usada — não aplicar filtros `.is('deleted_at', null)` em nenhuma query de potes
+- `pot_limit_history`: registra mudanças de limite com `valid_from` por ciclo; tem `ON DELETE CASCADE` em `pot_id`
+- SQL obrigatório: executar ambas as migrations manualmente no Supabase (`20240419_pot_soft_delete_and_history.sql` e `20240420_pots_physical_delete.sql`)
 
 **Tab bar** (`app/(tabs)/_layout.tsx`)
 - Emojis coloridos com `opacity` diferente entre ativo/inativo (sem `react-native-svg`)
