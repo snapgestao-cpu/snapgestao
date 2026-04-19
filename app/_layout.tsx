@@ -3,11 +3,9 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
-import * as Notifications from 'expo-notifications'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getDatabase } from '../lib/database'
-import { getCycle } from '../lib/cycle'
 import { Colors } from '../constants/colors'
 import {
   registerForPushNotifications,
@@ -45,15 +43,7 @@ export default function RootLayout() {
 
     registerForPushNotifications()
     checkCriticalPots(user.id, user.cycle_start ?? 1)
-
-    const cycle = getCycle(user.cycle_start ?? 1, 0)
-    scheduleCycleEndReminder(cycle.end)
-
-    const sub = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notificação recebida:', notification)
-    })
-
-    return () => sub.remove()
+    scheduleCycleEndReminder()
   }, [user?.id])
 
   useEffect(() => {

@@ -58,10 +58,24 @@ export default function OCRScreen() {
     setStep('processing')
     await loadPots()
 
-    const result = await processReceipt(uri, user.id)
+    let result
+    try {
+      result = await processReceipt(uri, user.id)
+    } catch {
+      Alert.alert('Erro de conexão', 'Verifique sua conexão e tente novamente.')
+      setStep('camera')
+      return
+    }
 
     if (!result.success) {
-      Alert.alert('Erro', result.error ?? 'Falha ao processar cupom.')
+      Alert.alert(
+        'Erro no processamento',
+        result.error
+          ? result.error.includes('500') || result.error.includes('non-2xx')
+            ? 'Serviço de leitura indisponível. Tente novamente em instantes.'
+            : result.error
+          : 'Não foi possível ler o cupom. Verifique a iluminação e tente novamente.',
+      )
       setStep('camera')
       return
     }
