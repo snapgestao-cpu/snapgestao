@@ -1,9 +1,53 @@
 import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import Svg, { Path, Rect, Line, Text as SvgText, Defs, ClipPath, G } from 'react-native-svg'
+import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'
-import { getPotIcon } from '../lib/potIcons'
 import { brl } from '../lib/finance'
+
+const POT_IMAGES = {
+  empty: require('../assets/potes/Pote_vazio.png'),
+  p10:   require('../assets/potes/Pote_10.png'),
+  p30:   require('../assets/potes/Pote_30.png'),
+  p50:   require('../assets/potes/Pote_50.png'),
+  p70:   require('../assets/potes/Pote_70.png'),
+  p90:   require('../assets/potes/Pote_90.png'),
+  p100:  require('../assets/potes/Pote_100.png'),
+}
+
+function getPotImage(percent: number) {
+  if (percent <= 0)   return POT_IMAGES.empty
+  if (percent < 20)   return POT_IMAGES.p10
+  if (percent < 40)   return POT_IMAGES.p30
+  if (percent < 60)   return POT_IMAGES.p50
+  if (percent < 80)   return POT_IMAGES.p70
+  if (percent < 100)  return POT_IMAGES.p90
+  return POT_IMAGES.p100
+}
+
+const POT_ICONS: Record<string, string> = {
+  'alimentação': '🍽️', 'alimentacao': '🍽️',
+  'mercado': '🛒', 'supermercado': '🛒',
+  'moradia': '🏠', 'aluguel': '🏠', 'casa': '🏡',
+  'transporte': '🚗', 'combustível': '⛽', 'combustivel': '⛽', 'uber': '🚕',
+  'saúde': '❤️', 'saude': '❤️',
+  'farmácia': '💊', 'farmacia': '💊', 'academia': '💪', 'médico': '🏥', 'medico': '🏥',
+  'educação': '📚', 'educacao': '📚', 'escola': '🎓', 'curso': '📖',
+  'lazer': '🎉', 'entretenimento': '🎬', 'cinema': '🎬', 'streaming': '📺',
+  'viagem': '✈️', 'viagens': '✈️',
+  'vestuário': '👕', 'vestuario': '👕', 'roupas': '👔',
+  'pet': '🐾', 'pets': '🐾',
+  'investimento': '📈', 'investimentos': '📈',
+  'reserva': '🛡️', 'emergência': '🛡️', 'emergencia': '🛡️',
+  'beleza': '💄', 'tecnologia': '💻', 'celular': '📱',
+  'família': '👨‍👩‍👧', 'familia': '👨‍👩‍👧',
+  'presentes': '🎁', 'outros': '📦',
+}
+
+function getPotIcon(name: string): string {
+  const lower = name.toLowerCase().trim()
+  if (POT_ICONS[lower]) return POT_ICONS[lower]
+  const match = Object.keys(POT_ICONS).find(k => lower.includes(k) || k.includes(lower))
+  return match ? POT_ICONS[match] : '💰'
+}
 
 type Props = {
   name: string
@@ -15,95 +59,48 @@ type Props = {
   onPress?: () => void
 }
 
-function liquidColor(color: string, percent: number): string {
-  if (percent >= 100) return '#A32D2D'
-  if (percent >= 80) return '#E24B4A'
-  if (percent >= 50) return '#BA7517'
-  return color
-}
-
 export function JarPot({ name, color, percent, spent, limit, size = 100, onPress }: Props) {
-  const clamped = Math.min(percent, 100)
-  const lColor = liquidColor(color, percent)
-  const fillHeight = (109 * clamped) / 100
-  const liquidY = 113 - fillHeight
-  const clipId = `clip-${name.replace(/\s/g, '')}-${Math.round(percent)}`
+  const potImage = getPotImage(percent)
+  const icon = getPotIcon(name)
+  const imgW = size
+  const imgH = size * 1.2
 
-  const scale = size / 100
+  const percentColor =
+    percent >= 100 ? '#A32D2D' :
+    percent >= 80  ? '#E24B4A' :
+    percent >= 50  ? '#BA7517' :
+    color
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={onPress ? 0.75 : 1} disabled={!onPress}>
-      <View style={[styles.wrapper, { width: size, alignItems: 'center' }]}>
-        <Svg width={100 * scale} height={130 * scale} viewBox="0 0 100 130">
-          <Defs>
-            <ClipPath id={clipId}>
-              <Path d="M20 13 Q15 13 15 20 L15 115 Q15 122 22 122 L78 122 Q85 122 85 115 L85 20 Q85 13 80 13 Z" />
-            </ClipPath>
-          </Defs>
+    <TouchableOpacity onPress={onPress} activeOpacity={onPress ? 0.8 : 1} disabled={!onPress}>
+      <View style={[styles.wrapper, { width: imgW + 8 }]}>
+        <View style={{ width: imgW, height: imgH, alignItems: 'center', justifyContent: 'center' }}>
+          <Image source={potImage} style={{ width: imgW, height: imgH, resizeMode: 'contain' }} />
 
-          {/* Liquid background fill */}
-          {clamped > 0 && (
-            <>
-              <Rect
-                x="15" y={liquidY} width="70" height={fillHeight + 10}
-                fill={lColor + '4D'}
-                clipPath={`url(#${clipId})`}
-              />
-              {/* Wave line at liquid top */}
-              <Path
-                d={`M15 ${liquidY} Q32 ${liquidY - 4} 50 ${liquidY} Q68 ${liquidY + 4} 85 ${liquidY}`}
-                fill="none" stroke={lColor} strokeWidth="1.5"
-                clipPath={`url(#${clipId})`}
-              />
-              {/* Solid liquid below wave */}
-              <Rect
-                x="15" y={liquidY + 2} width="70" height={fillHeight + 8}
-                fill={lColor + '80'}
-                clipPath={`url(#${clipId})`}
-              />
-            </>
+          {/* Ícone quando vazio */}
+          {percent <= 0 && (
+            <View style={[styles.iconOverlay, { top: imgH * 0.28 }]}>
+              <Text style={{ fontSize: imgW * 0.26, opacity: 0.35 }}>{icon}</Text>
+            </View>
           )}
 
-          {/* Jar body outline */}
-          <Path
-            d="M20 13 Q15 13 15 20 L15 115 Q15 122 22 122 L78 122 Q85 122 85 115 L85 20 Q85 13 80 13 Z"
-            fill="rgba(200,200,200,0.08)"
-            stroke={lColor}
-            strokeWidth="2.5"
-          />
-
-          {/* Lid top */}
-          <Rect x="30" y="0" width="40" height="8" rx="3"
-            fill="none" stroke={lColor} strokeWidth="2" />
-          {/* Lid base */}
-          <Rect x="25" y="7" width="50" height="6" rx="2"
-            fill="none" stroke={lColor} strokeWidth="2" />
-
-          {/* Glass reflection */}
-          <Line x1="75" y1="25" x2="75" y2="55"
-            stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" />
-          <Line x1="75" y1="62" x2="75" y2="72"
-            stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" />
-
-          {/* Center content */}
-          {clamped > 0 ? (
-            <SvgText
-              x="50" y="74"
-              textAnchor="middle"
-              fontSize={clamped > 0 ? '18' : '12'}
-              fill={clamped > 60 ? '#fff' : lColor}
-              fontWeight="bold"
-            >
-              {`${Math.round(percent)}%`}
-            </SvgText>
-          ) : (
-            <SvgText x="50" y="78" textAnchor="middle" fontSize="26">
-              {getPotIcon(name)}
-            </SvgText>
+          {/* Percentual sobre a imagem */}
+          {percent > 0 && (
+            <View style={[styles.percentOverlay, { bottom: imgH * 0.17 }]}>
+              <Text style={[
+                styles.percentText,
+                {
+                  fontSize: imgW * 0.155,
+                  color: percent >= 50 ? '#fff' : percentColor,
+                },
+              ]}>
+                {Math.round(percent)}%
+              </Text>
+            </View>
           )}
-        </Svg>
+        </View>
 
-        <Text style={[styles.name, { color: Colors.textDark }]} numberOfLines={1}>{name}</Text>
+        <Text style={styles.name} numberOfLines={1}>{name}</Text>
         <Text style={styles.amounts} numberOfLines={1}>
           {limit ? `${brl(spent)} / ${brl(limit)}` : brl(spent)}
         </Text>
@@ -112,8 +109,18 @@ export function JarPot({ name, color, percent, spent, limit, size = 100, onPress
   )
 }
 
+export default JarPot
+
 const styles = StyleSheet.create({
   wrapper: { alignItems: 'center' },
-  name: { fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 6, maxWidth: 110 },
-  amounts: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 2, maxWidth: 110 },
+  iconOverlay: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  percentOverlay: { position: 'absolute', alignItems: 'center' },
+  percentText: {
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  name: { fontSize: 13, fontWeight: '700', color: Colors.textDark, textAlign: 'center', marginTop: 6, maxWidth: 120 },
+  amounts: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 2, maxWidth: 120 },
 })
