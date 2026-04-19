@@ -10,6 +10,7 @@ import { NewExpenseModal } from '../../components/NewExpenseModal'
 import { NewIncomeModal } from '../../components/NewIncomeModal'
 import { NewPotModal } from '../../components/NewPotModal'
 import { EditTransactionModal } from '../../components/EditTransactionModal'
+import { ImportFileModal } from '../../components/ImportFileModal'
 import { Toast } from '../../components/Toast'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../../lib/badges'
@@ -57,6 +58,7 @@ export default function MonthlyScreen() {
 
   const [totalIncome, setTotalIncome] = useState(0)
   const [showNewPot, setShowNewPot] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const fabAnim = useRef(new Animated.Value(0)).current
   const [showExpense, setShowExpense] = useState(false)
@@ -137,9 +139,10 @@ export default function MonthlyScreen() {
   const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
 
   const FAB_ITEMS = [
-    { key: 'ocr',     label: 'Escanear cupom',   color: Colors.primary,  icon: '📷' },
-    { key: 'income',  label: 'Registrar receita', color: Colors.success,  icon: '↑' },
-    { key: 'expense', label: 'Registrar gasto',   color: Colors.danger,   icon: '↓' },
+    { key: 'import',  label: '+Arquivo',           color: '#534AB7',       icon: '📊' },
+    { key: 'ocr',     label: 'Escanear cupom',     color: Colors.primary,  icon: '📷' },
+    { key: 'income',  label: 'Registrar receita',  color: Colors.success,  icon: '↑' },
+    { key: 'expense', label: 'Registrar gasto',    color: Colors.danger,   icon: '↓' },
   ]
 
   // For current cycle use today, for past cycles use cycle start
@@ -151,6 +154,7 @@ export default function MonthlyScreen() {
     closeFab()
     if (key === 'expense') setShowExpense(true)
     else if (key === 'income') setShowIncome(true)
+    else if (key === 'import') setShowImport(true)
     else if (key === 'ocr') {
       router.push({
         pathname: '/ocr',
@@ -267,36 +271,41 @@ export default function MonthlyScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Potes</Text>
                 <View style={styles.tableCard}>
-                  <View style={styles.tableHeader}>
-                    {['Pote', 'Orçado', 'Gasto', 'Saldo'].map(h => (
-                      <Text key={h} style={[styles.tableHCell, h === 'Pote' && { flex: 2 }]}>{h}</Text>
-                    ))}
-                  </View>
-                  {summary.potSummaries.map(pot => (
-                    <View key={pot.id} style={styles.tableRow}>
-                      <View style={[styles.tableCell, { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                        <Text style={{ fontSize: 13 }}>{getPotIcon(pot.name)}</Text>
-                        <Text style={styles.tableCellText} numberOfLines={1}>{pot.name}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ minWidth: 430 }}>
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.tableHCell, { width: 130 }]}>Pote</Text>
+                        <Text style={[styles.tableHCell, { width: 100 }]}>Orçado</Text>
+                        <Text style={[styles.tableHCell, { width: 100 }]}>Gasto</Text>
+                        <Text style={[styles.tableHCell, { width: 100 }]}>Saldo</Text>
                       </View>
-                      <Text style={styles.tableCell}>{pot.limit_amount ? brl(pot.limit_amount) : '—'}</Text>
-                      <Text style={[styles.tableCell, { color: Colors.danger }]}>{brl(pot.spent)}</Text>
-                      <Text style={[styles.tableCell, { color: pot.isOverBudget ? Colors.danger : Colors.success, fontWeight: '700' }]}>
-                        {brl(pot.remaining)}
-                      </Text>
+                      {summary.potSummaries.map(pot => (
+                        <View key={pot.id} style={styles.tableRow}>
+                          <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ fontSize: 13 }}>{getPotIcon(pot.name)}</Text>
+                            <Text style={styles.tableCellText} numberOfLines={1}>{pot.name}</Text>
+                          </View>
+                          <Text style={[styles.tableCell, { width: 100 }]}>{pot.limit_amount ? brl(pot.limit_amount) : '—'}</Text>
+                          <Text style={[styles.tableCell, { width: 100, color: Colors.danger }]}>{brl(pot.spent)}</Text>
+                          <Text style={[styles.tableCell, { width: 100, color: pot.isOverBudget ? Colors.danger : Colors.success, fontWeight: '700' }]}>
+                            {brl(pot.remaining)}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={[styles.tableRow, styles.tableTotalRow]}>
+                        <Text style={[styles.tableCell, styles.tableTotalText, { width: 130 }]}>Total</Text>
+                        <Text style={[styles.tableCell, styles.tableTotalText, { width: 100 }]}>
+                          {brl(summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0))}
+                        </Text>
+                        <Text style={[styles.tableCell, styles.tableTotalText, { width: 100, color: Colors.danger }]}>
+                          {brl(summary.totalExpense)}
+                        </Text>
+                        <Text style={[styles.tableCell, styles.tableTotalText, { width: 100, color: summary.cycleSaldo >= 0 ? Colors.success : Colors.danger }]}>
+                          {brl(summary.potSummaries.reduce((s, p) => s + p.remaining, 0))}
+                        </Text>
+                      </View>
                     </View>
-                  ))}
-                  <View style={[styles.tableRow, styles.tableTotalRow]}>
-                    <Text style={[styles.tableCell, styles.tableTotalText, { flex: 2 }]}>Total</Text>
-                    <Text style={[styles.tableCell, styles.tableTotalText]}>
-                      {brl(summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0))}
-                    </Text>
-                    <Text style={[styles.tableCell, styles.tableTotalText, { color: Colors.danger }]}>
-                      {brl(summary.totalExpense)}
-                    </Text>
-                    <Text style={[styles.tableCell, styles.tableTotalText, { color: summary.cycleSaldo >= 0 ? Colors.success : Colors.danger }]}>
-                      {brl(summary.potSummaries.reduce((s, p) => s + p.remaining, 0))}
-                    </Text>
-                  </View>
+                  </ScrollView>
                 </View>
               </View>
             )}
@@ -496,6 +505,15 @@ export default function MonthlyScreen() {
         cycleStartDate={cycle.start}
         isRetroactive={offset < 0}
       />
+      <ImportFileModal
+        visible={showImport}
+        onClose={() => setShowImport(false)}
+        onSuccess={msg => { setShowImport(false); handleTxSuccess(msg) }}
+        pots={expPots}
+        userId={user?.id ?? ''}
+        cycleStartISO={cycle.startISO}
+        cycleEndISO={cycle.endISO}
+      />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
       {pendingBadges.length > 0 && (
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
@@ -559,9 +577,9 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
   },
   tableHeader: { flexDirection: 'row', backgroundColor: Colors.lightBlue, paddingVertical: 8, paddingHorizontal: 12 },
-  tableHCell: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.primary },
+  tableHCell: { fontSize: 11, fontWeight: '700', color: Colors.primary },
   tableRow: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  tableCell: { flex: 1, fontSize: 12, color: Colors.textDark },
+  tableCell: { fontSize: 12, color: Colors.textDark },
   tableCellText: { fontSize: 12, color: Colors.textDark, flex: 1 },
   tableTotalRow: { backgroundColor: Colors.background, borderBottomWidth: 0 },
   tableTotalText: { fontWeight: '700' },

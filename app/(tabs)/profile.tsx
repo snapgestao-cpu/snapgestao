@@ -14,6 +14,8 @@ import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, getEarnedBadgeKeys, ALL_BADGES, Badge } from '../../lib/badges'
+import * as FileSystem from 'expo-file-system/legacy'
+import * as Sharing from 'expo-sharing'
 
 function initials(name: string): string {
   return name.trim().split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -91,6 +93,46 @@ export default function ProfileScreen() {
     setToast({ message: 'Ciclo atualizado!', color: Colors.success })
   }
 
+  const handleExportarIR = async () => {
+    if (!user) return
+    try {
+      const ano = new Date().getFullYear() - 1
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('date, description, merchant, amount, type, pot_id')
+        .eq('user_id', user.id)
+        .gte('date', `${ano}-01-01`)
+        .lte('date', `${ano}-12-31`)
+        .order('date', { ascending: true })
+
+      const { data: pots } = await supabase.from('pots').select('id, name').eq('user_id', user.id)
+      const potMap = Object.fromEntries(((pots ?? []) as any[]).map((p: any) => [p.id, p.name]))
+
+      const header = 'Data,Descrição,Estabelecimento,Pote,Tipo,Valor (R$)\n'
+      const lines = ((txs ?? []) as any[]).map((t: any) => {
+        const desc = (t.description ?? '').replace(/,/g, ';')
+        const merchant = (t.merchant ?? '').replace(/,/g, ';')
+        const potName = t.pot_id ? (potMap[t.pot_id] ?? '') : ''
+        const tipo = t.type === 'income' ? 'Receita' : 'Despesa'
+        const valor = t.type === 'income' ? t.amount : -t.amount
+        return `${t.date},"${desc}","${merchant}","${potName}",${tipo},${Number(valor).toFixed(2)}`
+      }).join('\n')
+
+      const csv = header + lines
+      const path = FileSystem.cacheDirectory + `IR_${ano}_SnapGestao.csv`
+      await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 })
+
+      const canShare = await Sharing.isAvailableAsync()
+      if (canShare) {
+        await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: `Exportar IR ${ano}` })
+      } else {
+        Alert.alert('Exportado', `Arquivo salvo em:\n${path}`)
+      }
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível exportar.')
+    }
+  }
+
   const handleLimparDados = () => {
     Alert.alert(
       'Limpar dados de teste',
@@ -160,9 +202,9 @@ export default function ProfileScreen() {
       title: 'Dados',
       items: [
         {
-          label: 'Exportar dados',
+          label: `Exportar IR ${new Date().getFullYear() - 1} (CSV)`,
           icon: '📊',
-          onPress: () => Alert.alert('Em breve', 'A exportação de dados estará disponível em uma próxima versão.'),
+          onPress: handleExportarIR,
         },
         { label: 'Limpar dados de teste', icon: '🗑', onPress: handleLimparDados, danger: true },
       ],
