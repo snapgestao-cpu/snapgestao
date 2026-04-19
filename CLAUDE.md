@@ -70,18 +70,13 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 - Pull-to-refresh; potes filtrados por `deleted_at IS NULL` e `created_at <= cycle.end`
 
 **JarPot** (`components/JarPot.tsx`)
-- `export default` — importar com `import JarPot from '...'`
-- ViewBox `0 0 100 135`; frasco de vidro com tampa metálica (estrias), corpo transparente
-- **Líquido com topo reto** preenchendo de baixo para cima conforme `percent` (0–100%)
-  - Área útil interna: `y=35` (base da tampa) até `y=122` (fundo) = 87px
-  - `liquidY = 122 - (percent/100) * 87`; Rect clipped pelo path do frasco
-  - Cor: `color` prop até 50% → âmbar `#BA7517` até 80% → vermelho `#E24B4A` acima de 80% → `#A32D2D` em 100%
-  - Linha reta no topo + brilho interno branco (opacity 0.12)
-- Vazio: emoji da categoria desbotado (opacity 0.25) + label "vazio" (opacity 0.4)
-- Percentual: acima do líquido quando `percent ≤ 80`, dentro (branco) quando `> 80`
-- Reflexos de vidro desenhados por cima do líquido; borda do frasco redesenhada no topo de tudo
+- `export function JarPot` (named) + `export default JarPot` — importar com `import { JarPot } from '...'`
+- Usa imagens PNG reais de `assets/potes/`: `Pote_vazio.png`, `Pote_10.png`, `Pote_30.png`, `Pote_50.png`, `Pote_70.png`, `Pote_90.png`, `Pote_100.png`
+- Seleção da imagem por faixa: 0% → vazio, 1–19% → p10, 20–39% → p30, 40–59% → p50, 60–79% → p70, 80–99% → p90, 100%+ → p100
+- Ícone de categoria (opacity 0.35) sobreposto quando `percent === 0`; percentual com textShadow sobreposto quando `percent > 0`
+- Cor do percentual: cor do pote até 50% → âmbar até 80% → vermelho; branco quando ≥ 50% (sobre fundo escuro)
 - Prop `limit: number | null` — aceita `null` sem erro de tipo
-- Textos nome/gasto/limite renderizados **fora** do SVG em `index.tsx` para não truncar
+- Textos nome/gasto/limite renderizados fora da imagem como `Text` nativo
 
 **Tela de detalhe do pote** (`app/pot/[id].tsx`)
 - JarPot 150px centralizado + valores gastos
