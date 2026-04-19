@@ -12,6 +12,9 @@ import { CreditCardModal } from '../../components/CreditCardModal'
 import { IncomeSourcesModal } from '../../components/IncomeSourcesModal'
 import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
+import { getCycle } from '../../lib/cycle'
+import { calculateCycleSummary } from '../../lib/cycleClose'
+import { Goal } from '../../types'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, getEarnedBadgeKeys, ALL_BADGES, Badge } from '../../lib/badges'
 import * as FileSystem from 'expo-file-system/legacy'
@@ -24,8 +27,9 @@ function initials(name: string): string {
 export default function ProfileScreen() {
   const { user, setUser, signOut } = useAuthStore()
 
-  const [potCount, setPotCount] = useState(0)
-  const [goalsTotal, setGoalsTotal] = useState(0)
+  const [cycleSaldo, setCycleSaldo] = useState(0)
+  const [activeGoalsCount, setActiveGoalsCount] = useState(0)
+  const [priorityGoal, setPriorityGoal] = useState<Goal | null>(null)
   const [email, setEmail] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [earnedCount, setEarnedCount] = useState(0)
@@ -46,15 +50,34 @@ export default function ProfileScreen() {
 
   const loadStats = useCallback(async () => {
     if (!user) return
-    const [{ data: pots }, { data: goals }, { data: authData }] = await Promise.all([
-      supabase.from('pots').select('id').eq('user_id', user.id),
-      supabase.from('goals').select('current_amount').eq('user_id', user.id),
+    const [{ data: goalsData }, { data: authData }] = await Promise.all([
+      supabase.from('goals').select('*').eq('user_id', user.id),
       supabase.auth.getUser(),
     ])
-    setPotCount((pots ?? []).length)
-    setGoalsTotal(((goals ?? []) as any[]).reduce((s: number, g: any) => s + Number(g.current_amount), 0))
-    setEmail((authData as any)?.user?.email ?? '')
 
+    const cycle = getCycle(user.cycle_start ?? 1, 0)
+    const summary = await calculateCycleSummary(user.id, cycle)
+    setCycleSaldo(summary.cycleSaldo)
+
+    const allGoals = (goalsData ?? []) as Goal[]
+    const activeGoals = allGoals.filter(g => Number(g.current_amount) < Number(g.target_amount))
+    setActiveGoalsCount(activeGoals.length)
+
+    const today = new Date().toISOString().split('T')[0]
+    const withDate = activeGoals
+      .filter(g => g.target_date != null && g.target_date >= today)
+      .sort((a, b) => a.target_date!.localeCompare(b.target_date!))
+    if (withDate.length > 0) {
+      setPriorityGoal(withDate[0])
+    } else if (activeGoals.length > 0) {
+      setPriorityGoal(activeGoals.reduce((best, g) =>
+        (Number(g.current_amount) / Number(g.target_amount)) > (Number(best.current_amount) / Number(best.target_amount)) ? g : best
+      ))
+    } else {
+      setPriorityGoal(null)
+    }
+
+    setEmail((authData as any)?.user?.email ?? '')
     const earnedKeys = await getEarnedBadgeKeys(user.id)
     setEarnedCount(earnedKeys.size)
     setPreviewBadges(ALL_BADGES.filter(b => earnedKeys.has(b.key)).slice(0, 3))
@@ -242,16 +265,33 @@ export default function ProfileScreen() {
         {/* Summary cards */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Saldo inicial</Text>
-            <Text style={styles.statValue}>{brl(user?.initial_balance ?? 0)}</Text>
+            <Text style={styles.statLabel}>Saldo atual</Text>
+            <Text style={[styles.statValue, { color: cycleSaldo >= 0 ? Colors.success : Colors.danger }]}>
+              {brl(cycleSaldo)}
+            </Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Potes ativos</Text>
-            <Text style={styles.statValue}>{potCount}</Text>
+            <Text style={styles.statLabel}>Metas ativas</Text>
+            <Text style={styles.statValue}>{activeGoalsCount}</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Em metas</Text>
-            <Text style={styles.statValue}>{brl(goalsTotal)}</Text>
+            <Text style={styles.statLabel} numberOfLines={1}>
+              {priorityGoal ? priorityGoal.name.substring(0, 14) : 'Meta prioritária'}
+            </Text>
+            {priorityGoal ? (() => {
+              const pct = Math.min(Math.round((Number(priorityGoal.current_amount) / Number(priorityGoal.target_amount)) * 100), 100)
+              return (
+                <>
+                  <Text style={[styles.statValue, { color: Colors.primary, fontSize: 18 }]}>{pct}%</Text>
+                  <Text style={{ fontSize: 9, color: Colors.textMuted }}>concluído</Text>
+                  <View style={{ width: '100%', height: 4, backgroundColor: Colors.border, borderRadius: 2, marginTop: 4 }}>
+                    <View style={{ width: `${pct}%`, height: 4, borderRadius: 2, backgroundColor: Colors.primary }} />
+                  </View>
+                </>
+              )
+            })() : (
+              <Text style={styles.statValue}>—</Text>
+            )}
           </View>
         </View>
 
