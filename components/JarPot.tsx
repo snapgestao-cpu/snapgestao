@@ -1,7 +1,5 @@
 import React from 'react'
 import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { Colors } from '../constants/colors'
-import { brl } from '../lib/finance'
 
 const POT_IMAGES = {
   empty: require('../assets/potes/Pote_vazio.png'),
@@ -14,12 +12,12 @@ const POT_IMAGES = {
 }
 
 function getPotImage(percent: number) {
-  if (percent <= 0)   return POT_IMAGES.empty
-  if (percent < 20)   return POT_IMAGES.p10
-  if (percent < 40)   return POT_IMAGES.p30
-  if (percent < 60)   return POT_IMAGES.p50
-  if (percent < 80)   return POT_IMAGES.p70
-  if (percent < 100)  return POT_IMAGES.p90
+  if (percent <= 0)  return POT_IMAGES.empty
+  if (percent < 20)  return POT_IMAGES.p10
+  if (percent < 40)  return POT_IMAGES.p30
+  if (percent < 60)  return POT_IMAGES.p50
+  if (percent < 80)  return POT_IMAGES.p70
+  if (percent < 100) return POT_IMAGES.p90
   return POT_IMAGES.p100
 }
 
@@ -59,51 +57,32 @@ type Props = {
   onPress?: () => void
 }
 
-export function JarPot({ name, color, percent, spent, limit, size = 100, onPress }: Props) {
+export function JarPot({ name, percent, size = 100, onPress }: Props) {
   const potImage = getPotImage(percent)
   const icon = getPotIcon(name)
   const imgW = size
   const imgH = size * 1.2
 
-  const percentColor =
-    percent >= 100 ? '#A32D2D' :
-    percent >= 80  ? '#E24B4A' :
-    percent >= 50  ? '#BA7517' :
-    color
-
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={onPress ? 0.8 : 1} disabled={!onPress}>
-      <View style={[styles.wrapper, { width: imgW + 8 }]}>
-        <View style={{ width: imgW, height: imgH, alignItems: 'center', justifyContent: 'center' }}>
-          <Image source={potImage} style={{ width: imgW, height: imgH, resizeMode: 'contain' }} />
+      <View style={{ width: imgW, height: imgH, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={potImage} style={{ width: imgW, height: imgH, resizeMode: 'contain' }} />
 
-          {/* Ícone quando vazio */}
-          {percent <= 0 && (
-            <View style={[styles.iconOverlay, { top: imgH * 0.28 }]}>
-              <Text style={{ fontSize: imgW * 0.26, opacity: 0.35 }}>{icon}</Text>
-            </View>
-          )}
+        {/* Ícone de categoria quando vazio */}
+        {percent <= 0 && (
+          <View style={[styles.iconOverlay, { top: imgH * 0.28 }]}>
+            <Text style={{ fontSize: imgW * 0.26, opacity: 0.35 }}>{icon}</Text>
+          </View>
+        )}
 
-          {/* Percentual sobre a imagem */}
-          {percent > 0 && (
-            <View style={[styles.percentOverlay, { bottom: imgH * 0.17 }]}>
-              <Text style={[
-                styles.percentText,
-                {
-                  fontSize: imgW * 0.155,
-                  color: percent >= 50 ? '#fff' : percentColor,
-                },
-              ]}>
-                {Math.round(percent)}%
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.name} numberOfLines={1}>{name}</Text>
-        <Text style={styles.amounts} numberOfLines={1}>
-          {limit ? `${brl(spent)} / ${brl(limit)}` : brl(spent)}
-        </Text>
+        {/* Percentual — sempre branco com sombra escura */}
+        {percent > 0 && (
+          <View style={[styles.percentOverlay, { bottom: imgH * 0.18 }]}>
+            <Text style={[styles.percentText, { fontSize: imgW * 0.16 }]}>
+              {Math.round(percent)}%
+            </Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   )
@@ -112,15 +91,13 @@ export function JarPot({ name, color, percent, spent, limit, size = 100, onPress
 export default JarPot
 
 const styles = StyleSheet.create({
-  wrapper: { alignItems: 'center' },
   iconOverlay: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   percentOverlay: { position: 'absolute', alignItems: 'center' },
   percentText: {
     fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.45)',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
-  name: { fontSize: 13, fontWeight: '700', color: Colors.textDark, textAlign: 'center', marginTop: 6, maxWidth: 120 },
-  amounts: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 2, maxWidth: 120 },
 })

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, TouchableOpacity,
+  RefreshControl, TouchableOpacity, Dimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -16,6 +16,8 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { Pot } from '../../types'
 import { brl } from '../../lib/finance'
+
+const CELL_WIDTH = (Dimensions.get('window').width - 32) / 2
 
 type PotRow = {
   pot: Pot
@@ -106,7 +108,7 @@ export default function PotsScreen() {
 
   const renderItem = ({ item }: { item: PotRow }) => (
     <TouchableOpacity
-      style={styles.jarCell}
+      style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8 }}
       onPress={() => router.push(`/pot/${item.pot.id}`)}
       activeOpacity={0.75}
     >
@@ -118,6 +120,9 @@ export default function PotsScreen() {
         limit={item.pot.limit_amount}
         size={120}
       />
+      <Text style={styles.potName}>{item.pot.name}</Text>
+      <Text style={styles.potSpent}>{brl(item.spent)}</Text>
+      <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
     </TouchableOpacity>
   )
 
@@ -225,14 +230,10 @@ const styles = StyleSheet.create({
   newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
-  jarCell: {
-    alignItems: 'center', width: '48%',
-    paddingBottom: 24, paddingHorizontal: 6,
-  },
   potName: {
     fontSize: 13, fontWeight: '700', color: Colors.textDark,
-    textAlign: 'center', marginTop: 6, marginBottom: 2,
-    paddingHorizontal: 4, lineHeight: 18,
+    textAlign: 'center', marginTop: 6,
+    flexWrap: 'wrap',
   },
   potSpent: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   potLimit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 1 },
