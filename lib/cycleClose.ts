@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { CycleInfo } from './cycle'
+import { getCycle, CycleInfo } from './cycle'
 
 export type PotSummary = {
   id: string
@@ -30,27 +30,44 @@ export async function calculateCycleSummary(
   userId: string,
   cycle: CycleInfo
 ): Promise<CycleSummary> {
-  const [txRes, sourceRes, potsRes, rolloverRes] = await Promise.all([
-    supabase.from('transactions').select('*').eq('user_id', userId)
-      .gte('date', cycle.startISO).lte('date', cycle.endISO),
+  const [sourceRes, potsRes, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
     supabase.from('income_sources').select('amount').eq('user_id', userId),
-    supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false),
+
+    // Potes ativos durante o ciclo (criados antes do fim e não excluídos antes do início)
+    supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false)
+      .lte('created_at', cycle.end.toISOString())
+      .or(`deleted_at.is.null,deleted_at.gte.${cycle.startISO}`)
+      .order('created_at', { ascending: true }),
+
     supabase.from('cycle_rollovers').select('*')
       .eq('user_id', userId).eq('cycle_start_date', cycle.startISO).maybeSingle(),
+
+    // Receitas pelo date
+    supabase.from('transactions').select('amount').eq('user_id', userId)
+      .eq('type', 'income')
+      .gte('date', cycle.startISO).lte('date', cycle.endISO),
+
+    // Despesas de crédito pelo billing_date
+    supabase.from('transactions').select('amount, pot_id').eq('user_id', userId)
+      .eq('type', 'expense').eq('payment_method', 'credit')
+      .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
+
+    // Despesas não-crédito pelo date
+    supabase.from('transactions').select('amount, pot_id').eq('user_id', userId)
+      .eq('type', 'expense').neq('payment_method', 'credit')
+      .gte('date', cycle.startISO).lte('date', cycle.endISO),
   ])
 
-  const transactions = (txRes.data ?? []) as any[]
   const monthlyIncome = ((sourceRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
   const pots = (potsRes.data ?? []) as any[]
   const rollover = rolloverRes.data as any
+  const totalIncome = ((incomeRes.data ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
 
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((s, t) => s + Number(t.amount), 0)
-
-  const totalExpense = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((s, t) => s + Number(t.amount), 0)
+  const allExpenses: any[] = [
+    ...((creditExpRes.data ?? []) as any[]),
+    ...((otherExpRes.data ?? []) as any[]),
+  ]
+  const totalExpense = allExpenses.reduce((s, t) => s + Number(t.amount), 0)
 
   const debtFromPrev = Number(rollover?.total_debt ?? 0)
   const surplusFromPrev = Number(rollover?.total_surplus ?? 0)
@@ -58,22 +75,27 @@ export async function calculateCycleSummary(
   const cycleSaldo = availableIncome - totalExpense
 
   const potSummaries: PotSummary[] = pots.map(pot => {
-    const spent = transactions
-      .filter(t => t.pot_id === pot.id && t.type === 'expense')
+    const spent = allExpenses
+      .filter(t => t.pot_id === pot.id)
       .reduce((s, t) => s + Number(t.amount), 0)
     const remaining = (pot.limit_amount ?? 0) - spent
-    return { id: pot.id, name: pot.name, color: pot.color, limit_amount: pot.limit_amount, spent, remaining, isOverBudget: remaining < 0 }
+    return {
+      id: pot.id, name: pot.name, color: pot.color,
+      limit_amount: pot.limit_amount, spent, remaining,
+      isOverBudget: pot.limit_amount != null && remaining < 0,
+    }
   })
 
-  const totalDebt = potSummaries.filter(p => p.isOverBudget).reduce((s, p) => s + Math.abs(p.remaining), 0)
-  const totalSurplus = potSummaries.filter(p => !p.isOverBudget && p.remaining > 0).reduce((s, p) => s + p.remaining, 0)
+  // Debt/surplus baseado no saldo geral do ciclo (não nos potes individualmente)
+  const totalDebt = cycleSaldo < 0 ? Math.abs(cycleSaldo) : 0
+  const totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0
 
   return {
     monthlyIncome, totalIncome, totalExpense,
     debtFromPrev, surplusFromPrev, availableIncome, cycleSaldo,
     totalDebt, totalSurplus, potSummaries,
-    isOverBudget: totalDebt > 0,
-    needsAlert: totalDebt > monthlyIncome * 0.1,
+    isOverBudget: cycleSaldo < 0,
+    needsAlert: potSummaries.some(p => p.isOverBudget),
   }
 }
 
@@ -120,4 +142,35 @@ export async function processCycleClose(
       })
     }
   }
+}
+
+// Recalcula o rollover de saída de um ciclo já encerrado (para cascata em fechamentos retroativos)
+export async function recalculateRollover(
+  userId: string,
+  cycleStartDay: number,
+  offset: number
+): Promise<void> {
+  const cycle = getCycle(cycleStartDay, offset)
+  const nextCycle = getCycle(cycleStartDay, offset + 1)
+
+  const { data: existing } = await supabase
+    .from('cycle_rollovers')
+    .select('surplus_action, surplus_goal_id, processed')
+    .eq('user_id', userId)
+    .eq('cycle_start_date', nextCycle.startISO)
+    .maybeSingle()
+
+  if (!(existing as any)?.processed) return
+
+  const summary = await calculateCycleSummary(userId, cycle)
+
+  await supabase.from('cycle_rollovers').upsert({
+    user_id: userId,
+    cycle_start_date: nextCycle.startISO,
+    total_debt: summary.totalDebt,
+    total_surplus: (existing as any).surplus_action === 'income' ? summary.totalSurplus : 0,
+    surplus_action: (existing as any).surplus_action,
+    surplus_goal_id: (existing as any).surplus_goal_id,
+    processed: true,
+  }, { onConflict: 'user_id,cycle_start_date' })
 }

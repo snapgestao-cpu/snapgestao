@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { Pot, CreditCard } from '../types'
 import { supabase } from '../lib/supabase'
@@ -116,7 +117,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const handleSave = async () => {
     const totalAmount = centsToFloat(amountDigits)
     if (totalAmount <= 0) { setError('Informe um valor maior que zero.'); return }
-    if (!selectedPotId) { setError('Selecione um pote.'); return }
+    if (!selectedPotId) { setError('Selecione um pote para este gasto.'); return }
 
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) { setError('Sessão inválida.'); return }
@@ -213,21 +214,35 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
             />
 
             {/* Pote */}
-            <Text style={styles.label}>Pote</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {pots.map(pot => (
-                <TouchableOpacity
-                  key={pot.id}
-                  style={[styles.potChip, { borderColor: pot.color }, selectedPotId === pot.id && { backgroundColor: pot.color + '20' }]}
-                  onPress={() => setSelectedPotId(pot.id)}
-                >
-                  <Text style={styles.potChipIcon}>{getPotIcon(pot.name)}</Text>
-                  <Text style={[styles.potChipText, selectedPotId === pot.id && { color: pot.color, fontWeight: '700' }]}>
-                    {pot.name}
-                  </Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Pote </Text>
+              <Text style={styles.labelRequired}>*</Text>
+            </View>
+            {pots.length === 0 ? (
+              <View style={styles.emptyPotsBox}>
+                <Text style={styles.emptyPotsText}>
+                  Nenhum pote disponível.{'\n'}Crie um pote antes de registrar um gasto.
+                </Text>
+                <TouchableOpacity onPress={() => { onClose(); router.push('/(tabs)/') }}>
+                  <Text style={styles.emptyPotsLink}>Criar pote →</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                {pots.map(pot => (
+                  <TouchableOpacity
+                    key={pot.id}
+                    style={[styles.potChip, { borderColor: pot.color }, selectedPotId === pot.id && { backgroundColor: pot.color + '20' }]}
+                    onPress={() => setSelectedPotId(pot.id)}
+                  >
+                    <Text style={styles.potChipIcon}>{getPotIcon(pot.name)}</Text>
+                    <Text style={[styles.potChipText, selectedPotId === pot.id && { color: pot.color, fontWeight: '700' }]}>
+                      {pot.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
 
             {/* Data */}
             <Text style={styles.label}>Data</Text>
@@ -400,7 +415,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2, borderBottomColor: Colors.primary, marginBottom: 20,
   },
   label: { fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 6, marginTop: 4 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginTop: 4 },
+  labelRequired: { fontSize: 13, fontWeight: '700', color: Colors.danger },
   optional: { fontWeight: '400', color: Colors.textMuted },
+  emptyPotsBox: {
+    backgroundColor: Colors.background, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 16, alignItems: 'center', marginBottom: 8,
+  },
+  emptyPotsText: { fontSize: 13, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  emptyPotsLink: { fontSize: 13, fontWeight: '600', color: Colors.primary, marginTop: 8 },
   input: {
     backgroundColor: Colors.background, borderRadius: 10, borderWidth: 1.5,
     borderColor: Colors.border, paddingHorizontal: 14, paddingVertical: 12,

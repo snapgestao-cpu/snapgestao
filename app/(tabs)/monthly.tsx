@@ -17,8 +17,7 @@ import { checkAndGrantBadges, Badge } from '../../lib/badges'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo, formatDateShort } from '../../lib/cycle'
-import { calculateCycleSummary, CycleSummary } from '../../lib/cycleClose'
-import { processCycleClose } from '../../lib/cycleClose'
+import { calculateCycleSummary, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction, Goal } from '../../types'
@@ -71,19 +70,27 @@ export default function MonthlyScreen() {
   const loadData = useCallback(async () => {
     if (!user) return
     try {
-      const [txRes, allPotsRes, epRes, goalsRes, sourcesRes] = await Promise.all([
+      const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
+      const [txRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
         supabase.from('transactions').select('*').eq('user_id', user.id)
-          .gte('date', cycle.startISO).lte('date', cycle.endISO)
+          .or(
+            `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
+            `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
+          )
           .order('date', { ascending: false }),
+        // Potes ativos durante o ciclo (criados antes do fim; não excluídos antes do início)
         supabase.from('pots').select('*')
           .eq('user_id', user.id)
           .eq('is_emergency', false)
-          .is('deleted_at', null)
           .lte('created_at', cycle.end.toISOString())
+          .or(`deleted_at.is.null,deleted_at.gte.${cycle.startISO}`)
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
+        // Verificar se este ciclo já foi encerrado (tem rollover processado no próximo ciclo)
+        supabase.from('cycle_rollovers').select('processed')
+          .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
       ])
 
       const txs = (txRes.data ?? []) as Transaction[]
@@ -95,6 +102,7 @@ export default function MonthlyScreen() {
       setEmergencyPot(ep)
       setTotalIncome(income)
       setGoals((goalsRes.data ?? []) as Goal[])
+      setCycleClosed((closedRes.data as any)?.processed === true)
 
       const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
       const txsWithPot: TxWithPot[] = txs.map(tx => ({
@@ -115,7 +123,6 @@ export default function MonthlyScreen() {
 
       const s = await calculateCycleSummary(user.id, cycle)
       setSummary(s)
-      setCycleClosed(false)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -172,14 +179,16 @@ export default function MonthlyScreen() {
     if (!user || !summary) return
     setClosing(true)
     try {
-      const nextCycle = getCycle(user.cycle_start, offset + 1)
-      await processCycleClose(
-        user.id,
-        nextCycle.start,
-        surplusAction ?? 'discard',
-        surplusGoalId,
-        summary
-      )
+      const nextCycle = getCycle(user.cycle_start ?? 1, offset + 1)
+      await processCycleClose(user.id, nextCycle.start, surplusAction ?? 'discard', surplusGoalId, summary)
+
+      // Cascata: recalcular rollovers de ciclos posteriores já encerrados
+      if (offset < 0) {
+        for (let i = offset + 1; i <= 0; i++) {
+          await recalculateRollover(user.id, user.cycle_start ?? 1, i)
+        }
+      }
+
       setCycleClosed(true)
       setToast({ message: 'Ciclo encerrado com sucesso!', color: Colors.success })
       loadData()
@@ -189,7 +198,8 @@ export default function MonthlyScreen() {
     }
   }
 
-  const expPots = allPots.filter(p => !p.is_emergency)
+  // Potes sem deleted_at para lançamentos novos; allPots inclui soft-deleted ativos no ciclo (para tabela)
+  const expPots = allPots.filter(p => !p.is_emergency && !p.deleted_at)
   const txGroups = groupTransactions(transactions)
 
   return (
@@ -251,16 +261,21 @@ export default function MonthlyScreen() {
               </View>
             )}
 
-            {/* Budget alert */}
-            {summary?.isOverBudget && (
+            {/* Saldo negativo do ciclo */}
+            {summary && summary.cycleSaldo < 0 && (
               <View style={styles.alertCard}>
-                <Text style={styles.alertTitle}>⚠️ Orçamento excedido</Text>
+                <Text style={styles.alertTitle}>⚠️ Atenção: saldo negativo</Text>
                 <Text style={styles.alertText}>
-                  Você gastou {brl(summary.totalDebt)} além do orçado. Este valor será descontado do próximo mês.
+                  O saldo deste ciclo está negativo em {brl(Math.abs(summary.cycleSaldo))}. Ao encerrar o ciclo, este valor será descontado do próximo mês.
                 </Text>
+              </View>
+            )}
+            {/* Pote individual ultrapassado (saldo geral ainda positivo) */}
+            {summary && summary.cycleSaldo >= 0 && summary.potSummaries.some(p => p.isOverBudget) && (
+              <View style={[styles.alertCard, { backgroundColor: Colors.lightAmber, borderLeftColor: Colors.warning }]}>
                 {summary.potSummaries.filter(p => p.isOverBudget).map(p => (
-                  <Text key={p.id} style={styles.alertSuggestion}>
-                    • Reduza {p.name} em {brl(Math.abs(p.remaining))} no próximo mês
+                  <Text key={p.id} style={[styles.alertSuggestion, { color: Colors.warning }]}>
+                    ⚠️ O pote {p.name} ultrapassou o limite em {brl(Math.abs(p.remaining))}. Considere revisar seu orçamento.
                   </Text>
                 ))}
               </View>
@@ -355,8 +370,8 @@ export default function MonthlyScreen() {
               )}
             </View>
 
-            {/* Cycle close section (only current cycle) */}
-            {offset === 0 && summary && !cycleClosed && (
+            {/* Encerrar ciclo — qualquer ciclo ainda não encerrado */}
+            {summary && !cycleClosed && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Encerrar ciclo</Text>
                 {summary.cycleSaldo >= 0 ? (

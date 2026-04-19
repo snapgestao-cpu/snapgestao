@@ -20,6 +20,7 @@ export type Pot = {
   mesada_limit: number | null
   mesada_active: boolean
   created_at: string
+  deleted_at: string | null
 }
 
 export type Transaction = {
