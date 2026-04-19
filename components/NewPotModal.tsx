@@ -74,6 +74,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       .select('name')
       .eq('user_id', userId)
       .eq('is_emergency', true)
+      .is('deleted_at', null)
       .then(({ data }) => {
         const found = (data ?? [])[0] as { name: string } | undefined
         // Don't block toggle if we're editing the emergency pot itself
