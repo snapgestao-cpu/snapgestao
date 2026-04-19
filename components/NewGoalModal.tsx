@@ -10,11 +10,13 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { calcFV, brl } from '../lib/finance'
+import { checkAndGrantBadges, Badge } from '../lib/badges'
 
 type Props = {
   visible: boolean
   onClose: () => void
   onSuccess: (message: string) => void
+  onBadges?: (badges: Badge[]) => void
   editGoal?: Goal
 }
 
@@ -25,7 +27,7 @@ function horizonLabel(years: number, months: number): string {
   return parts.length > 0 ? parts.join(' e ') : '0 meses'
 }
 
-export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
+export function NewGoalModal({ visible, onClose, onSuccess, onBadges, editGoal }: Props) {
   const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
@@ -100,6 +102,12 @@ export function NewGoalModal({ visible, onClose, onSuccess, editGoal }: Props) {
         const { error: err } = await supabase.from('goals').insert({ ...payload, current_amount: 0 })
         if (err) { setError('Erro ao criar: ' + err.message); return }
         onSuccess('Meta criada com sucesso!')
+        if (onBadges) {
+          const u = useAuthStore.getState()
+          const uid = u.session?.user?.id ?? ''
+          const cs = u.user?.cycle_start ?? 1
+          checkAndGrantBadges(uid, cs).then(b => { if (b.length > 0) onBadges(b) })
+        }
       }
       onClose()
     } finally {

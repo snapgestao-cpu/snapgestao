@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
+
+const COL = { month: 72, value: 108 }
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -101,48 +103,54 @@ export default function ProjectionScreen() {
             </View>
 
             <View style={styles.table}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.tableHCell, { flex: 2 }]}>Ciclo</Text>
-                <Text style={styles.tableHCell}>Receita</Text>
-                <Text style={styles.tableHCell}>Gasto</Text>
-                <Text style={styles.tableHCell}>Saldo</Text>
-              </View>
-              {rows.map((row, i) => {
-                const isFuture = row.label.endsWith('*')
-                return (
-                  <View key={i} style={[styles.tableRow, isFuture && styles.futureRow]}>
-                    <Text style={[styles.tableCell, { flex: 2 }, isFuture && styles.futureCellText]}>
-                      {row.label}
-                    </Text>
-                    <Text style={[styles.tableCell, { color: Colors.success }]}>
-                      {brl(row.income)}
-                    </Text>
-                    <Text style={[styles.tableCell, { color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
-                      {brl(row.expense)}
-                    </Text>
-                    <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
-                      {brl(row.saldo)}
-                    </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View>
+                  {/* Header */}
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHCell, { width: COL.month }]}>Ciclo</Text>
+                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>Receita</Text>
+                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', color: Colors.danger }]}>Gasto</Text>
+                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', paddingRight: 12 }]}>Saldo</Text>
                   </View>
-                )
-              })}
 
-              {/* Totals row */}
-              {rows.length > 0 && (() => {
-                const totalInc = rows.reduce((s, r) => s + r.income, 0)
-                const totalExp = rows.reduce((s, r) => s + r.expense, 0)
-                const totalSaldo = totalInc - totalExp
-                return (
-                  <View style={styles.totalRow}>
-                    <Text style={[styles.totalCell, { flex: 2 }]}>TOTAL</Text>
-                    <Text style={[styles.totalCell, { color: Colors.success }]}>{brl(totalInc)}</Text>
-                    <Text style={[styles.totalCell, { color: Colors.danger }]}>{brl(totalExp)}</Text>
-                    <Text style={[styles.totalCell, { color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>
-                      {brl(totalSaldo)}
-                    </Text>
-                  </View>
-                )
-              })()}
+                  {rows.map((row, i) => {
+                    const isFuture = row.label.endsWith('*')
+                    return (
+                      <View key={i} style={[styles.tableRow, isFuture && styles.futureRow]}>
+                        <Text style={[styles.tableCell, { width: COL.month }, isFuture && styles.futureCellText]}>
+                          {row.label}
+                        </Text>
+                        <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
+                          {brl(row.income)}
+                        </Text>
+                        <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
+                          {brl(row.expense)}
+                        </Text>
+                        <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', paddingRight: 12, color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
+                          {brl(row.saldo)}
+                        </Text>
+                      </View>
+                    )
+                  })}
+
+                  {/* Totals row */}
+                  {rows.length > 0 && (() => {
+                    const totalInc = rows.reduce((s, r) => s + r.income, 0)
+                    const totalExp = rows.reduce((s, r) => s + r.expense, 0)
+                    const totalSaldo = totalInc - totalExp
+                    return (
+                      <View style={styles.totalRow}>
+                        <Text style={[styles.totalCell, { width: COL.month }]}>TOTAL</Text>
+                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>{brl(totalInc)}</Text>
+                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.danger }]}>{brl(totalExp)}</Text>
+                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', paddingRight: 12, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>
+                          {brl(totalSaldo)}
+                        </Text>
+                      </View>
+                    )
+                  })()}
+                </View>
+              </ScrollView>
             </View>
 
             <Text style={styles.hint}>* Meses futuros usam receita base sem gastos lançados.</Text>

@@ -12,6 +12,8 @@ import { CreditCardModal } from '../../components/CreditCardModal'
 import { IncomeSourcesModal } from '../../components/IncomeSourcesModal'
 import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
+import { BadgeToast } from '../../components/BadgeToast'
+import { checkAndGrantBadges, getEarnedBadgeKeys, ALL_BADGES, Badge } from '../../lib/badges'
 
 function initials(name: string): string {
   return name.trim().split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -24,6 +26,9 @@ export default function ProfileScreen() {
   const [goalsTotal, setGoalsTotal] = useState(0)
   const [email, setEmail] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [earnedCount, setEarnedCount] = useState(0)
+  const [previewBadges, setPreviewBadges] = useState<Badge[]>([])
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   // Notification toggles (local state only)
   const [notifGasto, setNotifGasto] = useState(false)
@@ -39,14 +44,18 @@ export default function ProfileScreen() {
 
   const loadStats = useCallback(async () => {
     if (!user) return
-    const [{ data: pots }, { data: goals }] = await Promise.all([
+    const [{ data: pots }, { data: goals }, { data: authData }] = await Promise.all([
       supabase.from('pots').select('id').eq('user_id', user.id),
       supabase.from('goals').select('current_amount').eq('user_id', user.id),
+      supabase.auth.getUser(),
     ])
-    const { data: authData } = await supabase.auth.getUser()
     setPotCount((pots ?? []).length)
     setGoalsTotal(((goals ?? []) as any[]).reduce((s: number, g: any) => s + Number(g.current_amount), 0))
-    setEmail(authData.user?.email ?? '')
+    setEmail((authData as any)?.user?.email ?? '')
+
+    const earnedKeys = await getEarnedBadgeKeys(user.id)
+    setEarnedCount(earnedKeys.size)
+    setPreviewBadges(ALL_BADGES.filter(b => earnedKeys.has(b.key)).slice(0, 3))
     setRefreshing(false)
   }, [user?.id])
 
@@ -204,6 +213,33 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Conquistas */}
+        <TouchableOpacity
+          style={styles.achievementsCard}
+          onPress={() => router.push('/achievements')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.achievementsHeader}>
+            <Text style={styles.achievementsTitle}>Conquistas 🏆</Text>
+            <Text style={styles.achievementsCount}>
+              {earnedCount} de {ALL_BADGES.length}
+            </Text>
+          </View>
+          {previewBadges.length > 0 ? (
+            <View style={styles.achievementsPreview}>
+              {previewBadges.map(b => (
+                <View key={b.key} style={[styles.previewPill, { backgroundColor: b.color + '20' }]}>
+                  <Text style={styles.previewIcon}>{b.icon}</Text>
+                  <Text style={[styles.previewName, { color: b.color }]} numberOfLines={1}>{b.name}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.achievementsEmpty}>Complete desafios para ganhar badges</Text>
+          )}
+          <Text style={styles.achievementsLink}>Ver todas →</Text>
+        </TouchableOpacity>
+
         {/* Settings groups */}
         {groups.map(group => (
           <View key={group.title} style={styles.groupContainer}>
@@ -278,6 +314,9 @@ export default function ProfileScreen() {
       {toast && (
         <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />
       )}
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+      )}
     </SafeAreaView>
   )
 }
@@ -310,6 +349,21 @@ const styles = StyleSheet.create({
   },
   statLabel: { fontSize: 10, color: Colors.textMuted, marginBottom: 4, textAlign: 'center' },
   statValue: { fontSize: 14, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
+  achievementsCard: {
+    backgroundColor: Colors.white, borderRadius: 16,
+    padding: 16, marginBottom: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  achievementsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  achievementsTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  achievementsCount: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  achievementsPreview: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 },
+  previewPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  previewIcon: { fontSize: 14 },
+  previewName: { fontSize: 11, fontWeight: '600', maxWidth: 80 },
+  achievementsEmpty: { fontSize: 12, color: Colors.textMuted, marginBottom: 10 },
+  achievementsLink: { fontSize: 13, fontWeight: '600', color: Colors.primary },
   groupContainer: { marginBottom: 20 },
   groupTitle: { fontSize: 12, fontWeight: '700', color: Colors.textMuted, marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
   groupCard: {

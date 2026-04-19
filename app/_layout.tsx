@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -12,6 +12,8 @@ import {
   checkCriticalPots,
   scheduleCycleEndReminder,
 } from '../lib/notifications'
+import { BadgeToast } from '../components/BadgeToast'
+import { checkAndGrantBadges, Badge } from '../lib/badges'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +24,7 @@ const queryClient = new QueryClient({
 export default function RootLayout() {
   const { isLoading, isAuthenticated, user, init } = useAuthStore()
   const segments = useSegments()
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   useEffect(() => {
     getDatabase()
@@ -44,6 +47,7 @@ export default function RootLayout() {
     registerForPushNotifications()
     checkCriticalPots(user.id, user.cycle_start ?? 1)
     scheduleCycleEndReminder()
+    checkAndGrantBadges(user.id, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
   }, [user?.id])
 
   useEffect(() => {
@@ -54,6 +58,7 @@ export default function RootLayout() {
     const inTabs = segments[0] === '(tabs)'
     const inPot = segments[0] === 'pot'
     const inOCR = segments[0] === 'ocr'
+    const inAchievements = segments[0] === 'achievements'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -67,7 +72,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs && !inPot && !inOCR) router.replace('/(tabs)/')
+    if (!inTabs && !inPot && !inOCR && !inAchievements) router.replace('/(tabs)/')
   }, [isLoading, isAuthenticated, user, segments])
 
   return (
@@ -85,7 +90,11 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="pot/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="ocr" options={{ headerShown: false }} />
+          <Stack.Screen name="achievements" options={{ headerShown: false }} />
         </Stack>
+      )}
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
       )}
     </QueryClientProvider>
   )

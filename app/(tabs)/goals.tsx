@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { GoalCard } from '../../components/GoalCard'
 import { NewGoalModal } from '../../components/NewGoalModal'
+import { BadgeToast } from '../../components/BadgeToast'
+import { Badge } from '../../lib/badges'
 import { GoalDepositModal } from '../../components/GoalDepositModal'
 import { Toast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
@@ -36,6 +38,7 @@ export default function GoalsScreen() {
   const [actionGoal, setActionGoal] = useState<Goal | null>(null)
 
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   const loadGoals = useCallback(async () => {
     if (!user) return
@@ -189,6 +192,7 @@ export default function GoalsScreen() {
         visible={showNewGoal}
         onClose={() => setShowNewGoal(false)}
         onSuccess={handleSuccess}
+        onBadges={setPendingBadges}
       />
 
       <NewGoalModal
@@ -211,6 +215,9 @@ export default function GoalsScreen() {
           color={toast.color}
           onHide={() => setToast(null)}
         />
+      )}
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
       )}
     </SafeAreaView>
   )

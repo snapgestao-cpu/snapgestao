@@ -10,7 +10,22 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(git remote *)",
-      "Bash(git checkout *)"
-    ]
+      "Bash(git checkout *)",
+      "Bash(node -e \"const p = require\\('./node_modules/expo-file-system/package.json'\\); console.log\\(p.version\\); console.log\\(Object.keys\\(p.exports || {}\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/expo-file-system/package.json'\\); console.log\\(JSON.stringify\\(p.exports, null, 2\\)\\)\")",
+      "Bash(node *)",
+      "Bash(npm uninstall *)",
+      "Bash(npx supabase *)",
+      "Skill(update-config)",
+      "Bash(sed -n '100,130p' C:/snapgestao/snapgestao/components/NewPotModal.tsx)",
+      "Bash(sed -n '90,115p' C:/snapgestao/snapgestao/components/NewGoalModal.tsx)",
+      "Bash(sed -n '90,155p' C:/snapgestao/snapgestao/app/ocr.tsx)",
+      "Bash(sed -n '170,200p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/index.tsx)",
+      "Bash(sed -n '180,215p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/goals.tsx)",
+      "Bash(sed -n '160,200p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/monthly.tsx)",
+      "Bash(sed -n '1,30p' C:/snapgestao/snapgestao/app/_layout.tsx)",
+      "Bash(sed -n '40,60p' C:/snapgestao/snapgestao/app/_layout.tsx)"
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }

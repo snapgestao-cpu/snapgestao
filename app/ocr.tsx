@@ -11,6 +11,8 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
 import { getPotIcon } from '../lib/potIcons'
+import { BadgeToast } from '../components/BadgeToast'
+import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { Pot } from '../types'
 
 type OCRStep = 'camera' | 'processing' | 'review' | 'saving'
@@ -37,6 +39,7 @@ export default function OCRScreen() {
   const [pots, setPots] = useState<Pot[]>([])
   const [simplified, setSimplified] = useState(false)
   const [singlePotId, setSinglePotId] = useState<string | null>(defaultPotId ?? null)
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   const loadPots = async () => {
     if (!user) return
@@ -133,6 +136,8 @@ export default function OCRScreen() {
       if (receiptId) {
         await supabase.from('receipts').update({ processed: true }).eq('id', receiptId)
       }
+
+      checkAndGrantBadges(userId, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
 
       const count = simplified ? 1 : items.filter(i => i.value > 0).length
       Alert.alert('Sucesso', `${count} lançamento${count !== 1 ? 's' : ''} registrado${count !== 1 ? 's' : ''}!`, [
@@ -370,6 +375,9 @@ export default function OCRScreen() {
           <Text style={styles.confirmBtnText}>Confirmar lançamentos</Text>
         </TouchableOpacity>
       </View>
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+      )}
     </SafeAreaView>
   )
 }

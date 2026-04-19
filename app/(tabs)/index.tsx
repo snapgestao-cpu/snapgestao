@@ -8,6 +8,8 @@ import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { JarPot } from '../../components/JarPot'
 import { NewPotModal } from '../../components/NewPotModal'
+import { BadgeToast } from '../../components/BadgeToast'
+import { Badge } from '../../lib/badges'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
@@ -35,6 +37,7 @@ export default function PotsScreen() {
   const [editingPot, setEditingPot] = useState<Pot | null>(null)
   const [totalIncome, setTotalIncome] = useState(0)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   const loadPots = useCallback(async () => {
     if (!user) return
@@ -182,6 +185,7 @@ export default function PotsScreen() {
         visible={showNewPot}
         onClose={() => setShowNewPot(false)}
         onSuccess={handleSuccess}
+        onBadges={setPendingBadges}
         totalIncome={totalIncome}
       />
       <NewPotModal
@@ -192,6 +196,9 @@ export default function PotsScreen() {
         totalIncome={totalIncome}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+      )}
     </SafeAreaView>
   )
 }

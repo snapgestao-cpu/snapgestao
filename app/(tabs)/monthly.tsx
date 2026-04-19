@@ -11,6 +11,8 @@ import { NewIncomeModal } from '../../components/NewIncomeModal'
 import { NewPotModal } from '../../components/NewPotModal'
 import { EditTransactionModal } from '../../components/EditTransactionModal'
 import { Toast } from '../../components/Toast'
+import { BadgeToast } from '../../components/BadgeToast'
+import { checkAndGrantBadges, Badge } from '../../lib/badges'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo, formatDateShort } from '../../lib/cycle'
@@ -60,6 +62,7 @@ export default function MonthlyScreen() {
   const [showExpense, setShowExpense] = useState(false)
   const [showIncome, setShowIncome] = useState(false)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
+  const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   const cycle: CycleInfo = getCycle(user?.cycle_start ?? 1, offset)
 
@@ -176,6 +179,7 @@ export default function MonthlyScreen() {
       setCycleClosed(true)
       setToast({ message: 'Ciclo encerrado com sucesso!', color: Colors.success })
       loadData()
+      checkAndGrantBadges(user.id, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
     } finally {
       setClosing(false)
     }
@@ -493,6 +497,9 @@ export default function MonthlyScreen() {
         isRetroactive={offset < 0}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+      )}
     </SafeAreaView>
   )
 }

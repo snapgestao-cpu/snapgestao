@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PotCard } from './PotCard'
+import { checkAndGrantBadges, Badge } from '../lib/badges'
 
 export const POT_COLORS = [
   '#0F5EA8', '#1D9E75', '#E24B4A', '#BA7517',
@@ -28,13 +29,14 @@ type Props = {
   visible: boolean
   onClose: () => void
   onSuccess: (message: string) => void
+  onBadges?: (badges: Badge[]) => void
   editPot?: Pot
   totalIncome: number
   cycleStartDate?: Date
   isRetroactive?: boolean
 }
 
-export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome, cycleStartDate, isRetroactive }: Props) {
+export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, totalIncome, cycleStartDate, isRetroactive }: Props) {
   const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
@@ -115,6 +117,10 @@ export function NewPotModal({ visible, onClose, onSuccess, editPot, totalIncome,
         const { error: err } = await supabase.from('pots').insert({ ...payload, created_at: potCreatedAt })
         if (err) { setError('Erro ao criar: ' + err.message); return }
         onSuccess('Pote criado com sucesso!')
+        if (onBadges) {
+          const cs = useAuthStore.getState().user?.cycle_start ?? 1
+          checkAndGrantBadges(userId, cs).then(b => { if (b.length > 0) onBadges(b) })
+        }
       }
       onClose()
     } finally {
