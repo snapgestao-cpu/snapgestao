@@ -64,10 +64,13 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 **Tela de Potes** (`app/(tabs)/index.tsx`)
 - Header com saudação, mês corrente e badge do ciclo + botão "+ Pote"
-- Grid 2 colunas com `JarPot` (frasco SVG) por pote
+- Grid 2 colunas com `DraggableFlatList` (react-native-draggable-flatlist v4) + `GestureHandlerRootView`
+- **Reordenação por arrastar**: long-press (200ms) no pote → drag → solta → salva `display_order` no Supabase; `ScaleDecorator` anima a escala durante o drag; hint "Pressione e arraste para reordenar" abaixo do header
 - Ao tocar: navega para `app/pot/[id].tsx` (rota dinâmica)
 - Pote de emergência separado no rodapé como card horizontal
-- Pull-to-refresh; potes filtrados por `deleted_at IS NULL` e `created_at <= cycle.end`
+- Pull-to-refresh; potes filtrados por `created_at <= cycle.end`, ordenados por `display_order` depois `created_at`
+- Query de potes em `monthly.tsx` e `cycleClose.ts` também ordenam por `display_order, created_at`
+- SQL: `supabase/migrations/20240421_pots_display_order.sql` — executar manualmente no Supabase
 
 **JarPot** (`components/JarPot.tsx`)
 - `export function JarPot` (named) + `export default JarPot` — importar com `import { JarPot } from '...'`
