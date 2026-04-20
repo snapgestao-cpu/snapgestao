@@ -35,7 +35,6 @@ export async function calculateCycleSummary(
 
     supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false)
       .lte('created_at', cycle.end.toISOString())
-      .order('display_order', { ascending: true })
       .order('created_at', { ascending: true }),
 
     supabase.from('cycle_rollovers').select('*')
