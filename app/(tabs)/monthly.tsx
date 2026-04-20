@@ -82,6 +82,7 @@ export default function MonthlyScreen() {
           .eq('user_id', user.id)
           .eq('is_emergency', false)
           .lte('created_at', cycle.end.toISOString())
+          .order('display_order', { ascending: true })
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),

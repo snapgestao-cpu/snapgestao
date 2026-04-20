@@ -19,6 +19,7 @@ export type Pot = {
   is_emergency: boolean
   mesada_limit: number | null
   mesada_active: boolean
+  display_order: number
   created_at: string
   deleted_at: string | null
 }

@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator,
+  View, Text, StyleSheet, ActivityIndicator,
   RefreshControl, TouchableOpacity, Dimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { JarPot } from '../../components/JarPot'
@@ -30,6 +32,7 @@ export default function PotsScreen() {
   const { user } = useAuthStore()
 
   const [potsData, setPotsData] = useState<PotRow[]>([])
+  const [orderedPots, setOrderedPots] = useState<PotRow[]>([])
   const [emergencyPot, setEmergencyPot] = useState<Pot | null>(null)
   const [emergencyBalance, setEmergencyBalance] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -52,6 +55,7 @@ export default function PotsScreen() {
           .eq('user_id', user.id)
           .eq('is_emergency', false)
           .lte('created_at', cycle.end.toISOString())
+          .order('display_order', { ascending: true })
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*')
           .eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
@@ -95,6 +99,9 @@ export default function PotsScreen() {
 
   useEffect(() => { setLoading(true); loadPots() }, [loadPots])
 
+  // Sincronizar ordem quando os dados carregam
+  useEffect(() => { setOrderedPots(potsData) }, [potsData])
+
   const onRefresh = () => { setRefreshing(true); loadPots() }
 
   const handleSuccess = (msg: string) => {
@@ -102,107 +109,126 @@ export default function PotsScreen() {
     setToast({ message: msg, color: Colors.primary })
   }
 
+  const handleDragEnd = async ({ data }: { data: PotRow[] }) => {
+    setOrderedPots(data)
+    if (!user) return
+    for (let i = 0; i < data.length; i++) {
+      await supabase.from('pots')
+        .update({ display_order: i })
+        .eq('id', data[i].pot.id)
+        .eq('user_id', user.id)
+    }
+  }
+
   const cycle = user ? getCycle(user.cycle_start ?? 1, 0) : null
 
-  const renderItem = ({ item }: { item: PotRow }) => (
-    <TouchableOpacity
-      style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8 }}
-      onPress={() => router.push(`/pot/${item.pot.id}`)}
-      activeOpacity={0.75}
-    >
-      <JarPot
-        name={item.pot.name}
-        color={item.pot.color}
-        percent={item.percent}
-        spent={item.spent}
-        limit={item.pot.limit_amount}
-        size={120}
-      />
-      <Text style={styles.potName}>{item.pot.name}</Text>
-      <Text style={styles.potSpent}>{brl(item.spent)}</Text>
-      <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
-    </TouchableOpacity>
+  const renderPotItem = ({ item, drag, isActive }: RenderItemParams<PotRow>) => (
+    <ScaleDecorator>
+      <TouchableOpacity
+        style={[styles.potCell, isActive && styles.potCellActive]}
+        onPress={() => router.push(`/pot/${item.pot.id}`)}
+        onLongPress={drag}
+        delayLongPress={200}
+        disabled={isActive}
+        activeOpacity={0.75}
+      >
+        <JarPot
+          name={item.pot.name}
+          color={item.pot.color}
+          percent={item.percent}
+          spent={item.spent}
+          limit={item.pot.limit_amount}
+          size={120}
+        />
+        <Text style={styles.potName} numberOfLines={2}>{item.pot.name}</Text>
+        <Text style={styles.potSpent}>{brl(item.spent)}</Text>
+        <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
+      </TouchableOpacity>
+    </ScaleDecorator>
   )
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
-          <Text style={styles.monthLabel}>
-            {cycle ? cycle.monthYear : ''}
-          </Text>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
+            <Text style={styles.monthLabel}>{cycle ? cycle.monthYear : ''}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            {cycle && (
+              <View style={styles.cycleBadge}>
+                <Text style={styles.cycleBadgeText}>{cycle.label}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
+              <Text style={styles.newPotBtnText}>+ Pote</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          {cycle && (
-            <View style={styles.cycleBadge}>
-              <Text style={styles.cycleBadgeText}>{cycle.label}</Text>
-            </View>
-          )}
-          <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
-            <Text style={styles.newPotBtnText}>+ Pote</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {loading ? (
-        <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
-      ) : (
-        <FlatList
-          data={potsData}
-          keyExtractor={item => item.pot.id}
-          numColumns={2}
-          renderItem={renderItem}
-          contentContainerStyle={styles.grid}
-          columnWrapperStyle={styles.row}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-          ListEmptyComponent={
-            <View style={styles.emptyWrapper}>
-              <Text style={styles.emptyText}>Nenhum pote criado ainda.</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewPot(true)}>
-                <Text style={styles.emptyBtnText}>Criar meu primeiro pote</Text>
-              </TouchableOpacity>
-            </View>
-          }
-          ListFooterComponent={
-            emergencyPot ? (
-              <TouchableOpacity
-                style={styles.emergencyCard}
-                onPress={() => router.push(`/pot/${emergencyPot.id}`)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.emergencyIcon}>🛡️</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.emergencyTitle}>Emergência</Text>
-                  <Text style={styles.emergencyBalance}>Saldo: {brl(emergencyBalance)}</Text>
-                </View>
-                <Text style={styles.emergencyArrow}>›</Text>
-              </TouchableOpacity>
-            ) : <View style={{ height: 96 }} />
-          }
+        {loading ? (
+          <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
+        ) : orderedPots.length === 0 ? (
+          <View style={styles.emptyWrapper}>
+            <Text style={styles.emptyText}>Nenhum pote criado ainda.</Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewPot(true)}>
+              <Text style={styles.emptyBtnText}>Criar meu primeiro pote</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.dragHint}>Pressione e arraste para reordenar</Text>
+            <DraggableFlatList
+              data={orderedPots}
+              keyExtractor={item => item.pot.id}
+              numColumns={2}
+              onDragEnd={handleDragEnd}
+              renderItem={renderPotItem}
+              contentContainerStyle={styles.grid}
+              columnWrapperStyle={styles.row}
+              showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+              ListFooterComponent={
+                emergencyPot ? (
+                  <TouchableOpacity
+                    style={styles.emergencyCard}
+                    onPress={() => router.push(`/pot/${emergencyPot.id}`)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.emergencyIcon}>🛡️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.emergencyTitle}>Emergência</Text>
+                      <Text style={styles.emergencyBalance}>Saldo: {brl(emergencyBalance)}</Text>
+                    </View>
+                    <Text style={styles.emergencyArrow}>›</Text>
+                  </TouchableOpacity>
+                ) : <View style={{ height: 96 }} />
+              }
+            />
+          </>
+        )}
+
+        <NewPotModal
+          visible={showNewPot}
+          onClose={() => setShowNewPot(false)}
+          onSuccess={handleSuccess}
+          onBadges={setPendingBadges}
+          totalIncome={totalIncome}
         />
-      )}
-
-      <NewPotModal
-        visible={showNewPot}
-        onClose={() => setShowNewPot(false)}
-        onSuccess={handleSuccess}
-        onBadges={setPendingBadges}
-        totalIncome={totalIncome}
-      />
-      <NewPotModal
-        visible={!!editingPot}
-        onClose={() => setEditingPot(null)}
-        onSuccess={handleSuccess}
-        editPot={editingPot ?? undefined}
-        totalIncome={totalIncome}
-      />
-      {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
-      {pendingBadges.length > 0 && (
-        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
-      )}
-    </SafeAreaView>
+        <NewPotModal
+          visible={!!editingPot}
+          onClose={() => setEditingPot(null)}
+          onSuccess={handleSuccess}
+          editPot={editingPot ?? undefined}
+          totalIncome={totalIncome}
+        />
+        {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
+        {pendingBadges.length > 0 && (
+          <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+        )}
+      </SafeAreaView>
+    </GestureHandlerRootView>
   )
 }
 
@@ -210,7 +236,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
     backgroundColor: Colors.background,
   },
   greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark },
@@ -226,12 +252,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 7,
   },
   newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  dragHint: {
+    fontSize: 11, color: Colors.textMuted, textAlign: 'center',
+    paddingBottom: 6,
+  },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
+  potCell: {
+    width: CELL_WIDTH, alignItems: 'center',
+    paddingBottom: 20, paddingHorizontal: 8,
+  },
+  potCellActive: { opacity: 0.85 },
   potName: {
     fontSize: 13, fontWeight: '700', color: Colors.textDark,
     textAlign: 'center', marginTop: 6,
-    flexWrap: 'wrap',
   },
   potSpent: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   potLimit: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 1 },
