@@ -25,6 +25,12 @@ import { Pot, Transaction, Goal } from '../../types'
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 type TxGroup = { date: string; label: string; items: TxWithPot[] }
 
+function formatBillingDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T12:00:00')
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+}
+
 function groupTransactions(txs: TxWithPot[]): TxGroup[] {
   const map: Record<string, TxGroup> = {}
   for (const tx of txs) {
@@ -347,6 +353,11 @@ export default function MonthlyScreen() {
                               {tx.potName ? (
                                 <Text style={styles.txMeta}>{getPotIcon(tx.potName)} {tx.potName}</Text>
                               ) : null}
+                              {tx.payment_method === 'credit' && tx.billing_date && (
+                                <Text style={[styles.txMeta, { color: Colors.warning }]}>
+                                  Vence {formatBillingDate(tx.billing_date)}
+                                </Text>
+                              )}
                             </View>
                           </View>
                           <Text style={[styles.txAmount, { color: tx.type === 'income' ? Colors.success : Colors.danger }]}>

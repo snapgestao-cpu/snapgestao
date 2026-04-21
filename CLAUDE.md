@@ -79,7 +79,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Transactions** — `NewExpenseModal`: pote is mandatory (inline error if missing, "Criar pote →" button if list empty); credit payment shows installment toggle (2–24x), creates N rows with shared `installment_group_id` and per-month `billing_date`. `EditTransactionModal`: for installments, asks "Só esta" vs "Todas as restantes" (batch delete with `.gte('installment_number', current)`).
 
-**Cycle filtering for transactions** — credit uses `billing_date`, all others use `date`. Queries use `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...')`.
+**Cycle filtering for transactions** — credit uses `billing_date`, all others use `date`. This applies everywhere: `calculateCycleSummary`, `index.tsx` pot spent, `pot/[id].tsx` pot spent, `monthly.tsx` transaction list. The pot detail transaction LIST is fetched by `date` (so user sees when they registered), but the `spent` calculation uses two parallel queries (credit by `billing_date`, others by `date`). `TransactionItem` and transaction rows in `monthly.tsx` show "Vence DD Mon YYYY" (amber) for credit transactions that have `billing_date`.
 
 **Monthly control** (`app/(tabs)/monthly.tsx`) — cycle navigation with `offset` + `getCycle(cycleStart, offset)`. Summary card: base income + extra income + prior rollover − expenses = balance. Two separate alerts: red card if `cycleSaldo < 0` (deficit value); amber card if `cycleSaldo >= 0` and any pot exceeded limit (lists pots + amounts). "Encerrar ciclo" available for any non-closed cycle; after closing a past cycle, cascades `recalculateRollover` from `offset+1` up to `0`.
 

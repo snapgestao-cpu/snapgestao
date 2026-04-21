@@ -19,6 +19,12 @@ const METHOD_LABEL: Record<string, string> = {
   transfer: 'Transferência',
 }
 
+function formatBillingDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T12:00:00')
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+}
+
 function formatDate(iso: string): string {
   const today = new Date().toISOString().split('T')[0]
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
@@ -46,9 +52,16 @@ export function TransactionItem({ transaction, potName, potColor, onPress }: Pro
           {transaction.description ?? transaction.merchant ?? 'Sem descrição'}
         </Text>
         <View style={styles.metaRow}>
-          <Text style={styles.meta}>
-            {formatDate(transaction.date)} · {METHOD_LABEL[transaction.payment_method] ?? transaction.payment_method}
-          </Text>
+          <View>
+            <Text style={styles.meta}>
+              {formatDate(transaction.date)} · {METHOD_LABEL[transaction.payment_method] ?? transaction.payment_method}
+            </Text>
+            {transaction.payment_method === 'credit' && transaction.billing_date && (
+              <Text style={[styles.meta, { color: Colors.warning }]}>
+                Vence {formatBillingDate(transaction.billing_date)}
+              </Text>
+            )}
+          </View>
           {potName && (
             <View style={[styles.potBadge, { backgroundColor: (potColor ?? Colors.primary) + '20' }]}>
               <Text style={styles.potBadgeText}>

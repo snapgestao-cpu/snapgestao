@@ -22,6 +22,17 @@ import { formatDateShort } from '../../lib/cycle'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
+const METHOD_LABEL: Record<string, string> = {
+  cash: 'Dinheiro', debit: 'Débito', credit: 'Crédito',
+  pix: 'Pix', transfer: 'Transferência',
+}
+
+function formatBillingDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T12:00:00')
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+}
+
 export default function PotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuthStore()
@@ -44,13 +55,22 @@ export default function PotDetailScreen() {
     try {
       const cycle = getCycle(user.cycle_start ?? 1, 0)
 
-      const [potRes, sourcesRes, txRes] = await Promise.all([
+      const [potRes, sourcesRes, txRes, creditExpRes, otherExpRes] = await Promise.all([
         supabase.from('pots').select('*').eq('id', id).single(),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
+        // Transaction list: by date (for display — user sees when they registered)
         supabase.from('transactions').select('*')
           .eq('pot_id', id)
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false }),
+        // Spent: credit by billing_date
+        supabase.from('transactions').select('amount')
+          .eq('pot_id', id).eq('type', 'expense').eq('payment_method', 'credit')
+          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
+        // Spent: non-credit (expense + goal_deposit) by date
+        supabase.from('transactions').select('amount')
+          .eq('pot_id', id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
+          .gte('date', cycle.startISO).lte('date', cycle.endISO),
       ])
 
       const p = potRes.data as Pot | null
@@ -60,12 +80,13 @@ export default function PotDetailScreen() {
         .reduce((s, r) => s + Number(r.amount), 0)
       setTotalIncome(income)
 
-      const txs = (txRes.data ?? []) as Transaction[]
-      const spentTotal = txs
-        .filter(t => t.type === 'expense' || t.type === 'goal_deposit')
-        .reduce((s, t) => s + Number(t.amount), 0)
+      const spentTotal = [
+        ...((creditExpRes.data ?? []) as any[]),
+        ...((otherExpRes.data ?? []) as any[]),
+      ].reduce((s, t) => s + Number(t.amount), 0)
       setSpent(spentTotal)
 
+      const txs = (txRes.data ?? []) as Transaction[]
       setTransactions(txs.map(tx => ({
         ...tx,
         potName: p?.name,
@@ -228,7 +249,14 @@ export default function PotDetailScreen() {
                         <Text style={styles.txDesc} numberOfLines={1}>
                           {tx.description ?? tx.merchant ?? 'Sem descrição'}
                         </Text>
-                        <Text style={styles.txMeta}>{tx.payment_method?.toUpperCase()}</Text>
+                        <Text style={styles.txMeta}>
+                          {METHOD_LABEL[tx.payment_method] ?? tx.payment_method?.toUpperCase()}
+                        </Text>
+                        {tx.payment_method === 'credit' && tx.billing_date && (
+                          <Text style={[styles.txMeta, { color: '#BA7517' }]}>
+                            Vence {formatBillingDate(tx.billing_date)}
+                          </Text>
+                        )}
                       </View>
                     </View>
                     <Text style={[styles.txAmount, { color: tx.type === 'income' ? Colors.success : Colors.danger }]}>
