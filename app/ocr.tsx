@@ -8,8 +8,8 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
 import {
   captureReceipt, pickReceiptFromGallery, processReceipt,
-  fetchNFCeFromDevice,
 } from '../lib/ocr'
+import type { NFCeResult } from '../lib/ocr'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
@@ -18,6 +18,7 @@ import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { Pot } from '../types'
 import QRCameraScanner from '../components/QRCameraScanner'
+import NFCeWebView from '../components/NFCeWebView'
 
 type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
@@ -45,6 +46,7 @@ export default function OCRScreen() {
   const [singlePotId, setSinglePotId] = useState<string | null>(defaultPotId ?? null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
   const [processingMessage, setProcessingMessage] = useState('Lendo o cupom...')
+  const [nfceUrl, setNfceUrl] = useState<string | null>(null)
 
   const loadPots = async () => {
     if (!user) return
@@ -101,31 +103,19 @@ export default function OCRScreen() {
     setStep('review')
   }
 
-  // QR Code path: device fetch → parse SEFAZ HTML (bypasses datacenter IP block)
+  // QR Code path: open SEFAZ URL in WebView → inject JS extractor
   const handleQRCodeScanned = async (url: string) => {
-    setProcessingMessage('Buscando dados na SEFAZ...')
-    setStep('processing')
     await loadPots()
+    setNfceUrl(url)
+    setStep('processing')
+  }
 
-    const result = await fetchNFCeFromDevice(url)
-    console.log('fetchNFCeFromDevice result:', JSON.stringify(result).substring(0, 500))
-
-    if (!result.success || !result.items?.length) {
-      Alert.alert(
-        'Não foi possível ler o cupom',
-        result.error || 'Verifique sua conexão e tente novamente.',
-        [
-          { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
-          { text: 'Cancelar', onPress: () => setStep('menu') },
-        ]
-      )
-      return
-    }
-
+  const handleNFCeSuccess = (result: NFCeResult) => {
+    setNfceUrl(null)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
-    setItems(result.items.map(item => ({
+    setItems((result.items ?? []).map(item => ({
       name: item.name,
       value: item.totalValue,
       potId: defaultPotId ?? null,
@@ -133,6 +123,18 @@ export default function OCRScreen() {
     setImageUri(null)
     setReceiptId(null)
     setStep('review')
+  }
+
+  const handleNFCeError = (msg: string) => {
+    setNfceUrl(null)
+    Alert.alert(
+      'Não foi possível ler o cupom',
+      msg,
+      [
+        { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
+        { text: 'Cancelar', onPress: () => setStep('menu') },
+      ]
+    )
   }
 
   const handleSave = async () => {
@@ -288,6 +290,18 @@ export default function OCRScreen() {
 
   // ── STEP: processing ──────────────────────────────────────────────────────
   if (step === 'processing') {
+    // QR Code path: render WebView to load SEFAZ page and extract data via JS
+    if (nfceUrl) {
+      return (
+        <NFCeWebView
+          url={nfceUrl}
+          onSuccess={handleNFCeSuccess}
+          onError={handleNFCeError}
+          onCancel={() => { setNfceUrl(null); setStep('menu') }}
+        />
+      )
+    }
+    // OCR path: spinner while Google Vision processes
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.processingStep}>

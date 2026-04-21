@@ -211,7 +211,7 @@ function parseNFCeHTML(html: string, url: string): NFCeResult {
     success: items.length > 0,
     source: 'sefaz_rj',
     merchant: merchant.substring(0, 100),
-    cnpj,
+    cnpj: cnpj ?? undefined,
     emission_date,
     items,
     total,
