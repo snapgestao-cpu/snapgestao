@@ -38,8 +38,10 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 ## Supabase Schema
 
-Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`.  
+Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `projection_entries`.  
 RLS enabled on all tables. Trigger `on_auth_user_created` active.
+
+**`projection_entries`** — lançamentos avulsos em meses futuros. Fields: `id`, `user_id`, `type` (`'income'|'expense'`), `description`, `amount`, `entry_date`, `cycle_start_date` (ISO, used to match the cycle), `is_recurring`, `created_at`. Must be created manually in Supabase SQL Editor (see `projection_entries` migration in Tarefa 3a). Policy: `auth.uid() = user_id`.
 
 **Migrations that must be run manually in Supabase** (in order):
 1. `supabase/migrations/20240418_cycle_rollovers.sql`
@@ -83,7 +85,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Monthly control** (`app/(tabs)/monthly.tsx`) — cycle navigation with `offset` + `getCycle(cycleStart, offset)`. Summary card: base income + extra income + prior rollover − expenses = balance. Two separate alerts: red card if `cycleSaldo < 0` (deficit value); amber card if `cycleSaldo >= 0` and any pot exceeded limit (lists pots + amounts). "Encerrar ciclo" available for any non-closed cycle; after closing a past cycle, cascades `recalculateRollover` from `offset+1` up to `0`.
 
-**Projection** (`app/(tabs)/projection.tsx`) — 12-month table: 6 past (real data) + 6 future (base income, zero expenses). Future rows marked with `*` and muted/italic style. Fixed column widths: 72px month, 108px values.
+**Projection** (`app/(tabs)/projection.tsx`) — 13-month table (offset -3..+9). Reloads on every focus via `useFocusEffect`. Summary cards: "Receita base mensal" and "Gasto médio" (last 3 real months). Table header has emoji icons. Future months (`*`) use `totalBudgeted` (sum of active pot limits) + credit installments with `billing_date` in that range. Current month (offset=0) uses prorated projection `(realSpent / diasPassados) * 30`, capped at `totalBudgeted`. FAB (+) opens two options: "Receita futura" / "Despesa futura" → `ProjectionEntryModal`. Entries stored in `projection_entries` table; added to income/expense per cycle. Months with entries show `+N` badge (amber) → tapping opens entries list modal with edit/delete. `ProjectionEntry` type exported from `components/ProjectionEntryModal.tsx`.
 
 **Goals** (`app/(tabs)/goals.tsx`) — long-term goals with compound interest simulation. `horizon_years` stored as decimal (1.5 = 1 year 6 months). `GoalDepositModal` accepts pot or "free balance" as source.
 
