@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
   ScrollView, TextInput, Alert, Image,
@@ -8,7 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
 import {
   captureReceipt, pickReceiptFromGallery, processReceipt,
-  fetchNFCeFromURL, OCRItem, NFCeItem,
+  fetchNFCeFromDevice,
 } from '../lib/ocr'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
@@ -56,6 +56,15 @@ export default function OCRScreen() {
     setPots((data ?? []) as Pot[])
   }
 
+  // Auto-launch camera when step becomes 'ocr_camera' (e.g. after QR failure)
+  useEffect(() => {
+    if (step !== 'ocr_camera') return
+    captureReceipt().then(uri => {
+      if (uri) handleOCRCapture(uri)
+      else setStep('menu')
+    })
+  }, [step])
+
   // OCR path: photograph → Google Vision
   const handleOCRCapture = async (uri: string | null) => {
     if (!uri || !user) return
@@ -92,30 +101,23 @@ export default function OCRScreen() {
     setStep('review')
   }
 
-  // QR Code path: scan → fetch SEFAZ
+  // QR Code path: device fetch → parse SEFAZ HTML (bypasses datacenter IP block)
   const handleQRCodeScanned = async (url: string) => {
     setProcessingMessage('Buscando dados na SEFAZ...')
     setStep('processing')
     await loadPots()
 
-    const result = await fetchNFCeFromURL(url)
-    console.log('Resultado completo fetch-nfce:', JSON.stringify(result).substring(0, 1000))
-
-    // DEBUG temporário: mostrar o que veio do servidor
-    Alert.alert(
-      'Debug resultado',
-      JSON.stringify(result).substring(0, 500),
-      [{ text: 'OK', onPress: () => setStep('menu') }]
-    )
-    return
+    const result = await fetchNFCeFromDevice(url)
+    console.log('fetchNFCeFromDevice result:', JSON.stringify(result).substring(0, 500))
 
     if (!result.success || !result.items?.length) {
       Alert.alert(
         'Não foi possível ler o cupom',
-        result.error
-          ? `Erro: ${result.error}`
-          : 'Verifique se o QR Code é de uma NFC-e válida ou tente a opção de leitura por OCR.',
-        [{ text: 'OK', onPress: () => setStep('menu') }]
+        result.error || 'Verifique sua conexão e tente novamente.',
+        [
+          { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
+          { text: 'Cancelar', onPress: () => setStep('menu') },
+        ]
       )
       return
     }
