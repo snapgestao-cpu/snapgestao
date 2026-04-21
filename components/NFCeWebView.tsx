@@ -48,7 +48,26 @@ const EXTRACT_SCRIPT = `
         const cells = row.querySelectorAll('td')
         if (cells.length < 2) return
 
-        const rawName = cells[0].innerText.trim()
+        let rawName = ''
+        const nameCell = cells[0]
+        const nameLink = nameCell.querySelector('a, span, b')
+        if (nameLink) {
+          rawName = nameLink.innerText.trim()
+        } else {
+          const walker = document.createTreeWalker(
+            nameCell,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          )
+          const textParts = []
+          let node
+          while ((node = walker.nextNode())) {
+            const t = node.textContent.trim()
+            if (t) textParts.push(t)
+          }
+          rawName = textParts.join(' ')
+        }
         const name = rawName
           .replace(/\\(Código[^)]+\\)/gi, '')
           .replace(/\\s+/g, ' ')
