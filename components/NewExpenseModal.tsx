@@ -41,8 +41,15 @@ function isoToDisplay(iso: string): string {
 }
 function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   const [y, m, d] = txISO.split('-').map(Number)
-  let month0 = d <= card.closing_day ? m - 1 : m  // 0-indexed
+  let month0 = m - 1  // 0-indexed (April=3)
   let year = y
+
+  // Passed closing day → purchase goes into next billing cycle
+  if (d >= card.closing_day) month0 += 1
+
+  // Due day is before closing day → payment falls in month after closing
+  if (card.due_day < card.closing_day) month0 += 1
+
   month0 += offset
   while (month0 > 11) { month0 -= 12; year += 1 }
   return new Date(year, month0, card.due_day).toISOString().split('T')[0]

@@ -42,8 +42,10 @@ export default function ProjectionScreen() {
       setMonthlyIncome(base)
 
       const built: MonthRow[] = []
-      for (let offset = -5; offset <= 0; offset++) {
+      // 3 past + current + 9 future = 13 months
+      for (let offset = -3; offset <= 9; offset++) {
         const cycle = getCycle(user.cycle_start ?? 1, offset)
+        const isFuture = offset > 0
         const { data: txs } = await supabase
           .from('transactions')
           .select('type,amount,payment_method,billing_date,date')
@@ -56,22 +58,13 @@ export default function ProjectionScreen() {
           .filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
         const expense = ((txs ?? []) as any[])
           .filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-        const income = base + incomeActual
+        // Future months: use only base income (no extra income expected)
+        const income = base + (isFuture ? 0 : incomeActual)
         built.push({
-          label: cycle.monthYear,
+          label: isFuture ? cycle.monthYear + ' *' : cycle.monthYear,
           income,
           expense,
           saldo: income - expense,
-        })
-      }
-
-      for (let offset = 1; offset <= 6; offset++) {
-        const cycle = getCycle(user.cycle_start ?? 1, offset)
-        built.push({
-          label: cycle.monthYear + ' *',
-          income: base,
-          expense: 0,
-          saldo: base,
         })
       }
 

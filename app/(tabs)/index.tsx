@@ -65,19 +65,29 @@ export default function PotsScreen() {
       const ep = epRes.data as Pot | null
       setEmergencyPot(ep)
 
-      const rows: PotRow[] = await Promise.all(
-        pots.map(async (pot) => {
-          const { data: txs } = await supabase
-            .from('transactions').select('amount')
-            .eq('pot_id', pot.id).eq('type', 'expense')
-            .gte('date', cycle.startISO).lte('date', cycle.endISO)
-          const spent = ((txs ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
-          const limit = pot.limit_amount ?? 0
-          const remaining = limit - spent
-          const percent = limit > 0 ? (spent / limit) * 100 : 0
-          return { pot, spent, remaining, percent }
-        })
-      )
+      // Fetch all expenses for the cycle in two queries (credit by billing_date, others by date)
+      const [{ data: creditTxs }, { data: otherTxs }] = await Promise.all([
+        supabase.from('transactions').select('amount, pot_id')
+          .eq('user_id', user.id).eq('type', 'expense').eq('payment_method', 'credit')
+          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
+        supabase.from('transactions').select('amount, pot_id')
+          .eq('user_id', user.id).eq('type', 'expense').neq('payment_method', 'credit')
+          .gte('date', cycle.startISO).lte('date', cycle.endISO),
+      ])
+      const allCycleTxs = [
+        ...((creditTxs ?? []) as any[]),
+        ...((otherTxs ?? []) as any[]),
+      ]
+
+      const rows: PotRow[] = pots.map(pot => {
+        const spent = allCycleTxs
+          .filter(t => t.pot_id === pot.id)
+          .reduce((s, t) => s + Number(t.amount), 0)
+        const limit = pot.limit_amount ?? 0
+        const remaining = limit - spent
+        const percent = limit > 0 ? (spent / limit) * 100 : 0
+        return { pot, spent, remaining, percent }
+      })
       setPotsData(rows)
 
       if (ep) {

@@ -36,347 +36,163 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 `EXPO_PUBLIC_*` vars are inlined at Metro build time. Backend secrets must never use this prefix.
 
-## Current status
+## Supabase Schema
 
-### Concluído
+Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`.  
+RLS enabled on all tables. Trigger `on_auth_user_created` active.
 
-**Infraestrutura**
-- Node, VS Code, Expo CLI, Git configurados
-- Contas GitHub, Supabase e Expo criadas
-- Projeto em `C:\snapgestao\snapgestao`
-- Todas as bibliotecas instaladas (`--legacy-peer-deps` obrigatório)
+**Migrations that must be run manually in Supabase** (in order):
+1. `supabase/migrations/20240418_cycle_rollovers.sql`
+2. `supabase/migrations/20240419_pot_soft_delete_and_history.sql`
+3. `supabase/migrations/20240420_pots_physical_delete.sql` — alters FK `transactions.pot_id` to `ON DELETE SET NULL`
 
-**Backend (Supabase)**
-- Schema completo: tabelas `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`
-- RLS habilitado em todas as tabelas
-- Trigger `on_auth_user_created` ativo
+Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the feature was reverted — do not apply.
 
-**Autenticação**
-- Login, cadastro, restauração de sessão, logout
-- Guard de rotas em `_layout.tsx` (auth → onboarding → tabs)
-- Recuperação de token inválido (usuário deletado do Supabase)
+**OCR prerequisites (manual setup in Supabase):**
+- Create bucket `receipts` (Storage → New bucket, public: false)
+- `supabase secrets set GOOGLE_VISION_KEY=<chave>`
 
-**Onboarding (3 telas)**
-- Step 1: saldo inicial + moeda
-- Step 2: ciclo mensal + fontes de receita (modal bottom-sheet)
-- Step 3: primeiro pote + cor + preview em tempo real
-- Salva em `users`, `income_sources` e `pots` no Supabase
+## Features
 
-**Tela de Potes** (`app/(tabs)/index.tsx`)
-- Header com saudação, mês corrente e badge do ciclo + botão "+ Pote"
-- Grid 2 colunas com `FlatList` nativo
-- Ao tocar: navega para `app/pot/[id].tsx` (rota dinâmica)
-- Pote de emergência separado no rodapé como card horizontal
-- Pull-to-refresh; potes filtrados por `created_at <= cycle.end`, ordenados por `created_at`
+**Auth** — login, register, session restore, logout. Invalid token recovery: stale tokens are wiped and user is redirected to login without looping.
 
-**JarPot** (`components/JarPot.tsx`)
-- `export function JarPot` (named) + `export default JarPot` — importar com `import { JarPot } from '...'`
-- Usa imagens PNG reais de `assets/potes/`: `Pote_vazio.png`, `Pote_10.png`, `Pote_30.png`, `Pote_50.png`, `Pote_70.png`, `Pote_90.png`, `Pote_100.png`
-- Seleção da imagem por faixa: 0% → vazio, 1–19% → p10, 20–39% → p30, 40–59% → p50, 60–79% → p70, 80–99% → p90, 100%+ → p100
-- Ícone de categoria (opacity 0.35) sobreposto quando `percent === 0`; percentual com textShadow sobreposto quando `percent > 0`
-- Cor do percentual: cor do pote até 50% → âmbar até 80% → vermelho; branco quando ≥ 50% (sobre fundo escuro)
-- Prop `limit: number | null` — aceita `null` sem erro de tipo
-- Textos nome/gasto/limite renderizados fora da imagem como `Text` nativo
+**Onboarding** — 3-step wizard (balance/currency → cycle/income sources → first pot). Runs once when `user.initial_balance === 0` or `users` row is missing.
 
-**Tela de detalhe do pote** (`app/pot/[id].tsx`)
-- JarPot 150px centralizado + valores gastos
-- Botões de ação: Gasto, Receita, Editar, Excluir
-- Lançamentos do ciclo agrupados por data com botão ✏️ (EditTransactionModal)
-- Soft delete: salva `deleted_at = now()`, não apaga registro
-- Rota: `app/pot/[id].tsx` — registrada no Stack root como `name="pot/[id]"` (não `"pot"`) e guard permite `segments[0] === 'pot'`
+**Pots dashboard** (`app/(tabs)/index.tsx`) — grid of pots filtered by `created_at <= cycle.end`, ordered by `created_at`. Emergency pot shown as separate footer card. Pull-to-refresh.
 
-**PotCard** (`components/PotCard.tsx`) — mantido para uso em preview no NewPotModal
+**Pot detail** (`app/pot/[id].tsx`) — JarPot 150px + expense/income buttons + grouped transaction list with edit (✏️). Deletion is **physical DELETE** — current-cycle expense transactions are deleted first, then the pot row. Transactions from prior cycles keep `pot_id = null` (FK `ON DELETE SET NULL`).
 
-**Módulo de Lançamentos**
-- `components/NewExpenseModal.tsx` — gasto com seleção de pote, data, forma de pagamento, cartão de crédito, estabelecimento, `is_need`
-- `components/NewIncomeModal.tsx` — receita com fonte, data, forma de recebimento
-- `components/TransactionItem.tsx` — Hoje/Ontem/DD/MM, badge do pote, `brl()` formatter
-- `components/Toast.tsx` — fade animado posicionado abaixo do safe-area top
+**JarPot** (`components/JarPot.tsx`) — PNG-based fill visualization using `assets/potes/` images (`Pote_vazio.png`, `Pote_10/30/50/70/90/100.png`). Image chosen by percent band. Export: `export function JarPot` (named) + `export default JarPot` — always import as named: `import { JarPot } from '...'`. Prop `limit: number | null` accepted without type error.
 
-**Gestão de Potes**
-- `components/NewPotModal.tsx` — criar e editar potes
-  - Sugestões rápidas em chips (Alimentação, Moradia, Transporte…)
-  - Limite por valor fixo ou % da renda (calcula valor com base em `income_sources`)
-  - Paleta de 12 cores exportada como `POT_COLORS` (importar de `NewPotModal` onde necessário)
-  - Toggle "Pote de emergência 🛡️" — cor roxa `#534AB7` por padrão; desabilitado se já existir um
-  - Preview em tempo real com `PotCard`
-  - Modo edição: recebe `editPot?: Pot`, faz `UPDATE` em vez de `INSERT`
-  - **Criação retroativa**: props `cycleStartDate?: Date` + `isRetroactive?: boolean` — exibe banner âmbar e salva `created_at` com a data de início do ciclo selecionado em vez de `now()`
-- Action sheet (Modal fade) ao toque longo no PotCard: editar / ver lançamentos / excluir
-- Exclusão com `Alert.alert` de confirmação; lançamentos vinculados são mantidos
+**NewPotModal** (`components/NewPotModal.tsx`) — create and edit pots.
+- Quick-suggestion chips; limit by fixed value or % of income
+- `POT_COLORS` (12 colors) exported from here — import from here to stay in sync
+- Emergency pot toggle (purple `#534AB7`; disabled if one already exists)
+- Edit mode: receives `editPot?: Pot`, does `UPDATE` instead of `INSERT`
+- Retroactive creation: `cycleStartDate?: Date` + `isRetroactive?: boolean` — saves `created_at` as cycle start date instead of `now()`
+- Prop `onBadges?: (badges: Badge[]) => void` to return newly granted badges to parent
+- **Never include `icon` or `mesada_active` in pots INSERT/UPDATE** — these columns do not exist in the schema
 
-**Tela de Projeção** (`app/(tabs)/projection.tsx`)
-- Tabela 12 meses: 6 passados (dados reais) + 6 futuros (receita base de `income_sources`, gasto zero)
-- Receita = `income_sources` (base) + transações `income` do ciclo
-- Linha futura marcada com `*` e estilo itálico/muted
+**Pot deletion** — always physical DELETE. Never filter pots with `.is('deleted_at', null)` — the column exists but is unused. In `monthly.tsx`, historical pots (deleted after cycle start) are included via `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')`.
 
-**Metas de longo prazo** (`app/(tabs)/goals.tsx`)
-- Tela com summary cards (total alocado, total projetado com juros compostos)
-- `GoalCard`: barra de progresso, aporte e projeção, botão "Transferir valor"
-- `NewGoalModal`: nome, valor alvo, prazo livre em **anos + meses** (inputs numéricos, não chips fixos), aporte mensal, taxa de juros (default 8%), simulador em tempo real
-  - `horizon_years` salvo como decimal (ex: 1 ano 6 meses = 1.5)
-  - `totalMonths = anos × 12 + meses` — `n` usado no cálculo FV
-- `GoalDepositModal`: valor, seletor de pote ou "Saldo livre", insere `goal_deposit` transaction + atualiza `current_amount`; card de aviso com saldo disponível do ciclo atual
-- `lib/goalIcons.ts`: `getGoalIcon(name)` — mapeamento de nome para emoji (~40 categorias)
-- `lib/finance.ts`: `calcFV(monthlyDeposit, annualRatePct, years)` + `brl(value)` compartilhados
+**Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
 
-**Perfil e configurações** (`app/(tabs)/profile.tsx`)
-- Header: avatar com iniciais, nome, email (de `supabase.auth.getUser()`), badge do ciclo
-- Summary: saldo atual do ciclo (verde/vermelho), metas ativas, meta prioritária com % e barra
-- Configurações em grupos: Conta, Potes e Cartões, Notificações, Dados, Sobre
-- Edição inline do ciclo mensal (dialog com TextInput centrado) → `UPDATE users`
-- Toggles de notificação (estado local por ora)
-- Limpar dados de teste: `DELETE transactions WHERE user_id`
-- Logout com `Alert` de confirmação
+**Transactions** — `NewExpenseModal`: pote is mandatory (inline error if missing, "Criar pote →" button if list empty); credit payment shows installment toggle (2–24x), creates N rows with shared `installment_group_id` and per-month `billing_date`. `EditTransactionModal`: for installments, asks "Só esta" vs "Todas as restantes" (batch delete with `.gte('installment_number', current)`).
 
-**Gestão de cartões** (`components/CreditCardModal.tsx`)
-- Lista cartões com nome, últimos 4 dígitos, fechamento/vencimento, limite
-- Formulário add/edit: nome, last_four, closing_day, due_day, credit_limit (opcional)
-- DELETE com Alert de confirmação
+**Cycle filtering for transactions** — credit uses `billing_date`, all others use `date`. Queries use `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...')`.
 
-**Fontes de receita** (`components/IncomeSourcesModal.tsx`)
-- Lista fontes com badge "Principal" na fonte primária, total mensal em destaque
-- Formulário add/edit: nome, tipo (chips), valor, dia de recebimento, checkbox "Fonte principal"
-- DELETE com Alert, callback `onChanged` para recarregar dashboard após alterações
+**Monthly control** (`app/(tabs)/monthly.tsx`) — cycle navigation with `offset` + `getCycle(cycleStart, offset)`. Summary card: base income + extra income + prior rollover − expenses = balance. Two separate alerts: red card if `cycleSaldo < 0` (deficit value); amber card if `cycleSaldo >= 0` and any pot exceeded limit (lists pots + amounts). "Encerrar ciclo" available for any non-closed cycle; after closing a past cycle, cascades `recalculateRollover` from `offset+1` up to `0`.
 
-**Bugs corrigidos**
-- `storage.removeItem is not a function` (SecureStore adapter)
-- Botão de confirmar saltando no Android (KAV removido das telas)
-- Modal step2 corrompendo layout no Android (overlay/sheet como irmãos)
-- Token inválido travando em loop de loading
-- Potes duplicando ao tocar duas vezes no botão
-- Campos inexistentes (`icon`, `mesada_active`) no insert de potes — **nunca incluir no INSERT/UPDATE**
-- **Exclusão de pote** (`app/pot/[id].tsx`): antes do soft delete, deleta transações `type='expense'` do ciclo atual vinculadas ao pote via `.gte('date', startStr).lte('date', endStr)` — outros ciclos não são afetados; Alert exibe datas do ciclo no formato DD/MM/YYYY
-- **Pote obrigatório** (`NewExpenseModal`): label exibe `*`; ao tentar salvar sem pote, exibe erro inline; quando lista de potes está vazia, exibe mensagem + botão "Criar pote →" que fecha o modal e navega para `/(tabs)/`
-- **Encerrar ciclo em meses anteriores** (`monthly.tsx`): seção "Encerrar ciclo" aparece para qualquer ciclo não encerrado (removida condição `offset === 0`); `isCycleClosed` carregado do DB via `cycle_rollovers.processed`; após fechar ciclo passado, executa loop de cascata `for (let i = offset+1; i <= 0; i++) await recalculateRollover(...)` para recalcular rollovers dependentes
-- **Saldo do ciclo** (`lib/cycleClose.ts`): crédito usa `billing_date`, demais usam `date` (query `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...')`); `totalDebt = cycleSaldo < 0 ? abs(cycleSaldo) : 0`; `totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0` — baseado no saldo geral, não soma de excedentes por pote
-- **Potes em ciclos anteriores** (`monthly.tsx`): query de potes usa `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` em vez de `.is('deleted_at', null)` — potes excluídos após o início do ciclo ainda aparecem no histórico daquele ciclo
-- **Alertas simplificados** (`monthly.tsx`): dois cards separados — (1) card vermelho se `cycleSaldo < 0` com valor do déficit; (2) card âmbar se `cycleSaldo >= 0` e algum pote excedeu limite, listando potes excedidos com valor; removida mensagem "próximo mês" para potes
-- **`recalculateRollover`** (`lib/cycleClose.ts`): nova exportação — verifica se ciclo já foi encerrado (`processed = true`), recalcula summary e faz upsert preservando `surplus_action`/`surplus_goal_id`; usada na cascata de fechamento retroativo
-- **Cards do perfil** (`profile.tsx`): card 1 = "Saldo atual" via `calculateCycleSummary` (verde se positivo, vermelho se negativo); card 2 = "Metas ativas" (contagem de metas com `current_amount < target_amount`); card 3 = "Meta prioritária" com percentual de conclusão e barra de progresso (meta com `target_date` mais próxima; fallback: maior % de conclusão; exibe `—` se nenhuma)
-- **Potes fantasmas — solução definitiva** (`app/pot/[id].tsx`): substituído soft delete (`deleted_at`) por **DELETE físico**. Ao excluir um pote: (1) deleta expenses do ciclo atual, (2) `supabase.from('pots').delete()`. Transactions de ciclos anteriores ficam com `pot_id = null` (FK `ON DELETE SET NULL`). Todas as queries de potes simplificadas — sem nenhum filtro `deleted_at`. **SQL obrigatório**: executar `supabase/migrations/20240420_pots_physical_delete.sql` no Supabase (altera FK `transactions.pot_id` para `ON DELETE SET NULL`). A coluna `pots.deleted_at` ainda existe no schema mas não é mais usada.
+**Projection** (`app/(tabs)/projection.tsx`) — 12-month table: 6 past (real data) + 6 future (base income, zero expenses). Future rows marked with `*` and muted/italic style. Fixed column widths: 72px month, 108px values.
 
-**Controle mensal** (`app/(tabs)/monthly.tsx`)
-- Navegação entre ciclos via `←` / `→` com `offset` state e `getCycle(cycleStart, offset)`
-- Card escuro de resumo: receita base + receita extra + rollover anterior, despesas, saldo
-- Dois alertas separados: saldo negativo (vermelho) e pote excedido (âmbar) — ver "Bugs corrigidos"
-- Tabela de potes com ScrollView horizontal — colunas Pote(130px) | Orçado(100px) | Gasto(100px) | Saldo(100px), minWidth 430px
-- Query de transações usa `.or(billing_date/date)` para crédito vs outros métodos
-- Query de potes usa `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')` para incluir potes históricos
-- Lista de transações agrupada por data (Hoje/Ontem/DD MMM) com botão ✏️ por linha
-- `EditTransactionModal`: editar ou excluir qualquer lançamento; adapta campos por tipo; para parcelados pergunta "Só esta" vs "Todas as restantes"
-- Seção "Encerrar ciclo": disponível em **qualquer** ciclo não encerrado; chips de destino da sobra, seletor de meta, botão de fechamento; `isCycleClosed` carregado do DB
-- Após encerrar ciclo passado: cascata `recalculateRollover` do offset+1 até 0
-- FAB verde em todos os ciclos (receita / gasto / cupom / arquivo)
-- Botão "+ Pote" no header de navegação de ciclo → abre `NewPotModal` com `isRetroactive={offset < 0}`
-- Query de potes filtrada por `cycle.end` — potes retroativos aparecem apenas a partir do mês correto
-- `lib/cycle.ts`: `getCycle(cycleStart, offset)` — end = cycleStart-1 do mês seguinte
-- `lib/cycleClose.ts`: `calculateCycleSummary()` + `processCycleClose()` + `recalculateRollover()`
-- SQL: `supabase/migrations/20240418_cycle_rollovers.sql` — executar manualmente no Supabase
+**Goals** (`app/(tabs)/goals.tsx`) — long-term goals with compound interest simulation. `horizon_years` stored as decimal (1.5 = 1 year 6 months). `GoalDepositModal` accepts pot or "free balance" as source.
 
-**Exclusão de potes e histórico de limites**
-- `pots`: exclusão é **DELETE físico** — `supabase.from('pots').delete().eq('id', id)`. Transactions de ciclos anteriores ficam com `pot_id = null` (FK `ON DELETE SET NULL`, ver migration 20240420). A coluna `pots.deleted_at` existe mas não é usada — não aplicar filtros `.is('deleted_at', null)` em nenhuma query de potes
-- `pot_limit_history`: registra mudanças de limite com `valid_from` por ciclo; tem `ON DELETE CASCADE` em `pot_id`
-- SQL obrigatório: executar ambas as migrations manualmente no Supabase (`20240419_pot_soft_delete_and_history.sql` e `20240420_pots_physical_delete.sql`)
+**Profile** (`app/(tabs)/profile.tsx`) — cycle edit, income sources, credit cards, IR CSV export (`handleExportarIR()` via `expo-file-system/legacy` + `expo-sharing`), data clear, logout. Summary cards: current cycle balance (via `calculateCycleSummary`), active goals count, priority goal progress.
 
-**Tab bar** (`app/(tabs)/_layout.tsx`)
-- Emojis coloridos com `opacity` diferente entre ativo/inativo (sem `react-native-svg`)
-- Ícones: 🫙 Potes, 📅 Mensal, 📈 Projeção, 🎯 Metas, 👤 Perfil
+**OCR** (`app/ocr.tsx`) — 4-step flow: camera → processing → review → saving. Entry points: monthly FAB (passes `cycleDate`) and pot detail (passes `defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` imports from `expo-file-system/legacy` (not main module — API moved in SDK 54).
 
-### Fase 2 — Concluído
+**Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
-- [x] Notificações locais — `lib/notifications.ts` usa `Alert` nativo (expo-notifications removido; push para produção)
-- [x] Módulo OCR completo:
-  - `lib/ocr.ts` com captura (câmera/galeria) e processamento
-  - `app/ocr.tsx` com 4 steps (camera → processing → review → saving)
-  - Edge Function `process-receipt` deployada — autenticação via Authorization header + ANON_KEY (JWT ES256 corrigido)
-  - **PENDENTE manual no Supabase**: criar bucket `receipts` (Storage → New bucket, public: false)
-  - **PENDENTE manual no Supabase**: `supabase secrets set GOOGLE_VISION_KEY=<chave>`
+**Excel import** (`components/ImportFileModal.tsx`) — 5 steps: pick → preview → assign → saving → done. Auto-detects Data/Descrição/Valor columns. Detects `parcelas` column and expands into installment rows.
 
-### Fase 3 — Concluído
-
-**Gamificação e badges**
-- `lib/badges.ts`: 10 badges definidas (`ALL_BADGES`), `checkAndGrantBadges(userId, cycleStart)` verifica e concede automaticamente, `getEarnedBadgeKeys(userId)` para consulta
-- `components/BadgeToast.tsx`: toast animado slide-in + fadeOut (3s por badge), fila de badges processada sequencialmente
-- `app/achievements.tsx`: tela stack (não tab) com progress geral, desafio do mês (cupons), badges conquistadas/bloqueadas em grid 2 colunas
-- `app/(tabs)/profile.tsx`: seção "Conquistas" com preview das 3 últimas badges e link para `/achievements`
-- Integração automática: `_layout.tsx` (startup), `NewPotModal` (criar pote), `NewGoalModal` (criar meta), `ocr.tsx` (após salvar cupom), `monthly.tsx` (após encerrar ciclo)
-- `NewPotModal` e `NewGoalModal`: prop `onBadges?: (badges: Badge[]) => void` para retornar badges novas ao parent
-
-**Correção tabelas — ScrollView horizontal**
-- `app/(tabs)/projection.tsx`: colunas fixas (72px mês, 108px valores)
-- `app/(tabs)/monthly.tsx`: tabela de potes com ScrollView horizontal — colunas Pote(130px) | Orçado(100px) | Gasto(100px) | Saldo(100px), minWidth 430px
-
-**Importação Excel** (`components/ImportFileModal.tsx`)
-- 5 steps: pick → preview → assign → saving → done
-- `expo-document-picker` + `xlsx` parse — detecta colunas Data/Descrição/Valor automaticamente
-- Atribuição de pote global (chip) ou por linha (ScrollView horizontal de chips)
-- Insert em batch via `supabase.from('transactions').insert([])`
-- Acessível via FAB "📊 +Arquivo" em `app/(tabs)/monthly.tsx`
-
-**Exportação IR CSV** (`app/(tabs)/profile.tsx`)
-- `handleExportarIR()` — busca transações do ano anterior, gera CSV com cabeçalho Data/Descrição/Estabelecimento/Pote/Tipo/Valor
-- `expo-file-system/legacy` (writeAsStringAsync) + `expo-sharing` (shareAsync)
-- Botão "Exportar IR YYYY (CSV)" no grupo Dados do perfil
-
-**Compras parceladas**
-- `types/index.ts`: `Transaction` ganhou `installment_total INT | null`, `installment_number INT | null`, `installment_group_id UUID | null`
-- SQL já executado no Supabase: `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS installment_total INT, ...` + índice `idx_transactions_installment`
-- `NewExpenseModal`: quando `paymentMethod === 'credit'`, exibe toggle "Compra parcelada?" + Slider 2–24x + preview do valor por parcela. Ao salvar, cria `installments` linhas via `.insert([...])` com `billing_date` calculado por offset de mês e `installment_group_id` compartilhado
-- `TransactionItem`: badge azul `N/Mx` quando `installment_total > 1`
-- `EditTransactionModal`: ao excluir parcela (`installment_group_id != null`) pergunta "Só esta" ou "Todas as restantes" — usa `.gte('installment_number', current)` para deletar em batch
-- `ImportFileModal`: detecta coluna `parcelas` no Excel; se > 1 expande em N rows com `installment_group_id` compartilhado; badge `Nx` no preview; contagem "X linhas → Y lançamentos"
-- `projection.tsx`: query usa `.or('and(payment_method.eq.credit,billing_date.gte...),and(payment_method.neq.credit,date.gte...)')` para cada ciclo — parcelas aparecem no mês correto de vencimento
-
-### Fase 4 — Pendente
-- [ ] Glossário financeiro
-- [ ] Testes e validações finais
-- [ ] Build de produção (EAS)
+**Notifications** — `expo-notifications` removed (incompatible with Expo Go SDK 53). `lib/notifications.ts` uses `Alert.alert` as stub. `checkCriticalPots()` alerts at 70%/80%/100%. Do not import `expo-notifications` directly in `_layout.tsx`.
 
 ## Architecture
 
 ### Routing — Expo Router (file-based)
 
-`app/` is the file-system router. Route groups (parentheses) do not appear in URLs:
-
 | Group | Purpose |
 |---|---|
 | `app/(auth)/` | Unauthenticated screens: login, register |
-| `app/(tabs)/` | Bottom-tab navigator: Potes, Mensal, Projeção, Metas, Perfil |
-| `app/onboarding/` | First-run wizard: step1 (balance + currency), step2 (cycle + income), step3 (first pot) |
+| `app/(tabs)/` | Bottom-tab navigator: 🫙 Potes, 📅 Mensal, 📈 Projeção, 🎯 Metas, 👤 Perfil |
+| `app/onboarding/` | First-run wizard: step1, step2, step3 |
+| `app/pot/[id].tsx` | Dynamic route — registered as `name="pot/[id]"` in root Stack |
+| `app/ocr.tsx`, `app/achievements.tsx` | Stack screens (not tabs) |
 
-`app/_layout.tsx` is the root. On mount it:
-1. Opens the SQLite database via `lib/database.ts`
-2. Restores the Supabase session and subscribes to `onAuthStateChange`
-3. Fetches the `users` row from Supabase and writes it into `useAuthStore`
-4. Wraps everything in `QueryClientProvider` (staleTime: 5 min, retry: 2)
+`app/_layout.tsx` root — on mount: opens SQLite DB, restores Supabase session, fetches `users` row into `useAuthStore`, wraps in `QueryClientProvider` (staleTime: 5 min, retry: 2), calls `checkAndGrantBadges`.
 
-Navigate between groups with `router.replace('/(tabs)/')` or `router.replace('/(auth)/login')`.  
-Onboarding steps share state via the module-level `onboardingDraft` object in `lib/onboardingDraft.ts` (not router params, since income sources are an array). Step3 clears the draft after a successful save.
+**Route guard logic:**
+1. Loading → `ActivityIndicator` (Stack not mounted)
+2. Not authenticated + not in `(auth)` → `/(auth)/login`
+3. Authenticated + `user` null or `initial_balance === 0` + not in `onboarding` → `/onboarding/step1`
+4. Authenticated + valid profile + not in `(tabs)` → `/(tabs)/`
+
+Uses `useSegments()` before redirecting; guard also allows `segments[0] === 'pot'` and `'ocr'`/`'achievements'`.
 
 ### Data flow
-
-Hooks in `hooks/` are the **only** place that call Supabase. Pattern used consistently:
 
 ```
 useQuery / useMutation  (React Query — server state, cache, loading/error)
   └─ calls supabase.*
-  └─ onSuccess → writes into Zustand store (setPots, addTransaction, …)
+  └─ onSuccess → writes into Zustand store
 
 Zustand store  (stores/ — synchronous in-memory working set)
   └─ components read from here for instant access without suspense
 ```
 
+**Hooks** (`hooks/`):
+- `usePots` — fetches pots for current user, writes to `usePotsStore`
+- `useTransactions` — fetches transactions with cycle filtering, writes to `useTransactionStore`
+- `useIncomeSources` — fetches income sources for current user
+
 Never call `supabase` directly from a component. Exceptions:
-- `useAuthStore` calls Supabase internally for all auth operations
-- `onboarding/step3.tsx` calls Supabase directly for the 3-step wizard save sequence
-- `app/(tabs)/index.tsx` (dashboard) calls Supabase directly via `useEffect` for reliability after onboarding
+- `useAuthStore` — all auth operations
+- `onboarding/step3.tsx` — 3-step wizard save sequence
+- `app/(tabs)/index.tsx` — direct `useEffect` calls for reliability after onboarding
 
-**Dashboard data loading** — `app/(tabs)/index.tsx` uses `useEffect` + `useState` with direct Supabase calls (not hooks). Triggered by `user?.id` change so it refetches automatically after onboarding completes. Supports pull-to-refresh. Income total comes from `income_sources.amount` (NOT transactions). Expenses come from `transactions` filtered by pot + cycle dates.
+**Dashboard data loading** — `app/(tabs)/index.tsx` uses `useEffect` + `useState`. Income total from `income_sources.amount` (NOT transactions). Expenses from `transactions` filtered by pot + cycle dates. Refetches on `user?.id` change.
 
-**Cycle filtering** — `getCycleDates(user.cycle_start)` returns `{ start, end }` as ISO date strings. All per-pot expense queries use `.gte('date', start).lte('date', end)`.
+### Cycle logic (`lib/cycle.ts`)
 
-**`PotCard`** receives flat props: `name, color, limit_amount?, spent, remaining, onPress?, onLongPress?`. `spent` and `remaining` are calculated by the parent — never passed as a `Pot` object. Progress bar: green below 50%, amber 50–80%, red above 80%. Values formatted with `toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })`. `onLongPress` triggers the parent's action sheet (edit / filter transactions / delete).
+- `getCycle(cycleStart, offset)` — returns cycle bounds; `end` = day before cycleStart in next month
+- `getCycleDates(cycleStart)` — returns `{ start, end }` as ISO strings for current cycle
+- `isCurrentCycle(cycleStart, offset)` — boolean
+- `formatDateShort(date)` — "Hoje" / "Ontem" / "DD MMM"
 
-### Offline layer
+### Cycle close (`lib/cycleClose.ts`)
 
-`lib/database.ts` — singleton `getDatabase()` opens `snapgestao.db` with `expo-sqlite` and runs `CREATE TABLE IF NOT EXISTS` for `pots`, `transactions`, and `goals`. Each table has a `synced_at TEXT` column (sync logic not yet implemented). Initialised once in the root layout.
+- `calculateCycleSummary(userId, cycle)` — computes income, expenses, balance for a cycle
+- `processCycleClose(userId, cycle, surplusAction, surplusGoalId)` — closes cycle, creates `cycle_rollovers` row
+- `recalculateRollover(userId, cycleStart, offset)` — recalculates an already-closed cycle preserving `surplus_action`/`surplus_goal_id`; used in retroactive cascade
 
-### Auth
+### Auth (`stores/useAuthStore.ts`)
 
-`useAuthStore` (`stores/useAuthStore.ts`) is fully implemented with:
-- `signIn(email, password)` / `signUp(name, email, password)` — return a translated Portuguese error string or `null` on success. Components show these inline, not via `Alert`.
-- `signOut()` — calls Supabase + clears store. The screen that triggers it handles navigation to `/(auth)/login`.
-- `init()` — called once in root layout. Loads the current session and starts `onAuthStateChange`. Returns an unsubscribe function for cleanup.
-- `setUser(user)` — used by `onboarding/step3.tsx` after saving the user row, so the `_layout.tsx` guard sees the completed profile and doesn't loop back to onboarding.
+- `signIn` / `signUp` — return Portuguese error string or `null` on success
+- `signOut` — clears store; calling screen handles navigation
+- `init()` — called once in root layout; starts `onAuthStateChange`; returns unsubscribe
+- `setUser(user)` — called by onboarding/step3 after save, so guard sees completed profile
 
-**Invalid token recovery** — handles the case where the user is deleted from Supabase but a stale token remains on the device:
-- `loadSession()` wraps `getSession()` in try/catch. On error or missing session it calls `supabase.auth.signOut()` to wipe the stored token, then sets `isLoading: false` so the guard redirects to login.
-- `onAuthStateChange` in `init()` explicitly handles `SIGNED_OUT` and `!session` events — clears store state immediately. `TOKEN_REFRESHED` / `SIGNED_IN` events also wrap the profile fetch in try/catch with the same signOut fallback.
-- `_layout.tsx` fires an additional `supabase.auth.getSession()` on mount as a safety belt — if the token is invalid it calls `signOut()` to unblock the loading spinner.
-- Do NOT add an `onAuthStateChange` listener inside `lib/supabase.ts` — that creates a circular import with `useAuthStore`. Handle all auth events inside `init()` where both Supabase and store state are accessible.
+Do NOT add `onAuthStateChange` inside `lib/supabase.ts` — circular import with `useAuthStore`.
 
-`user` is the app-level `User` type from `types/index.ts`, loaded from the `users` Supabase table — distinct from `auth.users`. The `users` row is created at the end of onboarding (step3), not at signup.
+### Onboarding state (`lib/onboardingDraft.ts`)
 
-**Route guard logic** (`app/_layout.tsx`):
-1. While loading → `ActivityIndicator` (Stack not mounted yet)
-2. Not authenticated + not in `(auth)` → `router.replace('/(auth)/login')`
-3. Authenticated + `user` is null or `initial_balance === 0` + not in `onboarding` → `router.replace('/onboarding/step1')`
-4. Authenticated + valid profile + not in `(tabs)` → `router.replace('/(tabs)/')`
+Module-level singleton shared across steps (not router params — income sources are an array):
+- `onboardingDraft.set/get/clear` — balance, currency, cycleStart
+- `onboardingDraft.addSource/removeSource` — income source array
 
-Uses `useSegments()` to check current group before redirecting (avoids redirect loops).
+Currency mask helpers: `formatCents("15000")` → `"R$ 150,00"`, `digitsOnly`, `centsToFloat`.
 
-### Onboarding
+**Step3 Supabase sequence** — pots INSERT only: `user_id, name, color, limit_amount, limit_type, is_emergency`. Double-tap guarded with `if (loading) return`.
 
-Three-step wizard in `app/onboarding/`. Runs once for new users (guard detects `user.initial_balance === 0` or missing `users` row).
+### Onboarding modal structure (Android-safe)
 
-**State sharing between steps** — `lib/onboardingDraft.ts` exports a module-level singleton:
-- `onboardingDraft.set({ balance, currency, cycleStart })` — written by step1 and step2
-- `onboardingDraft.addSource(source)` / `removeSource(index)` — managed by step2's modal
-- `onboardingDraft.get()` — read by step3
-- `onboardingDraft.clear()` — called by step3 after successful Supabase write
+`KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two **siblings**: (1) `absoluteFillObject` `TouchableOpacity` as dismiss overlay, (2) `View` as bottom sheet. Never nest the sheet inside the overlay — causes Android layout corruption. Type chips in horizontal `ScrollView` (not `flexWrap`).
 
-**Currency mask helpers** (`lib/onboardingDraft.ts`):
-- `formatCents(rawDigits)` — converts `"15000"` → `"R$ 150,00"`
-- `digitsOnly(text, maxLen?)` — strips non-digits, used in `onChangeText`
-- `centsToFloat(rawDigits)` — converts `"15000"` → `150.00`
+### OCR Edge Function (`supabase/functions/process-receipt/index.ts`)
 
-All three steps share the same visual language: 4px progress bar at top (33/66/100%), icon in a `72×72` rounded square (`Colors.lightBlue` background), title + subtitle, scrollable content, and a fixed bottom button outside the ScrollView.
+Deno. Calls Google Cloud Vision (`TEXT_DETECTION` + `DOCUMENT_TEXT_DETECTION`). Extracts: merchant (first line), total (keyword regex), date (DD/MM/YYYY → ISO), CNPJ, line items. Saves image to `receipts` bucket and record to `public.receipts`. `tsconfig.json` excludes `supabase/functions` to avoid Deno import errors.
 
-**Step2 income modal** uses React Native's built-in `Modal` (animationType: "slide", transparent overlay). Income sources are stored as `IncomeSourceDraft[]` in the draft singleton. An empty list is valid — income sources are optional.
+### Offline layer (`lib/database.ts`)
 
-Modal structure: `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two **siblings** — (1) an `absoluteFillObject` `TouchableOpacity` as the dismiss overlay, and (2) a `View` as the bottom sheet. Do NOT nest the sheet inside the overlay `TouchableOpacity`; that causes Android layout corruption. Sheet state is a single `novaFonte` object updated with the functional form `setNovaFonte(f => ({ ...f, field: value }))`. Type chips are in a horizontal `ScrollView` (not `flexWrap`).
+Singleton `getDatabase()` — opens `snapgestao.db` via `expo-sqlite`, creates `pots`, `transactions`, `goals` tables with `synced_at TEXT`. Sync not yet implemented. Initialized once in root layout.
 
-**Step3 Supabase sequence** (try/finally, each step returns early on error):
-1. Get `userId` from `useAuthStore.getState().session?.user.id` — no network call needed
-2. `supabase.from('users').upsert(...)` — creates/updates profile row; per-step `console.error` + `setError` on failure
-3. `supabase.from('income_sources').insert([...])` — batch insert if any sources; explicit column mapping (no spread) to avoid sending unexpected fields
-4. `supabase.from('pots').insert(...)` — only columns: `user_id, name, color, limit_amount, limit_type, is_emergency` — do NOT add `icon` or `mesada_active` (these columns do not exist in the schema)
-5. `setUser(savedUser)` → `onboardingDraft.clear()` → `router.replace('/(tabs)/')`
-6. Double-tap protection: guard `if (loading) return` at top of handler
+### Types (`types/index.ts`)
 
-### Notificações
-
-`lib/notifications.ts` — **expo-notifications foi removido** (incompatível com Expo Go SDK 53):
-- `sendLocalNotification(title, body)` — usa `Alert.alert` no Expo Go; em produção substituir por expo-notifications
-- `checkCriticalPots(userId, cycleStart)` — consulta potes do ciclo e dispara alert a 70% (⚠️), 80% (🔴) e 100% (🚨)
-- `registerForPushNotifications()` / `scheduleCycleEndReminder()` — no-ops; implementar com expo-notifications no build de produção
-- Integrado em `app/_layout.tsx` (ao carregar o usuário) e `NewExpenseModal` (após cada gasto)
-- `app/_layout.tsx` **não importa** expo-notifications diretamente
-
-### OCR
-
-`lib/ocr.ts`:
-- `processReceipt(imageUri, userId)` — converte para base64 e chama Edge Function `process-receipt`
-- `captureReceipt()` / `pickReceiptFromGallery()` — abre câmera ou galeria via `expo-image-picker`
-- `imageToBase64(uri)` — usa `expo-file-system/legacy` (`readAsStringAsync` + `EncodingType.Base64`); importar de `expo-file-system/legacy`, não do módulo principal (API movida no SDK 54)
-
-`app/ocr.tsx` — tela de 4 steps:
-1. `camera` — botões de captura/galeria; exibe badge do pote quando vindo de `pot/[id]`
-2. `processing` — spinner enquanto Edge Function processa
-3. `review` — editar merchant/total/data, modo simplificado (total + pote único) ou detalhado (item a item com seletor de pote por linha)
-4. `saving` — insere transações e marca receipt como `processed: true`
-
-Parâmetros de rota aceitos: `cycleDate` (data padrão dos lançamentos), `defaultPotId` (pote pré-selecionado em todos os itens), `defaultPotName` (exibido no badge).
-
-**Pontos de entrada:**
-- FAB da tela Mensal: 3ª opção "📷 Escanear cupom" passa `cycleDate` do ciclo visualizado
-- Tela do pote (`pot/[id]`): botão "📷 Cupom" na barra de ações passa `defaultPotId`, `defaultPotName` e `cycleDate`
-
-`supabase/functions/process-receipt/index.ts` — Edge Function Deno:
-- Chama Google Cloud Vision API (`TEXT_DETECTION` + `DOCUMENT_TEXT_DETECTION`)
-- Extrai: merchant (1ª linha), total (regex por palavra-chave), data (DD/MM/YYYY → YYYY-MM-DD), CNPJ, itens (linhas com valor no final)
-- Salva imagem no bucket `receipts` e registro em `public.receipts`
-- Env vars: `GOOGLE_VISION_KEY`, `SUPABASE_URL` (auto), `SUPABASE_SERVICE_ROLE_KEY` (auto)
-- `tsconfig.json` exclui `supabase/functions` para evitar erros do compilador com imports Deno
-
-### Types
-
-All shared types in `types/index.ts`: `User`, `Pot`, `Transaction`, `Goal`, `CreditCard`, `IncomeSource`.
+`User`, `Pot`, `Transaction` (with `installment_total`, `installment_number`, `installment_group_id`), `Goal`, `CreditCard`, `IncomeSource`, `PotLimitHistory`.
 
 ### Styling
 
-`StyleSheet.create` inline per file — no styling framework. Always import from `constants/colors.ts`:
+`StyleSheet.create` inline per file — no framework. Always import colors from `constants/colors.ts`:
 
 | Token | Value | Use |
 |---|---|---|
@@ -390,22 +206,32 @@ All shared types in `types/index.ts`: `User`, `Pot`, `Transaction`, `Goal`, `Cre
 | `textDark` | `#1A2030` | Body text |
 | `textMuted` | `#7A8499` | Secondary text, placeholders |
 
-**PotCard** (`components/PotCard.tsx`) takes flat props: `name, color, limit_amount, spent, remaining, onPress?`. No `Pot` object passed — parent destructures before calling. Uses `getPotIcon(name)` from `lib/potIcons.ts` for the emoji. Colored left border (`borderLeftWidth: 3, borderLeftColor: color`); icon badge background is `color + '26'` (15% opacity). Progress bar: pot color below 50%, amber 50–80%, red above 80%. Values formatted with `toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })`. Always renders `TouchableOpacity` with `disabled={!onPress}` and `activeOpacity={onPress ? 0.8 : 1}` — safe to render in preview without a handler.
+**PotCard** (`components/PotCard.tsx`) — flat props: `name, color, limit_amount?, spent, remaining, onPress?, onLongPress?`. Parent calculates `spent`/`remaining` — never pass a `Pot` object. Progress bar: pot color < 50%, amber 50–80%, red > 80%. `onLongPress` opens parent action sheet (edit / filter / delete). Safe to render without handlers (`disabled={!onPress}`).
 
-**Pot icon mapping** (`lib/potIcons.ts`): `getPotIcon(name)` maps pot names to emojis — exact match first, then partial match (substring in either direction), then `'💰'` fallback. ~80 category mappings covering alimentação, moradia, transporte, saúde, educação, lazer, pets, finanças, beleza, tecnologia, família, etc.
+**JarPot preview pattern** — render `PotCard` with `spent=0, remaining=centsToFloat(limitDigits)` for real-time preview as user types. Used in `onboarding/step3.tsx` and `NewPotModal`.
 
-**Real-time PotCard preview** in `onboarding/step3.tsx` and `NewPotModal`: renders a `PotCard` with `spent=0`, `remaining=centsToFloat(limitDigits)` so the user sees the card update as they type the name and pick a color. Use this pattern in any future pot creation/edit screen.
+**Pot icon mapping** (`lib/potIcons.ts`) — `getPotIcon(name)`: exact match → partial match → `'💰'` fallback. ~80 categories.
 
-**Pot color palette** — 12 colors exported as `POT_COLORS` from `components/NewPotModal.tsx`. Import from there to stay in sync. Display as a grid of 36px circles with `gap: 10`, `flexWrap: 'wrap'`. Selected circle gets `borderWidth: 3, borderColor: white` + shadow/elevation.
+**Goal icon mapping** (`lib/goalIcons.ts`) — `getGoalIcon(name)`: ~40 categories.
+
+**Finance utils** (`lib/finance.ts`) — `calcFV(monthlyDeposit, annualRatePct, years)`, `brl(value)`.
 
 ## Known Android bugs (fixed — do not reintroduce)
 
-- **Button bounce on Android**: `KeyboardAvoidingView behavior="height"` at screen level causes layout shift animation before keyboard opens. Fix: remove KAV from all screens; use `<SafeAreaView edges={['top']}>` as root container. KAV is only used inside `Modal`.
-- **Modal layout corruption**: Nesting the bottom sheet `TouchableOpacity` inside the overlay `TouchableOpacity` with `justifyContent: 'flex-end'` on the overlay causes element overlap on Android. Fix: see Step2 modal structure above (siblings, not parent-child).
-- **`storage.removeItem is not a function`**: `expo-secure-store` exposes `getItemAsync/setItemAsync/deleteItemAsync`, but Supabase JS SDK expects `getItem/setItem/removeItem`. Fix: use `ExpoSecureStoreAdapter` in `lib/supabase.ts`.
+- **Button bounce**: `KeyboardAvoidingView behavior="height"` at screen level causes layout animation before keyboard opens. Fix: remove KAV from screens; use `<SafeAreaView edges={['top']}>` as root. KAV only inside `Modal`.
+- **Modal layout corruption**: nesting bottom sheet inside overlay `TouchableOpacity` with `justifyContent: 'flex-end'` causes element overlap. Fix: siblings, not parent-child (see Onboarding modal structure above).
+- **`storage.removeItem is not a function`**: `expo-secure-store` exposes `getItemAsync/setItemAsync/deleteItemAsync` but Supabase SDK expects `getItem/setItem/removeItem`. Fix: `ExpoSecureStoreAdapter` in `lib/supabase.ts`.
 
 ## Key constraints
 
 - `expo-router` pinned at `~6.0.23` for Expo 54 — do not upgrade without upgrading `expo` together.
 - New Architecture enabled (`newArchEnabled: true`) — avoid libraries incompatible with it.
-- `@react-navigation/*` is installed as a peer dep of Expo Router. Use `expo-router` APIs (`router`, `Link`, `useLocalSearchParams`) — never import from `@react-navigation` directly.
+- Use `expo-router` APIs (`router`, `Link`, `useLocalSearchParams`) — never import from `@react-navigation` directly.
+- `babel.config.js` does not exist — do not create one unless adding a plugin that requires it.
+
+## Roadmap
+
+- [ ] Glossário financeiro
+- [ ] Testes e validações finais
+- [ ] Build de produção (EAS)
+- [ ] Push notifications (expo-notifications, requires production build)

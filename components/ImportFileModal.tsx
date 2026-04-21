@@ -97,11 +97,10 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [step, setStep] = useState<Step>('pick')
   const [rows, setRows] = useState<ImportRow[]>([])
   const [filename, setFilename] = useState('')
-  const [globalPotId, setGlobalPotId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
 
-  const reset = () => { setStep('pick'); setRows([]); setFilename(''); setGlobalPotId(null) }
+  const reset = () => { setStep('pick'); setRows([]); setFilename('') }
   const handleClose = () => { reset(); onClose() }
 
   const pickFile = async () => {
@@ -130,9 +129,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     }
   }
 
-  const applyGlobalPot = () => {
-    setRows(r => r.map(row => ({ ...row, potId: globalPotId })))
-    setStep('assign')
+  const removeRow = (idx: number) => {
+    setRows(prev => prev.filter((_, i) => i !== idx))
   }
 
   const setRowPot = (idx: number, potId: string | null) => {
@@ -190,7 +188,10 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
 
   const renderPreviewRow = ({ item, index }: { item: ImportRow; index: number }) => (
     <View style={styles.previewRow}>
-      <View style={{ flex: 1 }}>
+      <Text style={[styles.typeIndicator, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
+        {item.type === 'income' ? '↑' : '↓'}
+      </Text>
+      <View style={{ flex: 1, marginHorizontal: 8 }}>
         <Text style={styles.previewDesc} numberOfLines={1}>{item.description}</Text>
         <Text style={styles.previewMeta}>{item.date}</Text>
       </View>
@@ -206,6 +207,9 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           </View>
         )}
       </View>
+      <TouchableOpacity onPress={() => removeRow(index)} style={styles.removeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Text style={styles.removeBtnText}>✕</Text>
+      </TouchableOpacity>
     </View>
   )
 
@@ -250,7 +254,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         <View style={styles.header}>
           <Text style={styles.title}>
             {step === 'pick' ? 'Importar Planilha' :
-             step === 'preview' ? `${rows.length} linhas encontradas` :
+             step === 'preview' ? `${rows.length} itens detectados` :
              step === 'assign' ? 'Atribuir potes' :
              step === 'done' ? 'Concluído' : 'Salvando...'}
           </Text>
@@ -294,42 +298,19 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               Prévia ({rows.length} linhas → {totalTransactions} lançamentos)
             </Text>
             <FlatList
-              data={rows.slice(0, 50)}
+              data={rows}
               keyExtractor={(_, i) => String(i)}
               renderItem={renderPreviewRow}
               style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
             />
 
-            <View style={styles.sectionLabel2}>
-              <Text style={styles.sectionLabel}>Pote padrão (opcional)</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.potScroll}>
-              <TouchableOpacity
-                style={[styles.potChip, globalPotId === null && styles.potChipActive]}
-                onPress={() => setGlobalPotId(null)}
-              >
-                <Text style={[styles.potChipText, globalPotId === null && styles.potChipTextActive]}>Nenhum</Text>
-              </TouchableOpacity>
-              {pots.map(p => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.potChip, globalPotId === p.id && styles.potChipActive, { borderColor: p.color }]}
-                  onPress={() => setGlobalPotId(p.id)}
-                >
-                  <Text style={[styles.potChipText, globalPotId === p.id && { color: p.color }]}>
-                    {getPotIcon(p.name)} {p.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
             <View style={styles.bottomRow}>
               <TouchableOpacity style={styles.secondaryBtn} onPress={reset}>
                 <Text style={styles.secondaryBtnText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={applyGlobalPot}>
-                <Text style={styles.primaryBtnText}>Avançar →</Text>
+              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={() => setStep('assign')}>
+                <Text style={styles.primaryBtnText}>Confirmar itens →</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -401,16 +382,18 @@ const styles = StyleSheet.create({
   },
   filenameText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: Colors.textDark, paddingHorizontal: 16, paddingVertical: 8 },
-  sectionLabel2: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 4 },
   previewRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 16,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.white,
   },
+  typeIndicator: { fontSize: 15, fontWeight: '800', width: 18, textAlign: 'center' },
   previewDesc: { fontSize: 13, fontWeight: '500', color: Colors.textDark },
   previewMeta: { fontSize: 11, color: Colors.textMuted },
-  previewAmt: { fontSize: 13, fontWeight: '700', marginLeft: 8 },
+  previewAmt: { fontSize: 13, fontWeight: '700' },
+  removeBtn: { marginLeft: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  removeBtnText: { fontSize: 10, color: Colors.textMuted, fontWeight: '700' },
   installBadge: {
     backgroundColor: Colors.lightBlue, borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
