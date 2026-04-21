@@ -6,7 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
-import { captureReceipt, pickReceiptFromGallery, processReceipt, OCRItem } from '../lib/ocr'
+import {
+  captureReceipt, pickReceiptFromGallery, processReceipt,
+  fetchNFCeFromURL, OCRItem, NFCeItem,
+} from '../lib/ocr'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
@@ -14,10 +17,11 @@ import { getPotIcon } from '../lib/potIcons'
 import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { Pot } from '../types'
+import QRCameraScanner from '../components/QRCameraScanner'
 
-type OCRStep = 'camera' | 'processing' | 'review' | 'saving'
+type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
-type ReviewItem = OCRItem & { potId: string | null }
+type ReviewItem = { name: string; value: number; potId: string | null }
 
 export default function OCRScreen() {
   const { user } = useAuthStore()
@@ -29,7 +33,7 @@ export default function OCRScreen() {
 
   const initialDate = cycleDate ?? new Date().toISOString().split('T')[0]
 
-  const [step, setStep] = useState<OCRStep>('camera')
+  const [step, setStep] = useState<OCRStep>('menu')
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
@@ -40,24 +44,23 @@ export default function OCRScreen() {
   const [simplified, setSimplified] = useState(false)
   const [singlePotId, setSinglePotId] = useState<string | null>(defaultPotId ?? null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+  const [processingMessage, setProcessingMessage] = useState('Lendo o cupom...')
 
   const loadPots = async () => {
     if (!user) return
     const cycle = getCycle(user.cycle_start ?? 1, 0)
     const { data } = await supabase
-      .from('pots')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_emergency', false)
-      .is('deleted_at', null)
-      .lte('created_at', cycle.end.toISOString())
-      .order('created_at')
+      .from('pots').select('*')
+      .eq('user_id', user.id).eq('is_emergency', false)
+      .lte('created_at', cycle.end.toISOString()).order('created_at')
     setPots((data ?? []) as Pot[])
   }
 
-  const handleCapture = async (uri: string | null) => {
+  // OCR path: photograph → Google Vision
+  const handleOCRCapture = async (uri: string | null) => {
     if (!uri || !user) return
     setImageUri(uri)
+    setProcessingMessage('Lendo o cupom...')
     setStep('processing')
     await loadPots()
 
@@ -66,20 +69,18 @@ export default function OCRScreen() {
       result = await processReceipt(uri, user.id)
     } catch {
       Alert.alert('Erro de conexão', 'Verifique sua conexão e tente novamente.')
-      setStep('camera')
+      setStep('menu')
       return
     }
 
     if (!result.success) {
       Alert.alert(
         'Erro no processamento',
-        result.error
-          ? result.error.includes('500') || result.error.includes('non-2xx')
-            ? 'Serviço de leitura indisponível. Tente novamente em instantes.'
-            : result.error
-          : 'Não foi possível ler o cupom. Verifique a iluminação e tente novamente.',
+        result.error?.includes('500') || result.error?.includes('non-2xx')
+          ? 'Serviço de leitura indisponível. Tente novamente em instantes.'
+          : (result.error ?? 'Não foi possível ler o cupom. Verifique a iluminação e tente novamente.'),
       )
-      setStep('camera')
+      setStep('menu')
       return
     }
 
@@ -87,9 +88,39 @@ export default function OCRScreen() {
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.receipt_date ?? initialDate)
-    setItems(
-      (result.items ?? []).map(i => ({ ...i, potId: defaultPotId ?? null })),
-    )
+    setItems((result.items ?? []).map(i => ({ name: i.name, value: i.value, potId: defaultPotId ?? null })))
+    setStep('review')
+  }
+
+  // QR Code path: scan → fetch SEFAZ
+  const handleQRCodeScanned = async (url: string) => {
+    setProcessingMessage('Buscando dados na SEFAZ...')
+    setStep('processing')
+    await loadPots()
+
+    const result = await fetchNFCeFromURL(url)
+
+    if (!result.success || !result.items?.length) {
+      Alert.alert(
+        'Não foi possível ler o cupom',
+        result.error
+          ? `Erro: ${result.error}`
+          : 'Verifique se o QR Code é de uma NFC-e válida ou tente a opção de leitura por OCR.',
+        [{ text: 'OK', onPress: () => setStep('menu') }]
+      )
+      return
+    }
+
+    setMerchant(result.merchant ?? '')
+    setTotal(result.total != null ? String(result.total) : '')
+    setReceiptDate(result.emission_date ?? initialDate)
+    setItems(result.items.map(item => ({
+      name: item.name,
+      value: item.totalValue,
+      potId: defaultPotId ?? null,
+    })))
+    setImageUri(null)
+    setReceiptId(null)
     setStep('review')
   }
 
@@ -105,30 +136,22 @@ export default function OCRScreen() {
       if (simplified) {
         if (totalAmount > 0) {
           await supabase.from('transactions').insert({
-            user_id: userId,
-            pot_id: singlePotId,
-            type: 'expense',
-            amount: totalAmount,
+            user_id: userId, pot_id: singlePotId,
+            type: 'expense', amount: totalAmount,
             description: merchant || 'Cupom fiscal',
             merchant: merchant || null,
-            date: today,
-            payment_method: 'cash',
-            is_need: true,
+            date: today, payment_method: 'cash', is_need: true,
           })
         }
       } else {
         const validItems = items.filter(i => i.value > 0)
         for (const item of validItems) {
           await supabase.from('transactions').insert({
-            user_id: userId,
-            pot_id: item.potId,
-            type: 'expense',
-            amount: item.value,
+            user_id: userId, pot_id: item.potId,
+            type: 'expense', amount: item.value,
             description: item.name,
             merchant: merchant || null,
-            date: today,
-            payment_method: 'cash',
-            is_need: true,
+            date: today, payment_method: 'cash', is_need: true,
           })
         }
       }
@@ -149,54 +172,105 @@ export default function OCRScreen() {
     }
   }
 
-  const updateItemPot = (index: number, potId: string | null) => {
+  const updateItemPot = (index: number, potId: string | null) =>
     setItems(prev => prev.map((item, i) => i === index ? { ...item, potId } : item))
-  }
 
-  const removeItem = (index: number) => {
+  const removeItem = (index: number) =>
     setItems(prev => prev.filter((_, i) => i !== index))
-  }
 
-  const addItem = () => {
+  const addItem = () =>
     setItems(prev => [...prev, { name: '', value: 0, potId: null }])
-  }
 
-  const updateItem = (index: number, field: 'name' | 'value', value: string) => {
+  const updateItem = (index: number, field: 'name' | 'value', value: string) =>
     setItems(prev => prev.map((item, i) =>
-      i === index
-        ? { ...item, [field]: field === 'value' ? parseFloat(value) || 0 : value }
-        : item,
+      i === index ? { ...item, [field]: field === 'value' ? parseFloat(value) || 0 : value } : item
     ))
-  }
 
-  // ── STEP: camera ──────────────────────────────────────────────────────────
-  if (step === 'camera') {
+  // ── STEP: menu ────────────────────────────────────────────────────────────
+  if (step === 'menu') {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={styles.backBtn}>‹ Voltar</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Escanear cupom</Text>
+          <Text style={styles.headerTitle}>Adicionar cupom</Text>
           <View style={{ width: 60 }} />
         </View>
 
-        <View style={styles.cameraStep}>
-          <Text style={styles.cameraIcon}>🧾</Text>
-          <Text style={styles.cameraTitle}>Fotografar cupom fiscal</Text>
+        <View style={styles.menuContainer}>
           {defaultPotName ? (
-            <Text style={styles.cameraPotBadge}>📌 Pote: {defaultPotName}</Text>
+            <View style={styles.potBadge}>
+              <Text style={styles.potBadgeText}>📌 Pote: {defaultPotName}</Text>
+            </View>
           ) : null}
-          <Text style={styles.cameraHint}>Posicione o cupom em boa iluminação e enquadre o texto completamente.</Text>
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={async () => handleCapture(await captureReceipt())}>
-            <Text style={styles.primaryBtnText}>📷 Fotografar cupom</Text>
+          {/* QR Code — recomendado */}
+          <TouchableOpacity
+            style={styles.menuOptionPrimary}
+            onPress={() => setStep('qr_camera')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.menuOptionIcon}>📷</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitlePrimary}>Cupom fiscal (QR Code)</Text>
+              <Text style={styles.menuOptionDescPrimary}>
+                Aponte para o QR Code do cupom. Dados buscados direto da SEFAZ — mais preciso.
+              </Text>
+            </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.secondaryBtn} onPress={async () => handleCapture(await pickReceiptFromGallery())}>
-            <Text style={styles.secondaryBtnText}>🖼️ Escolher da galeria</Text>
+          {/* OCR — alternativa */}
+          <TouchableOpacity
+            style={styles.menuOptionSecondary}
+            activeOpacity={0.85}
+            onPress={async () => {
+              const uri = await captureReceipt()
+              if (uri) handleOCRCapture(uri)
+            }}
+          >
+            <Text style={styles.menuOptionIcon}>🔍</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitleSecondary}>Ler texto do cupom (OCR)</Text>
+              <Text style={styles.menuOptionDescSecondary}>
+                Fotografa e lê o texto. Funciona para recibos sem QR Code.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuOptionSecondary}
+            activeOpacity={0.85}
+            onPress={async () => {
+              const uri = await pickReceiptFromGallery()
+              if (uri) handleOCRCapture(uri)
+            }}
+          >
+            <Text style={styles.menuOptionIcon}>🖼️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitleSecondary}>Escolher da galeria</Text>
+              <Text style={styles.menuOptionDescSecondary}>
+                Selecione uma foto já tirada do cupom.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.back()} style={styles.cancelLink}>
+            <Text style={styles.cancelLinkText}>Cancelar</Text>
           </TouchableOpacity>
         </View>
+      </SafeAreaView>
+    )
+  }
+
+  // ── STEP: qr_camera ───────────────────────────────────────────────────────
+  if (step === 'qr_camera') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <QRCameraScanner
+          onQRCodeScanned={handleQRCodeScanned}
+          onCancel={() => setStep('menu')}
+        />
       </SafeAreaView>
     )
   }
@@ -207,7 +281,7 @@ export default function OCRScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.processingStep}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.processingTitle}>Lendo o cupom...</Text>
+          <Text style={styles.processingTitle}>{processingMessage}</Text>
           <Text style={styles.processingHint}>Isso pode levar alguns segundos</Text>
         </View>
       </SafeAreaView>
@@ -230,7 +304,7 @@ export default function OCRScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setStep('camera')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => setStep('menu')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.backBtn}>‹ Novo</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Revisar cupom</Text>
@@ -239,12 +313,10 @@ export default function OCRScreen() {
 
       <ScrollView contentContainerStyle={styles.reviewScroll} showsVerticalScrollIndicator={false}>
 
-        {/* Miniatura */}
         {imageUri && (
           <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
         )}
 
-        {/* Dados do cupom */}
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>Estabelecimento</Text>
           <TextInput
@@ -275,7 +347,6 @@ export default function OCRScreen() {
           />
         </View>
 
-        {/* Toggle modo */}
         <TouchableOpacity style={styles.toggleRow} onPress={() => setSimplified(v => !v)}>
           <Text style={styles.toggleLabel}>
             {simplified ? '✅' : '⬜'} Modo simplificado (total + pote único)
@@ -283,7 +354,6 @@ export default function OCRScreen() {
         </TouchableOpacity>
 
         {simplified ? (
-          /* Modo simplificado — escolher 1 pote */
           <View style={styles.card}>
             <Text style={styles.fieldLabel}>Pote</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -307,10 +377,8 @@ export default function OCRScreen() {
             </ScrollView>
           </View>
         ) : (
-          /* Modo detalhado — item a item */
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Itens detectados</Text>
-
             {items.map((item, index) => (
               <View key={index} style={styles.itemRow}>
                 <View style={styles.itemFields}>
@@ -356,7 +424,6 @@ export default function OCRScreen() {
                 </TouchableOpacity>
               </View>
             ))}
-
             <TouchableOpacity style={styles.addItemBtn} onPress={addItem}>
               <Text style={styles.addItemBtnText}>+ Adicionar item</Text>
             </TouchableOpacity>
@@ -366,7 +433,6 @@ export default function OCRScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Footer */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
           <Text style={styles.cancelBtnText}>Cancelar</Text>
@@ -392,27 +458,31 @@ const styles = StyleSheet.create({
   backBtn: { fontSize: 16, color: Colors.primary, fontWeight: '600' },
   headerTitle: { fontSize: 16, fontWeight: '800', color: Colors.textDark },
 
-  // Camera step
-  cameraStep: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
-  cameraIcon: { fontSize: 64 },
-  cameraTitle: { fontSize: 20, fontWeight: '800', color: Colors.textDark, textAlign: 'center' },
-  cameraHint: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
-  cameraPotBadge: {
-    fontSize: 13, fontWeight: '600', color: Colors.primary,
+  // Menu step
+  menuContainer: { flex: 1, padding: 24, gap: 14, justifyContent: 'center' },
+  potBadge: {
     backgroundColor: Colors.lightBlue, borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 6,
+    paddingHorizontal: 14, paddingVertical: 6, alignSelf: 'center', marginBottom: 4,
   },
-  primaryBtn: {
-    backgroundColor: Colors.primary, borderRadius: 14,
-    paddingHorizontal: 32, paddingVertical: 16, width: '100%', alignItems: 'center',
-    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  potBadgeText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  menuOptionPrimary: {
+    backgroundColor: Colors.primary, borderRadius: 16, padding: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  secondaryBtn: {
-    borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 14,
-    paddingHorizontal: 32, paddingVertical: 14, width: '100%', alignItems: 'center',
+  menuOptionSecondary: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    borderWidth: 1.5, borderColor: Colors.border,
   },
-  secondaryBtnText: { color: Colors.primary, fontSize: 15, fontWeight: '600' },
+  menuOptionIcon: { fontSize: 32 },
+  menuOptionTitlePrimary: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  menuOptionDescPrimary: { color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 18 },
+  menuOptionTitleSecondary: { color: Colors.textDark, fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  menuOptionDescSecondary: { color: Colors.textMuted, fontSize: 13, lineHeight: 18 },
+  cancelLink: { alignItems: 'center', paddingVertical: 8 },
+  cancelLinkText: { color: Colors.textMuted, fontSize: 14 },
 
   // Processing / saving step
   processingStep: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },

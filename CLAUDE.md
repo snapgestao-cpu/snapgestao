@@ -89,7 +89,10 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Profile** (`app/(tabs)/profile.tsx`) — cycle edit, income sources, credit cards, IR CSV export (`handleExportarIR()` via `expo-file-system/legacy` + `expo-sharing`), data clear, logout. Summary cards: current cycle balance (via `calculateCycleSummary`), active goals count, priority goal progress.
 
-**OCR** (`app/ocr.tsx`) — 4-step flow: camera → processing → review → saving. Entry points: monthly FAB (passes `cycleDate`) and pot detail (passes `defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` imports from `expo-file-system/legacy` (not main module — API moved in SDK 54).
+**OCR / NFC-e** (`app/ocr.tsx`) — menu-first flow with two paths:
+1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` component reads QR Code via `expo-camera` (`CameraView` + `barcodeScannerSettings: { barcodeTypes: ['qr'] }`), URL sent to Edge Function `fetch-nfce`, structured data returned (merchant, items, total, date, payment method).
+2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision.
+Both paths converge at the `review` step. Entry points: monthly FAB (passes `cycleDate`), pot detail (passes `defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` imports from `expo-file-system/legacy`.
 
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
@@ -177,6 +180,16 @@ Currency mask helpers: `formatCents("15000")` → `"R$ 150,00"`, `digitsOnly`, `
 ### Onboarding modal structure (Android-safe)
 
 `KeyboardAvoidingView` (`justifyContent: 'flex-end'`) wraps two **siblings**: (1) `absoluteFillObject` `TouchableOpacity` as dismiss overlay, (2) `View` as bottom sheet. Never nest the sheet inside the overlay — causes Android layout corruption. Type chips in horizontal `ScrollView` (not `flexWrap`).
+
+### Edge Function: fetch-nfce (`supabase/functions/fetch-nfce/index.ts`)
+
+Deployed (no JWT required). Fetches SEFAZ portal HTML from NFC-e QR Code URL and parses structured data:
+- Merchant: first `<span>` inside `.text-center` div, or first `<h4>`
+- Items: `table#tblItens` rows → td cells (name, qty, unit, value); fallback: `class*=produto` divs
+- Total: "Valor a Pagar R$" or "Total R$" regex
+- Payment method: keyword match (Débito / Crédito / Pix → debit/credit/pix/cash)
+- Returns `{ success, source:'sefaz_rj', merchant, cnpj, emission_date, items[], total, payment_method }`
+- **Pending**: support for other states (SP: `nfce.fazenda.sp.gov.br`, MG: `nfce.fazenda.mg.gov.br`)
 
 ### OCR Edge Function (`supabase/functions/process-receipt/index.ts`)
 

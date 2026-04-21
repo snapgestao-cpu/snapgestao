@@ -4,6 +4,38 @@ import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy'
 
 export type OCRItem = { name: string; value: number }
 
+export type NFCeItem = {
+  name: string
+  quantity: number
+  unit: string
+  unitValue: number
+  totalValue: number
+}
+
+export type NFCeResult = {
+  success: boolean
+  source: 'sefaz_rj' | 'ocr'
+  merchant?: string
+  cnpj?: string
+  emission_date?: string
+  items?: NFCeItem[]
+  total?: number
+  payment_method?: string
+  error?: string
+}
+
+export async function fetchNFCeFromURL(url: string): Promise<NFCeResult> {
+  try {
+    const { data, error } = await supabase.functions.invoke('fetch-nfce', {
+      body: { url },
+    })
+    if (error) throw error
+    return data as NFCeResult
+  } catch (err) {
+    return { success: false, source: 'sefaz_rj', error: String(err) }
+  }
+}
+
 export type OCRResult = {
   success: boolean
   receipt_id?: string
