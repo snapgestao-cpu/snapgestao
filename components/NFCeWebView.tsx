@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import { View, Text, ActivityIndicator, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Colors } from '../constants/colors'
 import type { NFCeResult } from '../lib/ocr'
@@ -11,27 +11,139 @@ type Props = {
   onCancel: () => void
 }
 
-// Debug script — captures raw HTML info to understand SEFAZ-RJ page structure
 const EXTRACT_SCRIPT = `
 (function() {
   try {
-    const html = document.documentElement.outerHTML
-    const text = document.body ? (document.body.innerText || '') : ''
+    // ── ESTABELECIMENTO ──
+    const merchantEl = document.getElementById('u20')
+      || document.querySelector('.txtTopo')
+    const merchant = merchantEl
+      ? merchantEl.innerText.trim()
+      : 'Não identificado'
+
+    // ── CNPJ ──
+    let cnpj = null
+    const cnpjMatch = document.body.innerText.match(
+      /CNPJ[:\\s]*([\\d\\.\\-\\/]+)/
+    )
+    if (cnpjMatch) {
+      cnpj = cnpjMatch[1].replace(/\\D/g, '')
+    }
+
+    // ── DATA ──
+    const dateMatch = document.body.innerText.match(
+      /Emiss[ãa]o[:\\s]*(\\d{2})\\/(\\d{2})\\/(\\d{4})/
+    )
+    const emissionDate = dateMatch
+      ? dateMatch[3]+'-'+dateMatch[2]+'-'+dateMatch[1]
+      : new Date().toISOString().split('T')[0]
+
+    // ── ITENS via tabela tabResult ──
+    const items = []
+    const tbl = document.getElementById('tabResult')
+
+    if (tbl) {
+      const rows = tbl.querySelectorAll('tr')
+      rows.forEach(function(row) {
+        const cells = row.querySelectorAll('td')
+        if (cells.length < 2) return
+
+        const rawName = cells[0].innerText.trim()
+        const name = rawName
+          .replace(/\\(Código[^)]+\\)/gi, '')
+          .replace(/\\s+/g, ' ')
+          .trim()
+
+        if (!name || name.length < 3) return
+
+        const infoText = cells.length > 1 ? cells[1].innerText : ''
+
+        const qtdeMatch = infoText.match(/Qtde\\.?:?\\s*([\\d,]+)/i)
+        const qty = qtdeMatch
+          ? parseFloat(qtdeMatch[1].replace(',', '.'))
+          : 1
+
+        const unMatch = infoText.match(/UN:?\\s*(\\w+)/i)
+        const unit = unMatch ? unMatch[1] : 'UN'
+
+        const unitMatch = infoText.match(
+          /Vl\\.?\\s*Unit\\.?[:\\s]+([\\d\\.]+,[\\d]{2})/i
+        )
+        const unitValue = unitMatch
+          ? parseFloat(unitMatch[1].replace(/\\./g, '').replace(',', '.'))
+          : 0
+
+        const lastCell = cells[cells.length - 1]
+        const totalText = lastCell.innerText.trim()
+        const totalMatch = totalText.match(/([\\d\\.]+,[\\d]{2})/)
+        const totalValue = totalMatch
+          ? parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
+          : unitValue * qty
+
+        if (totalValue > 0 && name.length > 2) {
+          items.push({
+            name: name,
+            quantity: qty,
+            unit: unit,
+            unitValue: unitValue || totalValue / qty,
+            totalValue: totalValue
+          })
+        }
+      })
+    }
+
+    // ── TOTAL A PAGAR ──
+    let total = 0
+    const pageText = document.body.innerText
+
+    const totalMatch = pageText.match(
+      /Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i
+    ) || pageText.match(
+      /Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i
+    )
+
+    if (totalMatch) {
+      total = parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
+    }
+    if (!total) {
+      total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
+    }
+
+    // ── DESCONTOS ──
+    const discountMatch = pageText.match(
+      /Descontos\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i
+    )
+    const discount = discountMatch
+      ? parseFloat(discountMatch[1].replace(/\\./g, '').replace(',', '.'))
+      : 0
+
+    // ── FORMA DE PAGAMENTO ──
+    let paymentMethod = 'debit'
+    if (/débito|debito|Débito/i.test(pageText)) paymentMethod = 'debit'
+    else if (/crédito|credito|Crédito/i.test(pageText)) paymentMethod = 'credit'
+    else if (/[Pp]ix/i.test(pageText)) paymentMethod = 'pix'
+    else if (/[Dd]inheiro|[Ee]spécie/i.test(pageText)) paymentMethod = 'cash'
+
     window.ReactNativeWebView.postMessage(JSON.stringify({
-      debug: true,
-      html_length: html.length,
-      text_preview: text.substring(0, 2000),
-      html_preview: html.substring(0, 3000),
-      title: document.title,
-      url: window.location.href,
-      body_classes: document.body ? document.body.className : '',
-      tables_count: document.querySelectorAll('table').length,
-      tables_ids: Array.from(document.querySelectorAll('table')).map(function(t) { return t.id || t.className }).join(', '),
-      h_tags: Array.from(document.querySelectorAll('h1,h2,h3,h4,h5')).map(function(h) { return h.innerText.trim() }).join(' | '),
-      spans_count: document.querySelectorAll('span').length,
+      success: items.length > 0,
+      source: 'sefaz_rj',
+      merchant: merchant,
+      cnpj: cnpj,
+      emission_date: emissionDate,
+      items: items,
+      total: total,
+      discount: discount,
+      payment_method: paymentMethod,
+      error: items.length === 0
+        ? 'Itens não encontrados na tabela tabResult'
+        : null
     }))
+
   } catch(e) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ error: String(e) }))
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      error: 'parse_error',
+      message: String(e)
+    }))
   }
 })()
 `
@@ -100,25 +212,6 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           setLoading(false)
           try {
             const data = JSON.parse(nativeEvent.data) as any
-            if (data.debug) {
-              Alert.alert('Debug HTML',
-                'Title: ' + data.title + '\nURL: ' + data.url +
-                '\nHTML length: ' + data.html_length +
-                '\nTables: ' + data.tables_count + '\nTables IDs: ' + data.tables_ids +
-                '\nH tags: ' + data.h_tags +
-                '\n\nTEXT:\n' + data.text_preview
-              )
-              console.log('=== DEBUG SEFAZ ===')
-              console.log('title:', data.title)
-              console.log('url:', data.url)
-              console.log('html_length:', data.html_length)
-              console.log('tables:', data.tables_count, data.tables_ids)
-              console.log('h_tags:', data.h_tags)
-              console.log('text_preview:', data.text_preview)
-              console.log('html_preview:', data.html_preview)
-              console.log('=== FIM DEBUG ===')
-              return
-            }
             if (data.error === 'blocked') {
               onError('Acesso bloqueado pela SEFAZ.\n\nTente conectar em uma rede Wi-Fi diferente ou use a opção OCR.')
               return
