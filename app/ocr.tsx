@@ -99,6 +99,15 @@ export default function OCRScreen() {
     await loadPots()
 
     const result = await fetchNFCeFromURL(url)
+    console.log('Resultado completo fetch-nfce:', JSON.stringify(result).substring(0, 1000))
+
+    // DEBUG temporário: mostrar o que veio do servidor
+    Alert.alert(
+      'Debug resultado',
+      JSON.stringify(result).substring(0, 500),
+      [{ text: 'OK', onPress: () => setStep('menu') }]
+    )
+    return
 
     if (!result.success || !result.items?.length) {
       Alert.alert(
