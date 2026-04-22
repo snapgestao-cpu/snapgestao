@@ -285,13 +285,11 @@ export default function PotDetailScreen() {
         onClose={() => setShowExpense(false)}
         onSuccess={() => handleSuccess('Gasto registrado!')}
         pots={[pot]}
-        initialDate={cycle.startISO}
       />
       <NewIncomeModal
         visible={showIncome}
         onClose={() => setShowIncome(false)}
         onSuccess={() => handleSuccess('Receita registrada!')}
-        initialDate={cycle.startISO}
       />
       <NewPotModal
         visible={showEdit}
