@@ -33,6 +33,12 @@ function formatBillingDate(dateStr: string): string {
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
 }
 
+function formatPurchaseDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T12:00:00')
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+}
+
 export default function PotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuthStore()
@@ -55,14 +61,20 @@ export default function PotDetailScreen() {
     try {
       const cycle = getCycle(user.cycle_start ?? 1, 0)
 
-      const [potRes, sourcesRes, txRes, creditExpRes, otherExpRes] = await Promise.all([
+      const [potRes, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes] = await Promise.all([
         supabase.from('pots').select('*').eq('id', id).single(),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
-        // Transaction list: by date (for display — user sees when they registered)
+        // Transaction list (non-credit): by date
         supabase.from('transactions').select('*')
-          .eq('pot_id', id)
+          .eq('pot_id', id).neq('payment_method', 'credit')
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false }),
+        // Transaction list (credit): by billing_date — captures installments from prior months
+        supabase.from('transactions').select('*')
+          .eq('pot_id', id).eq('payment_method', 'credit')
+          .not('billing_date', 'is', null)
+          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
+          .order('billing_date', { ascending: false }),
         // Spent: credit by billing_date
         supabase.from('transactions').select('amount')
           .eq('pot_id', id).eq('type', 'expense').eq('payment_method', 'credit')
@@ -86,8 +98,14 @@ export default function PotDetailScreen() {
       ].reduce((s, t) => s + Number(t.amount), 0)
       setSpent(spentTotal)
 
-      const txs = (txRes.data ?? []) as Transaction[]
-      setTransactions(txs.map(tx => ({
+      const txsNonCredit = (txNonCreditRes.data ?? []) as Transaction[]
+      const txsCredit = (txCreditRes.data ?? []) as Transaction[]
+      const allTxs = [...txsNonCredit, ...txsCredit].sort((a, b) => {
+        const dateA = a.payment_method === 'credit' ? (a.billing_date ?? a.date) : a.date
+        const dateB = b.payment_method === 'credit' ? (b.billing_date ?? b.date) : b.date
+        return dateB.localeCompare(dateA)
+      })
+      setTransactions(allTxs.map(tx => ({
         ...tx,
         potName: p?.name,
         potColor: p?.color,
@@ -174,15 +192,21 @@ export default function PotDetailScreen() {
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]
 
-  // Group txs by date
+  // Group txs by display date (billing_date for credit, date for others)
   const groups: { date: string; label: string; items: TxWithPot[] }[] = []
   const seen: Record<string, number> = {}
   for (const tx of transactions) {
-    if (seen[tx.date] === undefined) {
-      seen[tx.date] = groups.length
-      groups.push({ date: tx.date, label: formatDateShort(tx.date), items: [] })
+    const displayDate = tx.payment_method === 'credit' && tx.billing_date ? tx.billing_date : tx.date
+    if (seen[displayDate] === undefined) {
+      seen[displayDate] = groups.length
+      groups.push({ date: displayDate, label: formatDateShort(displayDate), items: [] })
     }
-    groups[seen[tx.date]].items.push(tx)
+    groups[seen[displayDate]].items.push(tx)
+  }
+
+  const isPrevMonthInstallment = (tx: TxWithPot) => {
+    if (tx.payment_method !== 'credit' || !tx.billing_date) return false
+    return tx.date < cycle.startISO
   }
 
   const cycle = getCycle(user!.cycle_start ?? 1, 0)
@@ -253,10 +277,21 @@ export default function PotDetailScreen() {
                         <Text style={styles.txMeta}>
                           {METHOD_LABEL[tx.payment_method] ?? tx.payment_method?.toUpperCase()}
                         </Text>
-                        {tx.payment_method === 'credit' && tx.billing_date && (
+                        {tx.payment_method === 'credit' && tx.billing_date && !isPrevMonthInstallment(tx) && (
                           <Text style={[styles.txMeta, { color: '#BA7517' }]}>
                             Vence {formatBillingDate(tx.billing_date)}
                           </Text>
+                        )}
+                        {isPrevMonthInstallment(tx) && (
+                          <View style={styles.prevInstallBadge}>
+                            <Text style={{ fontSize: 10 }}>🛍️</Text>
+                            <Text style={styles.prevInstallText}>
+                              Compra em {formatPurchaseDate(tx.date)}
+                              {tx.installment_total && tx.installment_total > 1
+                                ? ` · Parcela ${tx.installment_number}/${tx.installment_total}`
+                                : ''}
+                            </Text>
+                          </View>
                         )}
                       </View>
                     </View>
@@ -359,4 +394,10 @@ const styles = StyleSheet.create({
   txAmount: { fontSize: 14, fontWeight: '700', marginRight: 8 },
   editBtn: { padding: 4 },
   editIcon: { fontSize: 14 },
+  prevInstallBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3,
+    backgroundColor: '#FFF3E0', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start',
+  },
+  prevInstallText: { fontSize: 10, color: '#BA7517', fontWeight: '600' },
 })
