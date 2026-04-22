@@ -18,7 +18,7 @@ export async function fetchPotsForCycle(
       .eq('user_id', userId).eq('is_emergency', false)
       .not('deleted_at', 'is', null)
       .lte('created_at', cycleEndISO)
-      .gte('deleted_at', cycleStartISO)
+      .gt('deleted_at', cycleEndISO)
       .order('created_at', { ascending: true }),
   ])
   return [

@@ -158,16 +158,39 @@ export default function ProfileScreen() {
 
   const handleLimparDados = () => {
     Alert.alert(
-      'Limpar dados de teste',
-      'Isso irá excluir TODAS as transações do seu perfil. Esta ação não pode ser desfeita.',
+      'Limpar todos os dados',
+      'Isso vai apagar PERMANENTEMENTE todos os seus potes, metas, lançamentos e histórico. Esta ação não pode ser desfeita. Confirmar?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Excluir tudo', style: 'destructive',
+          text: 'Apagar tudo', style: 'destructive',
           onPress: async () => {
-            if (!user) return
-            await supabase.from('transactions').delete().eq('user_id', user.id)
-            setToast({ message: 'Transações excluídas.', color: Colors.textMuted })
+            const userId = useAuthStore.getState().user?.id
+            if (!userId) return
+            try {
+              await supabase.from('transactions').delete().eq('user_id', userId)
+              await supabase.from('pots').delete().eq('user_id', userId)
+              await supabase.from('goals').delete().eq('user_id', userId)
+              await supabase.from('income_sources').delete().eq('user_id', userId)
+              await supabase.from('cycle_rollovers').delete().eq('user_id', userId)
+              await supabase.from('projection_entries').delete().eq('user_id', userId)
+              await supabase.from('smart_merchants').delete().eq('user_id', userId)
+              await supabase.from('user_badges').delete().eq('user_id', userId)
+              await supabase.from('receipts').delete().eq('user_id', userId)
+              await supabase.from('pot_limit_history').delete().eq('user_id', userId)
+              await supabase.from('users').update({ initial_balance: 0, cycle_start: 1 }).eq('id', userId)
+              useAuthStore.getState().setUser({
+                ...useAuthStore.getState().user!,
+                initial_balance: 0,
+              })
+              Alert.alert(
+                'Dados apagados',
+                'Todos os dados foram removidos. O app voltará ao onboarding.',
+                [{ text: 'OK', onPress: () => router.replace('/onboarding/step1') }]
+              )
+            } catch {
+              Alert.alert('Erro', 'Não foi possível limpar todos os dados. Tente novamente.')
+            }
           },
         },
       ]
