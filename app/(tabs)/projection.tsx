@@ -115,13 +115,6 @@ export default function ProjectionScreen() {
         .from('projection_entries').select('*').eq('user_id', userId)
       const projEntries = ((allEntries ?? []) as ProjectionEntry[])
 
-      // Proração do mês atual
-      const today = new Date()
-      const currentCycle = getCycle(cycleStartDay, 0)
-      const diasPassados = Math.max(1,
-        Math.floor((today.getTime() - currentCycle.start.getTime()) / (1000 * 60 * 60 * 24))
-      )
-
       // ── Detectar meses anteriores com lançamentos reais ──
       const pastOffsets: number[] = []
       for (let offset = -1; offset >= -6; offset--) {
@@ -157,37 +150,36 @@ export default function ProjectionScreen() {
         const isFuture = offset > 0
         const isCurrent = offset === 0
 
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('type,amount,payment_method,billing_date,date')
-          .eq('user_id', userId)
-          .or(
-            `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
-            `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
-          )
-
-        const txList = (txs ?? []) as any[]
-        const incomeActual = txList.filter(t => t.type === 'income')
-          .reduce((s, t) => s + Number(t.amount), 0)
-        const expenseActual = txList.filter(t => t.type === 'expense' || t.type === 'goal_deposit')
-          .reduce((s, t) => s + Number(t.amount), 0)
-
         let income: number
         let expense: number
 
         if (isFuture) {
+          // Futuro: orçado dos potes + parcelas de crédito já agendadas
+          const creditInMonth = allCredit
+            .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
+            .reduce((s, t) => s + Number(t.amount), 0)
           income = base
-          expense = totalBudgeted + expenseActual
-        } else if (isCurrent) {
-          income = base + incomeActual
-          const gastoProjetado = (expenseActual / diasPassados) * 30
-          expense = Math.min(gastoProjetado, totalBudgeted)
+          expense = totalBudgeted + creditInMonth
         } else {
+          // Passado e atual: dados reais (crédito por billing_date, restante por date)
+          const { data: txs } = await supabase
+            .from('transactions')
+            .select('type,amount,payment_method,billing_date,date')
+            .eq('user_id', userId)
+            .or(
+              `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
+              `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
+            )
+          const txList = (txs ?? []) as any[]
+          const incomeActual = txList.filter(t => t.type === 'income')
+            .reduce((s, t) => s + Number(t.amount), 0)
+          const expenseActual = txList.filter(t => t.type === 'expense' || t.type === 'goal_deposit')
+            .reduce((s, t) => s + Number(t.amount), 0)
           income = base + incomeActual
           expense = expenseActual
         }
 
-        // Projection entries
+        // Lançamentos futuros avulsos (projection_entries)
         const monthEntries = projEntries.filter(e => e.cycle_start_date === cycle.startISO)
         income += monthEntries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0)
         expense += monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0)
