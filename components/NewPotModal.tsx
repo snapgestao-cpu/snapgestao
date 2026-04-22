@@ -126,22 +126,28 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
               {
                 text: 'Atualizar limite',
                 onPress: async () => {
-                  setLoading(true)
                   try {
+                    setLoading(true)
                     const { error: updateErr } = await supabase
                       .from('pots').update({ limit_amount: computedLimit, color })
-                      .eq('id', existingPot.id)
-                    if (updateErr) { setError('Erro ao atualizar pote.'); return }
+                      .eq('id', existingPot.id).eq('user_id', userId)
+                    if (updateErr) {
+                      setError('Erro ao atualizar: ' + updateErr.message)
+                      setLoading(false)
+                      return
+                    }
                     const cs = useAuthStore.getState().user?.cycle_start ?? 1
                     await supabase.from('pot_limit_history').insert({
                       pot_id: existingPot.id,
                       user_id: userId,
                       limit_amount: computedLimit,
                       valid_from: getCycle(cs, 0).start.toISOString().split('T')[0],
-                    })
-                    onSuccess('Pote atualizado!')
+                    }).select()
+                    setLoading(false)
                     onClose()
-                  } finally {
+                    setTimeout(() => { onSuccess('Pote atualizado!') }, 100)
+                  } catch (err) {
+                    setError('Erro inesperado.')
                     setLoading(false)
                   }
                 },
