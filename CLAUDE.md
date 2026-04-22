@@ -80,7 +80,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Pot queries by context:**
 - `index.tsx` (current cycle dashboard): `.is('deleted_at', null)` — only active pots.
-- `monthly.tsx` and `calculateCycleSummary`: use `fetchPotsForCycle(userId, cycleStartISO, cycleEndISO)` from `lib/pots.ts` — returns active pots + pots deleted during or after the cycle (two parallel queries combined).
+- `monthly.tsx` and `calculateCycleSummary`: use `fetchPotsForCycle(userId, cycleStartISO, cycleEndISO)` from `lib/pots.ts` — returns active pots + pots deleted AFTER the cycle end (`.gt('deleted_at', cycleEndISO)`). A pot deleted at the start of cycle N does NOT appear in cycle N, but does appear in earlier cycles.
 - Do **not** use `.or('deleted_at.is.null,...')` — that pattern was removed.
 
 **Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
