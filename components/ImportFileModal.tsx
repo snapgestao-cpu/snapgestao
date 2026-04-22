@@ -37,19 +37,27 @@ type Props = {
 
 // --- Helpers ---
 
+function formatDateISO(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 function parseDateISO(raw: any): string {
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateISO(new Date())
   if (!raw) return today
-  // Excel serial date (number)
+  // Excel serial date (number) — use local date to avoid UTC offset shifting the day
   if (typeof raw === 'number') {
     try {
       const d = XLSX.SSF.parse_date_code(raw)
-      if (d && d.y > 1900) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+      if (d && d.y > 1900) {
+        return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+      }
     } catch {}
-    // Fallback: Excel epoch (days since 1900-01-01, offset 2 for Excel bug)
-    const ms = (raw - 25569) * 86400 * 1000
-    const dt = new Date(ms)
-    if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0]
+    // Fallback: Unix epoch conversion (Excel serial → ms)
+    const dt = new Date(Math.round((raw - 25569) * 86400 * 1000))
+    if (!isNaN(dt.getTime())) return formatDateISO(dt)
     return today
   }
   const s = String(raw).trim()
@@ -59,8 +67,10 @@ function parseDateISO(raw: any): string {
   // DD/MM/YY (2-digit year)
   const dmy2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
   if (dmy2) return `20${dmy2[3]}-${dmy2[2].padStart(2, '0')}-${dmy2[1].padStart(2, '0')}`
-  // Already ISO YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  // YYYY-M-D or YYYY-MM-DD — always normalize with zero padding
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+  console.warn('[Import] data não reconhecida:', raw)
   return today
 }
 
@@ -286,12 +296,12 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const saveAll = async () => {
     setStep('saving')
     try {
-      // Verify userId from live auth session — prop may be stale
+      // Always use live auth session — prop may be stale or from wrong user
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      const resolvedUserId = authUser?.id ?? userId
-      console.log('[Import] userId prop:', userId, '| auth.getUser():', authUser?.id, '| match:', userId === authUser?.id)
+      const resolvedUserId = authUser?.id
+      console.log('[Import] auth.getUser() id:', resolvedUserId, '| prop id:', userId, '| match:', resolvedUserId === userId)
       if (!resolvedUserId) {
-        Alert.alert('Erro', 'Usuário não autenticado.')
+        Alert.alert('Erro', 'Sessão expirada. Faça login novamente.')
         setStep('assign')
         return
       }
@@ -338,22 +348,27 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         }
       }
 
-      // Validate before insert — log first row for diagnosis
-      const sample = inserts[0]
-      console.log('[Import] Sample row to insert:', JSON.stringify({
-        type: sample?.type,
-        payment_method: sample?.payment_method,
-        date: sample?.date,
-        billing_date: sample?.billing_date,
-        amount: sample?.amount,
-        pot_id: sample?.pot_id,
-      }))
-      const invalidType = inserts.find(t => !['expense', 'income', 'goal_deposit'].includes(t.type))
-      const invalidPay  = inserts.find(t => !['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method))
-      const invalidDate = inserts.find(t => !t.date || !/^\d{4}-\d{2}-\d{2}$/.test(t.date))
-      if (invalidType) console.error('[Import] INVALID type:', invalidType.type, invalidType.description)
-      if (invalidPay)  console.error('[Import] INVALID payment_method:', invalidPay.payment_method, invalidPay.description)
-      if (invalidDate) console.error('[Import] INVALID date:', invalidDate.date, invalidDate.description)
+      // Validate and auto-fix before insert
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/
+      for (const t of inserts) {
+        if (!t.date || !dateRe.test(t.date)) {
+          console.error('[Import] DATE INVÁLIDO corrigido:', t.date, '→ hoje')
+          t.date = formatDateISO(new Date())
+        }
+        if (t.billing_date && !dateRe.test(t.billing_date)) {
+          console.error('[Import] BILLING_DATE INVÁLIDO corrigido:', t.billing_date)
+          t.billing_date = null
+        }
+        if (!['expense', 'income', 'goal_deposit'].includes(t.type)) {
+          console.error('[Import] TYPE INVÁLIDO:', t.type, '→ expense')
+          t.type = 'expense'
+        }
+        if (!['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method)) {
+          console.error('[Import] PAYMENT INVÁLIDO:', t.payment_method, '→ cash')
+          t.payment_method = 'cash'
+        }
+      }
+      console.log('[Import] Sample final:', JSON.stringify({ user_id: inserts[0]?.user_id, date: inserts[0]?.date, payment_method: inserts[0]?.payment_method, type: inserts[0]?.type, amount: inserts[0]?.amount }))
 
       const { data: inserted, error } = await supabase.from('transactions').insert(inserts).select()
       if (error) throw error
