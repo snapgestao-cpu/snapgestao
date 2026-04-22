@@ -104,7 +104,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
-**Excel import** (`components/ImportFileModal.tsx`) — 5 steps: pick → preview → assign → saving → done. Auto-detects Data/Descrição/Valor columns. Detects `parcelas` column and expands into installment rows.
+**Excel import** (`components/ImportFileModal.tsx`) — Steps: pick → preview → card_select (if any credit row) → assign → saving → done. Auto-detects columns: tipo, descrição, data, valor, pagamento, estabelecimento, parcelas. Detects `pagamento` column → `paymentMethod` field (`credit/debit/pix/cash/transfer/other`). Credit items trigger `card_select` step before `assign` so the user picks a `CreditCard`; `calcBillingDate` (same logic as `NewExpenseModal`) then computes per-installment `billing_date`. Saving inserts with proper `card_id`, `billing_date`, `installment_total/number/group_id`. If no card chosen, `billing_date` defaults to next-month + offset. Shows preview table as model in `pick` step.
 
 **Notifications** — Completely disabled. `lib/notifications.ts` exports only empty async functions: `registerForPushNotifications`, `sendLocalNotification`, `checkCriticalPots`, `scheduleCycleEndReminder`, `sendEncouragementNotification`. No imports, no side effects. Do not add `expo-notifications` imports anywhere.
 
