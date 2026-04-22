@@ -73,7 +73,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 - Edit mode: receives `editPot?: Pot`, does `UPDATE` instead of `INSERT`
 - Retroactive creation: `cycleStartDate?: Date` + `isRetroactive?: boolean` — saves `created_at` as cycle start date instead of `now()`
 - Prop `onBadges?: (badges: Badge[]) => void` to return newly granted badges to parent
-- **Duplicate prevention**: `onBlur` on name field runs `ilike` query; shows amber border + warning text if duplicate. On save, checks again — if duplicate found, shows Alert offering "Atualizar limite" (UPDATE + `pot_limit_history` insert) instead of INSERT.
+- **Duplicate prevention**: `onBlur` on name field runs `ilike` query; shows amber border + warning text if duplicate. On save, checks again — if duplicate found, shows Alert offering "Atualizar limite" (UPDATE + `pot_limit_history` insert) instead of INSERT. When `isRetroactive=true` and the existing pot's `created_at` is later than `cycleStartDate`, the Alert instead offers "Sim, criar desde este mês" and includes `created_at=cycleStartDate` in the UPDATE so the pot becomes visible in that earlier month.
 - **Never include `icon` or `mesada_active` in pots INSERT/UPDATE** — these columns do not exist in the schema
 
 **Pot deletion** — always physical DELETE. Never filter pots with `.is('deleted_at', null)` — the column exists but is unused. In `monthly.tsx`, historical pots (deleted after cycle start) are included via `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')`.
