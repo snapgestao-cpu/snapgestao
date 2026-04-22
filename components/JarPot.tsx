@@ -2,23 +2,27 @@ import React from 'react'
 import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native'
 
 const POT_IMAGES = {
-  empty: require('../assets/potes/Pote_vazio.png'),
-  p10:   require('../assets/potes/Pote_10.png'),
-  p30:   require('../assets/potes/Pote_30.png'),
-  p50:   require('../assets/potes/Pote_50.png'),
-  p70:   require('../assets/potes/Pote_70.png'),
-  p90:   require('../assets/potes/Pote_90.png'),
-  p100:  require('../assets/potes/Pote_100.png'),
+  empty:    require('../assets/potes/Pote_volume_vazio.png'),
+  p10:      require('../assets/potes/Pote_volume_10.png'),
+  p20:      require('../assets/potes/Pote_volume_20.png'),
+  p30:      require('../assets/potes/Pote_volume_30.png'),
+  p50:      require('../assets/potes/Pote_volume_50.png'),
+  p70:      require('../assets/potes/Pote_volume_70.png'),
+  p90:      require('../assets/potes/Pote_volume_90.png'),
+  p100:     require('../assets/potes/Pote_volume_100.png'),
+  p100mais: require('../assets/potes/Pote_volume_100Mais.png'),
 }
 
 function getPotImage(percent: number) {
-  if (percent <= 0)  return POT_IMAGES.empty
-  if (percent < 20)  return POT_IMAGES.p10
-  if (percent < 40)  return POT_IMAGES.p30
-  if (percent < 60)  return POT_IMAGES.p50
-  if (percent < 80)  return POT_IMAGES.p70
-  if (percent < 100) return POT_IMAGES.p90
-  return POT_IMAGES.p100
+  if (percent <= 0)   return POT_IMAGES.empty
+  if (percent <= 10)  return POT_IMAGES.p10
+  if (percent <= 29)  return POT_IMAGES.p20
+  if (percent <= 49)  return POT_IMAGES.p30
+  if (percent <= 69)  return POT_IMAGES.p50
+  if (percent <= 89)  return POT_IMAGES.p70
+  if (percent <= 99)  return POT_IMAGES.p90
+  if (percent === 100) return POT_IMAGES.p100
+  return POT_IMAGES.p100mais
 }
 
 const POT_ICONS: Record<string, string> = {
