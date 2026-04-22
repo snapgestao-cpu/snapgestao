@@ -38,16 +38,30 @@ type Props = {
 // --- Helpers ---
 
 function parseDateISO(raw: any): string {
-  if (!raw) return new Date().toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0]
+  if (!raw) return today
+  // Excel serial date (number)
   if (typeof raw === 'number') {
-    const d = XLSX.SSF.parse_date_code(raw)
-    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+    try {
+      const d = XLSX.SSF.parse_date_code(raw)
+      if (d && d.y > 1900) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+    } catch {}
+    // Fallback: Excel epoch (days since 1900-01-01, offset 2 for Excel bug)
+    const ms = (raw - 25569) * 86400 * 1000
+    const dt = new Date(ms)
+    if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0]
+    return today
   }
   const s = String(raw).trim()
+  // DD/MM/YYYY or D/M/YYYY
   const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+  // DD/MM/YY (2-digit year)
+  const dmy2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (dmy2) return `20${dmy2[3]}-${dmy2[2].padStart(2, '0')}-${dmy2[1].padStart(2, '0')}`
+  // Already ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-  return new Date().toISOString().split('T')[0]
+  return today
 }
 
 function parseAmount(raw: any): number {
@@ -63,7 +77,7 @@ function parsePaymentMethod(raw: any): string {
   if (s.includes('pix')) return 'pix'
   if (s.includes('dinh') || s.includes('cash')) return 'cash'
   if (s.includes('transf')) return 'transfer'
-  return 'other'
+  return 'cash'  // safe fallback — 'other' is not a valid payment_method in the DB
 }
 
 // Same logic as NewExpenseModal
@@ -304,9 +318,10 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         }
       }
 
-      const { error } = await supabase.from('transactions').insert(inserts)
+      const { data: inserted, error } = await supabase.from('transactions').insert(inserts).select()
       if (error) throw error
-      setSavedCount(inserts.length)
+      const savedN = inserted?.length ?? inserts.length
+      setSavedCount(savedN)
       setStep('done')
     } catch (e: any) {
       Alert.alert('Erro ao salvar', e?.message ?? 'Tente novamente.')

@@ -35,8 +35,10 @@ function formatBillingDate(dateStr: string): string {
 function groupTransactions(txs: TxWithPot[]): TxGroup[] {
   const map: Record<string, TxGroup> = {}
   for (const tx of txs) {
-    if (!map[tx.date]) map[tx.date] = { date: tx.date, label: formatDateShort(tx.date), items: [] }
-    map[tx.date].items.push(tx)
+    // Group credit by billing_date so prior-month installments appear in the right bucket
+    const displayDate = tx.payment_method === 'credit' && tx.billing_date ? tx.billing_date : tx.date
+    if (!map[displayDate]) map[displayDate] = { date: displayDate, label: formatDateShort(displayDate), items: [] }
+    map[displayDate].items.push(tx)
   }
   return Object.values(map).sort((a, b) => b.date.localeCompare(a.date))
 }
@@ -78,13 +80,18 @@ export default function MonthlyScreen() {
     if (!user) return
     try {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
-      const [txRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
+      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
+        // Non-credit: filter by date
         supabase.from('transactions').select('*').eq('user_id', user.id)
-          .or(
-            `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO}),` +
-            `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
-          )
+          .neq('payment_method', 'credit')
+          .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false }),
+        // Credit: filter by billing_date (captures installments from prior months)
+        supabase.from('transactions').select('*').eq('user_id', user.id)
+          .eq('payment_method', 'credit')
+          .not('billing_date', 'is', null)
+          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
+          .order('billing_date', { ascending: false }),
         fetchPotsForCycle(user.id, cycle.startISO, cycle.end.toISOString()),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
@@ -94,7 +101,14 @@ export default function MonthlyScreen() {
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
       ])
 
-      const txs = (txRes.data ?? []) as Transaction[]
+      const txs: Transaction[] = [
+        ...((txNonCreditRes.data ?? []) as Transaction[]),
+        ...((txCreditRes.data ?? []) as Transaction[]),
+      ].sort((a, b) => {
+        const dA = a.payment_method === 'credit' ? (a.billing_date ?? a.date) : a.date
+        const dB = b.payment_method === 'credit' ? (b.billing_date ?? b.date) : b.date
+        return dB.localeCompare(dA)
+      })
       const pots = allPotsRes as Pot[]
       const ep = epRes.data as Pot | null
       const income = ((sourcesRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
