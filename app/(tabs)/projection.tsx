@@ -10,6 +10,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import ProjectionEntryModal, { ProjectionEntry } from '../../components/ProjectionEntryModal'
+import { getPotIcon } from '../../lib/potIcons'
 
 const COL = { month: 52, value: 108 }
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -24,6 +25,12 @@ function formatMonthLabel(start: Date): string {
 }
 
 function formatBillingDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`
+}
+
+function formatPurchaseDate(dateStr: string): string {
+  if (!dateStr) return '—'
   const d = new Date(dateStr + 'T12:00:00')
   return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`
 }
@@ -87,7 +94,20 @@ export default function ProjectionScreen() {
         .eq('user_id', userId).eq('type', 'expense').eq('payment_method', 'credit')
         .not('billing_date', 'is', null)
         .order('billing_date', { ascending: true })
-      const allCredit = (creditData ?? []) as any[]
+      const rawCredit = (creditData ?? []) as any[]
+
+      // Join manual com potes para exibir nome/cor no modal
+      const potIds = [...new Set(rawCredit.map((t: any) => t.pot_id).filter(Boolean))]
+      let potsMap: Record<string, { id: string; name: string; color: string }> = {}
+      if (potIds.length > 0) {
+        const { data: potsData } = await supabase
+          .from('pots').select('id, name, color').in('id', potIds)
+        ;(potsData ?? []).forEach((p: any) => { potsMap[p.id] = p })
+      }
+      const allCredit = rawCredit.map((t: any) => ({
+        ...t,
+        pots: t.pot_id ? (potsMap[t.pot_id] ?? null) : null,
+      }))
       setCreditInstallments(allCredit)
 
       // Projection entries
@@ -441,20 +461,39 @@ export default function ProjectionScreen() {
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {selectedCreditTxs.map((t, i) => (
-                <View key={t.id ?? i} style={styles.entryRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.entryDesc}>{t.description ?? t.merchant ?? 'Sem descrição'}</Text>
-                    {(t.installment_total ?? 0) > 1 && (
-                      <Text style={styles.entryMeta}>
-                        Parcela {t.installment_number}/{t.installment_total}
-                        {t.merchant ? ' · ' + t.merchant : ''}
-                      </Text>
-                    )}
-                    <Text style={styles.entryMeta}>Vence {formatBillingDate(t.billing_date)}</Text>
+                <View key={t.id ?? i} style={{ paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
+                  {/* Descrição + valor */}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <Text style={[styles.entryDesc, { flex: 1, marginRight: 8 }]}>
+                      {t.description ?? t.merchant ?? 'Sem descrição'}
+                    </Text>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.danger }}>
+                      -{brl(Number(t.amount))}
+                    </Text>
                   </View>
-                  <Text style={[styles.entryAmount, { color: Colors.danger }]}>
-                    -{brl(Number(t.amount))}
-                  </Text>
+                  {/* Parcela + estabelecimento */}
+                  {(t.installment_total ?? 0) > 1 && (
+                    <Text style={styles.entryMeta}>
+                      Parcela {t.installment_number}/{t.installment_total}
+                      {t.merchant ? ' · ' + t.merchant : ''}
+                    </Text>
+                  )}
+                  {/* Data da compra */}
+                  <Text style={styles.entryMeta}>🛍️ Comprado em {formatPurchaseDate(t.date)}</Text>
+                  {/* Vencimento */}
+                  <Text style={[styles.entryMeta, { color: Colors.warning }]}>📅 Vence {formatBillingDate(t.billing_date)}</Text>
+                  {/* Pote de origem */}
+                  {t.pots ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.pots.color ?? Colors.primary }} />
+                      <Text style={{ fontSize: 11 }}>{getPotIcon(t.pots.name)}</Text>
+                      <Text style={[styles.entryMeta, { marginTop: 0, fontStyle: 'italic' }]}>{t.pots.name}</Text>
+                    </View>
+                  ) : t.pot_id ? (
+                    <Text style={[styles.entryMeta, { marginTop: 4, fontStyle: 'italic' }]}>🪣 Pote não identificado</Text>
+                  ) : (
+                    <Text style={[styles.entryMeta, { marginTop: 4, fontStyle: 'italic' }]}>🪣 Sem pote vinculado</Text>
+                  )}
                 </View>
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, marginTop: 8, borderTopWidth: 1.5, borderTopColor: Colors.border }}>
