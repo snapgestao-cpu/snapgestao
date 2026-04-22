@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getCycle, CycleInfo } from './cycle'
+import { fetchPotsForCycle } from './pots'
 
 export type PotSummary = {
   id: string
@@ -30,12 +31,10 @@ export async function calculateCycleSummary(
   userId: string,
   cycle: CycleInfo
 ): Promise<CycleSummary> {
-  const [sourceRes, potsRes, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
+  const [sourceRes, pots, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
     supabase.from('income_sources').select('amount').eq('user_id', userId),
 
-    supabase.from('pots').select('*').eq('user_id', userId).eq('is_emergency', false)
-      .lte('created_at', cycle.end.toISOString())
-      .order('created_at', { ascending: true }),
+    fetchPotsForCycle(userId, cycle.startISO, cycle.end.toISOString()),
 
     supabase.from('cycle_rollovers').select('*')
       .eq('user_id', userId).eq('cycle_start_date', cycle.startISO).maybeSingle(),
@@ -57,7 +56,6 @@ export async function calculateCycleSummary(
   ])
 
   const monthlyIncome = ((sourceRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
-  const pots = (potsRes.data ?? []) as any[]
   const rollover = rolloverRes.data as any
   const totalIncome = ((incomeRes.data ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
 

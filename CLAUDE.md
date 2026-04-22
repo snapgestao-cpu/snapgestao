@@ -76,7 +76,12 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 - **Duplicate prevention**: `onBlur` on name field runs `ilike` query; shows amber border + warning text if duplicate. On save, checks again — if duplicate found, shows Alert offering "Atualizar limite" (UPDATE + `pot_limit_history` insert) instead of INSERT. When `isRetroactive=true` and the existing pot's `created_at` is later than `cycleStartDate`, the Alert instead offers "Sim, criar desde este mês" and includes `created_at=cycleStartDate` in the UPDATE so the pot becomes visible in that earlier month.
 - **Never include `icon` or `mesada_active` in pots INSERT/UPDATE** — these columns do not exist in the schema
 
-**Pot deletion** — always physical DELETE. Never filter pots with `.is('deleted_at', null)` — the column exists but is unused. In `monthly.tsx`, historical pots (deleted after cycle start) are included via `.or('deleted_at.is.null,deleted_at.gte.${cycle.startISO}')`.
+**Pot deletion** — **soft DELETE** via `deleted_at`. On delete: expense transactions from `cycle.startISO` onwards are hard-deleted, then the pot gets `deleted_at = cycle.start.toISOString()`. The pot remains in the DB so past-cycle views still show it.
+
+**Pot queries by context:**
+- `index.tsx` (current cycle dashboard): `.is('deleted_at', null)` — only active pots.
+- `monthly.tsx` and `calculateCycleSummary`: use `fetchPotsForCycle(userId, cycleStartISO, cycleEndISO)` from `lib/pots.ts` — returns active pots + pots deleted during or after the cycle (two parallel queries combined).
+- Do **not** use `.or('deleted_at.is.null,...')` — that pattern was removed.
 
 **Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
 

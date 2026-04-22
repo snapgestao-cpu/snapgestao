@@ -18,6 +18,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo, formatDateShort } from '../../lib/cycle'
 import { calculateCycleSummary, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
+import { fetchPotsForCycle } from '../../lib/pots'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction, Goal } from '../../types'
@@ -84,11 +85,7 @@ export default function MonthlyScreen() {
             `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO})`
           )
           .order('date', { ascending: false }),
-        supabase.from('pots').select('*')
-          .eq('user_id', user.id)
-          .eq('is_emergency', false)
-          .lte('created_at', cycle.end.toISOString())
-          .order('created_at', { ascending: true }),
+        fetchPotsForCycle(user.id, cycle.startISO, cycle.end.toISOString()),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
@@ -98,7 +95,7 @@ export default function MonthlyScreen() {
       ])
 
       const txs = (txRes.data ?? []) as Transaction[]
-      const pots = (allPotsRes.data ?? []) as Pot[]
+      const pots = allPotsRes as Pot[]
       const ep = epRes.data as Pot | null
       const income = ((sourcesRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
 
