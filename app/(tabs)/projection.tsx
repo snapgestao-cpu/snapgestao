@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
-  TouchableOpacity, Modal, Alert,
+  TouchableOpacity, Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from 'expo-router'
@@ -11,10 +11,21 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import ProjectionEntryModal, { ProjectionEntry } from '../../components/ProjectionEntryModal'
 
-const COL = { month: 72, value: 108 }
+const COL = { month: 52, value: 108 }
+const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const FAB_SIZE = 52
 
 function brl(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatMonthLabel(start: Date): string {
+  return MONTH_NAMES[start.getMonth()] + '/' + String(start.getFullYear()).slice(2)
+}
+
+function formatBillingDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`
 }
 
 type MonthRow = {
@@ -24,22 +35,25 @@ type MonthRow = {
   saldo: number
   offset: number
   cycleStartISO: string
+  cycleEndISO: string
   entries: ProjectionEntry[]
+  installmentsTotal: number
+  isCurrent: boolean
 }
-
-const FAB_SIZE = 52
 
 export default function ProjectionScreen() {
   const { user } = useAuthStore()
   const [rows, setRows] = useState<MonthRow[]>([])
   const [monthlyIncome, setMonthlyIncome] = useState(0)
   const [avgExpense, setAvgExpense] = useState(0)
+  const [creditInstallments, setCreditInstallments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [fabOpen, setFabOpen] = useState(false)
   const [showEntryModal, setShowEntryModal] = useState(false)
   const [entryType, setEntryType] = useState<'income' | 'expense'>('income')
   const [editEntry, setEditEntry] = useState<ProjectionEntry | null>(null)
   const [selectedMonthRow, setSelectedMonthRow] = useState<MonthRow | null>(null)
+  const [selectedCreditMonth, setSelectedCreditMonth] = useState<MonthRow | null>(null)
 
   useFocusEffect(
     useCallback(() => {
@@ -52,36 +66,74 @@ export default function ProjectionScreen() {
     setLoading(true)
     try {
       const userId = user.id
+      const cycleStartDay = user.cycle_start ?? 1
 
-      // Base income from sources
+      // Base income
       const { data: sources } = await supabase
         .from('income_sources').select('amount').eq('user_id', userId)
       const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
       setMonthlyIncome(base)
 
-      // Total orçado dos potes ativos (excluindo emergência)
+      // Total orçado dos potes ativos
       const { data: activePots } = await supabase
         .from('pots').select('limit_amount')
         .eq('user_id', userId).eq('is_emergency', false)
       const totalBudgeted = ((activePots ?? []) as any[])
         .reduce((s, p) => s + Number(p.limit_amount || 0), 0)
 
-      // All projection_entries for this user
+      // Todos os lançamentos de crédito (para modal e indicador)
+      const { data: creditData } = await supabase
+        .from('transactions').select('*')
+        .eq('user_id', userId).eq('type', 'expense').eq('payment_method', 'credit')
+        .not('billing_date', 'is', null)
+        .order('billing_date', { ascending: true })
+      const allCredit = (creditData ?? []) as any[]
+      setCreditInstallments(allCredit)
+
+      // Projection entries
       const { data: allEntries } = await supabase
         .from('projection_entries').select('*').eq('user_id', userId)
       const projEntries = ((allEntries ?? []) as ProjectionEntry[])
 
-      // Prorated projection for current cycle
+      // Proração do mês atual
       const today = new Date()
-      const currentCycle = getCycle(user.cycle_start ?? 1, 0)
+      const currentCycle = getCycle(cycleStartDay, 0)
       const diasPassados = Math.max(1,
         Math.floor((today.getTime() - currentCycle.start.getTime()) / (1000 * 60 * 60 * 24))
       )
 
+      // ── Detectar meses anteriores com lançamentos reais ──
+      const pastOffsets: number[] = []
+      for (let offset = -1; offset >= -6; offset--) {
+        const cycle = getCycle(cycleStartDay, offset)
+        const { data: probe } = await supabase
+          .from('transactions').select('id').eq('user_id', userId).eq('type', 'expense')
+          .or(
+            `and(payment_method.neq.credit,date.gte.${cycle.startISO},date.lte.${cycle.endISO}),` +
+            `and(payment_method.eq.credit,billing_date.gte.${cycle.startISO},billing_date.lte.${cycle.endISO})`
+          ).limit(1)
+        if (probe && probe.length > 0) {
+          pastOffsets.push(offset)
+          if (pastOffsets.length >= 3) break
+        } else {
+          break
+        }
+      }
+
+      // Total = 13 linhas: passados + atual + futuros
+      const pastCount = pastOffsets.length
+      const futureCount = 13 - 1 - pastCount
+      const allOffsets = [
+        ...pastOffsets.slice().reverse(),
+        0,
+        ...Array.from({ length: futureCount }, (_, i) => i + 1),
+      ]
+
+      // ── Construir rows ──
       const built: MonthRow[] = []
 
-      for (let offset = -3; offset <= 9; offset++) {
-        const cycle = getCycle(user.cycle_start ?? 1, offset)
+      for (const offset of allOffsets) {
+        const cycle = getCycle(cycleStartDay, offset)
         const isFuture = offset > 0
         const isCurrent = offset === 0
 
@@ -105,39 +157,45 @@ export default function ProjectionScreen() {
 
         if (isFuture) {
           income = base
-          // Orçado dos potes + parcelas de crédito futuras já lançadas (billing_date)
           expense = totalBudgeted + expenseActual
         } else if (isCurrent) {
           income = base + incomeActual
-          // Projetar gasto do mês atual com base no ritmo atual
           const gastoProjetado = (expenseActual / diasPassados) * 30
           expense = Math.min(gastoProjetado, totalBudgeted)
         } else {
-          // Mês passado: dados reais
           income = base + incomeActual
           expense = expenseActual
         }
 
-        // Projection entries para este ciclo
+        // Projection entries
         const monthEntries = projEntries.filter(e => e.cycle_start_date === cycle.startISO)
         income += monthEntries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0)
         expense += monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0)
 
+        // Parcelas de crédito neste mês (para indicador e modal)
+        const installmentsTotal = allCredit
+          .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
+          .reduce((s, t) => s + Number(t.amount), 0)
+
+        const shortLabel = formatMonthLabel(cycle.start)
         built.push({
-          label: isFuture ? cycle.monthYear + ' *' : cycle.monthYear,
+          label: isFuture ? shortLabel + ' *' : shortLabel,
           income,
           expense,
           saldo: income - expense,
           offset,
           cycleStartISO: cycle.startISO,
+          cycleEndISO: cycle.endISO,
           entries: monthEntries,
+          installmentsTotal,
+          isCurrent,
         })
       }
 
       setRows(built)
 
-      // avgExpense dos últimos 3 meses reais
-      const last3 = built.filter(m => m.offset < 0 && m.offset >= -3)
+      // avgExpense: mês atual + 2 anteriores (offsets 0, -1, -2)
+      const last3 = built.filter(m => [0, -1, -2].includes(m.offset))
       setAvgExpense(
         last3.length > 0
           ? last3.reduce((s, m) => s + m.expense, 0) / last3.length
@@ -148,28 +206,21 @@ export default function ProjectionScreen() {
     }
   }
 
-  async function deleteEntry(entryId: string) {
-    Alert.alert(
-      'Excluir lançamento',
-      'Deseja excluir este lançamento da projeção?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.from('projection_entries').delete().eq('id', entryId)
-            setSelectedMonthRow(null)
-            loadProjectionData()
-          },
-        },
-      ]
-    )
+  async function handleDeleteEntry(entryId: string) {
+    await supabase.from('projection_entries').delete().eq('id', entryId)
+    setSelectedMonthRow(null)
+    loadProjectionData()
   }
 
-  // Entries do mês selecionado — lidos do rows atualizado para refletir cargas recentes
   const selectedEntries = selectedMonthRow
     ? (rows.find(r => r.cycleStartISO === selectedMonthRow.cycleStartISO)?.entries ?? selectedMonthRow.entries)
+    : []
+
+  const selectedCreditTxs = selectedCreditMonth
+    ? creditInstallments.filter(t =>
+        t.billing_date >= selectedCreditMonth.cycleStartISO &&
+        t.billing_date <= selectedCreditMonth.cycleEndISO
+      )
     : []
 
   return (
@@ -191,7 +242,7 @@ export default function ProjectionScreen() {
               <View style={[styles.stat, { borderLeftColor: Colors.warning }]}>
                 <Text style={styles.statLabel}>📊 Gasto médio mensal</Text>
                 <Text style={[styles.statValue, { color: Colors.warning }]}>{brl(avgExpense)}</Text>
-                <Text style={styles.statHint}>Baseado nos últimos 3 meses</Text>
+                <Text style={styles.statHint}>Mês atual + 2 anteriores</Text>
               </View>
             </View>
 
@@ -201,7 +252,7 @@ export default function ProjectionScreen() {
                 <View>
                   {/* Header */}
                   <View style={styles.tableHeader}>
-                    <Text style={[styles.tableHCell, { width: COL.month }]}>Mês</Text>
+                    <Text style={[styles.tableHCell, { width: COL.month, paddingLeft: 8 }]}>Mês</Text>
                     <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
                       💰 Receita
                     </Text>
@@ -216,42 +267,62 @@ export default function ProjectionScreen() {
                   {rows.map((row, i) => {
                     const isFuture = row.offset > 0
                     const hasEntries = row.entries.length > 0
+                    const hasCredit = row.installmentsTotal > 0
                     return (
-                      <View key={i} style={[styles.tableRow, isFuture && styles.futureRow]}>
-                        <Text style={[styles.tableCell, { width: COL.month }, isFuture && styles.futureCellText]}>
-                          {row.label}
-                        </Text>
-                        <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
-                          {brl(row.income)}
-                        </Text>
-                        <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
-                          {brl(row.expense)}
-                        </Text>
-                        <View style={{ width: COL.value, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 12 }}>
-                          <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
-                            {brl(row.saldo)}
+                      <TouchableOpacity
+                        key={i}
+                        activeOpacity={hasCredit ? 0.7 : 1}
+                        onPress={() => { if (hasCredit) setSelectedCreditMonth(row) }}
+                      >
+                        <View style={[
+                          styles.tableRow,
+                          isFuture && styles.futureRow,
+                          { borderLeftWidth: hasCredit ? 3 : 0, borderLeftColor: Colors.warning },
+                        ]}>
+                          <Text style={[
+                            styles.tableCell,
+                            { width: COL.month, paddingLeft: 8, fontWeight: row.isCurrent ? '700' : '400' },
+                            isFuture && styles.futureCellText,
+                          ]}>
+                            {row.label}
                           </Text>
-                          {hasEntries && (
-                            <TouchableOpacity
-                              onPress={() => setSelectedMonthRow(row)}
-                              style={styles.entriesBadge}
-                            >
-                              <Text style={styles.entriesBadgeText}>+{row.entries.length}</Text>
-                            </TouchableOpacity>
-                          )}
+                          <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
+                            {brl(row.income)}
+                          </Text>
+                          <View style={{ width: COL.value, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <Text style={[styles.tableCell, { color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
+                              {brl(row.expense)}
+                            </Text>
+                            {hasCredit && (
+                              <Text style={{ fontSize: 9, color: Colors.warning, marginLeft: 2 }}>💳</Text>
+                            )}
+                          </View>
+                          <View style={{ width: COL.value, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 12 }}>
+                            <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
+                              {brl(row.saldo)}
+                            </Text>
+                            {hasEntries && (
+                              <TouchableOpacity
+                                onPress={() => setSelectedMonthRow(row)}
+                                style={styles.entriesBadge}
+                              >
+                                <Text style={styles.entriesBadgeText}>+{row.entries.length}</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     )
                   })}
 
-                  {/* Totals row */}
+                  {/* Totals */}
                   {rows.length > 0 && (() => {
                     const totalInc = rows.reduce((s, r) => s + r.income, 0)
                     const totalExp = rows.reduce((s, r) => s + r.expense, 0)
                     const totalSaldo = totalInc - totalExp
                     return (
                       <View style={styles.totalRow}>
-                        <Text style={[styles.totalCell, { width: COL.month }]}>TOTAL</Text>
+                        <Text style={[styles.totalCell, { width: COL.month, paddingLeft: 8 }]}>TOTAL</Text>
                         <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>{brl(totalInc)}</Text>
                         <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.danger }]}>{brl(totalExp)}</Text>
                         <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', paddingRight: 12, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>
@@ -269,7 +340,7 @@ export default function ProjectionScreen() {
         )}
       </ScrollView>
 
-      {/* FAB menu items */}
+      {/* FAB menu */}
       {fabOpen && (
         <View style={styles.fabMenu}>
           <TouchableOpacity
@@ -311,9 +382,9 @@ export default function ProjectionScreen() {
           activeOpacity={1}
           onPress={() => setSelectedMonthRow(null)}
         />
-        <View style={styles.entriesModal}>
+        <View style={styles.bottomSheet}>
           <View style={styles.handle} />
-          <Text style={styles.entriesModalTitle}>
+          <Text style={styles.sheetTitle}>
             Lançamentos — {selectedMonthRow?.label?.replace(' *', '')}
           </Text>
           <ScrollView>
@@ -335,18 +406,68 @@ export default function ProjectionScreen() {
                 >
                   <Text>✏️</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteEntry(entry.id)} style={{ padding: 6 }}>
+                <TouchableOpacity onPress={() => handleDeleteEntry(entry.id)} style={{ padding: 6 }}>
                   <Text>🗑️</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
-          <TouchableOpacity
-            onPress={() => setSelectedMonthRow(null)}
-            style={{ padding: 16, alignItems: 'center' }}
-          >
-            <Text style={{ color: Colors.textMuted, fontSize: 14 }}>Fechar</Text>
+          <TouchableOpacity onPress={() => setSelectedMonthRow(null)} style={styles.closeBtn}>
+            <Text style={styles.closeBtnText}>Fechar</Text>
           </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Credit installments modal */}
+      <Modal
+        visible={!!selectedCreditMonth}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedCreditMonth(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={[styles.bottomSheet, { maxHeight: '80%' }]}>
+            <View style={styles.handle} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <View>
+                <Text style={styles.sheetTitle}>
+                  💳 Cartão — {selectedCreditMonth?.label?.replace(' *', '')}
+                </Text>
+                <Text style={styles.sheetSubtitle}>Parcelas com vencimento neste mês</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedCreditMonth(null)}>
+                <Text style={{ fontSize: 20, color: Colors.textMuted }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedCreditTxs.map((t, i) => (
+                <View key={t.id ?? i} style={styles.entryRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.entryDesc}>{t.description ?? t.merchant ?? 'Sem descrição'}</Text>
+                    {(t.installment_total ?? 0) > 1 && (
+                      <Text style={styles.entryMeta}>
+                        Parcela {t.installment_number}/{t.installment_total}
+                        {t.merchant ? ' · ' + t.merchant : ''}
+                      </Text>
+                    )}
+                    <Text style={styles.entryMeta}>Vence {formatBillingDate(t.billing_date)}</Text>
+                  </View>
+                  <Text style={[styles.entryAmount, { color: Colors.danger }]}>
+                    -{brl(Number(t.amount))}
+                  </Text>
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, marginTop: 8, borderTopWidth: 1.5, borderTopColor: Colors.border }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark }}>Total no cartão</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.danger }}>
+                  -{brl(selectedCreditMonth?.installmentsTotal ?? 0)}
+                </Text>
+              </View>
+            </ScrollView>
+            <TouchableOpacity onPress={() => setSelectedCreditMonth(null)} style={styles.closeBtn}>
+              <Text style={styles.closeBtnText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -382,11 +503,11 @@ const styles = StyleSheet.create({
   },
   tableHeader: {
     flexDirection: 'row', backgroundColor: Colors.lightBlue,
-    paddingVertical: 10, paddingHorizontal: 12,
+    paddingVertical: 10, paddingHorizontal: 0,
   },
   tableHCell: { fontSize: 11, fontWeight: '700', color: Colors.primary },
   tableRow: {
-    flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 12,
+    flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 0,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
     alignItems: 'center',
   },
@@ -394,7 +515,7 @@ const styles = StyleSheet.create({
   tableCell: { fontSize: 11, color: Colors.textDark },
   futureCellText: { color: Colors.textMuted, fontStyle: 'italic' },
   totalRow: {
-    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12,
+    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 0,
     backgroundColor: Colors.lightBlue,
     borderTopWidth: 1.5, borderTopColor: Colors.border,
   },
@@ -424,7 +545,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
   },
   fabMenuLabel: { fontSize: 13, fontWeight: '600' },
-  entriesModal: {
+  bottomSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: Colors.white,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -435,13 +556,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     alignSelf: 'center', marginBottom: 16,
   },
-  entriesModalTitle: { fontSize: 16, fontWeight: '700', color: Colors.textDark, marginBottom: 16 },
+  sheetTitle: { fontSize: 16, fontWeight: '700', color: Colors.textDark },
+  sheetSubtitle: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   entryRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   entryDesc: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   entryMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   entryAmount: { fontSize: 13, fontWeight: '700', marginRight: 4 },
+  closeBtn: { padding: 16, alignItems: 'center' },
+  closeBtnText: { color: Colors.textMuted, fontSize: 14 },
 })
