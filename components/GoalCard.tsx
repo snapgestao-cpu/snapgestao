@@ -1,9 +1,19 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native'
 import { Colors } from '../constants/colors'
 import { Goal } from '../types'
 import { calcFV, brl } from '../lib/finance'
 import { getGoalIcon } from '../lib/goalIcons'
+
+function getPotImage(percent: number) {
+  if (percent <= 0) return require('../assets/potes/Pote_vazio.png')
+  if (percent < 20) return require('../assets/potes/Pote_10.png')
+  if (percent < 40) return require('../assets/potes/Pote_30.png')
+  if (percent < 60) return require('../assets/potes/Pote_50.png')
+  if (percent < 80) return require('../assets/potes/Pote_70.png')
+  if (percent < 100) return require('../assets/potes/Pote_90.png')
+  return require('../assets/potes/Pote_100.png')
+}
 
 function horizonMeta(years: number): { color: string } {
   if (years <= 5) return { color: Colors.success }
@@ -46,13 +56,16 @@ export function GoalCard({ goal, onDeposit, onLongPress }: Props) {
       activeOpacity={0.85}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.icon}>{icon}</Text>
-        <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <Text style={styles.icon}>{icon}</Text>
           <Text style={styles.name} numberOfLines={1}>{goal.name}</Text>
         </View>
-        <View style={[styles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
-          <Text style={[styles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
+        <View style={{ alignItems: 'center', gap: 4 }}>
+          <Image source={getPotImage(percent)} style={{ width: 52, height: 62, resizeMode: 'contain' }} />
+          <View style={[styles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
+            <Text style={[styles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
+          </View>
         </View>
       </View>
 

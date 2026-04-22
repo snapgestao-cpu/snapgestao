@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  TouchableOpacity, RefreshControl, Modal, Alert, Image,
+  TouchableOpacity, RefreshControl, Modal, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -16,26 +16,6 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { Goal } from '../../types'
 import { brl } from '../../lib/finance'
-
-const POT_IMAGES = {
-  empty: require('../../assets/potes/Pote_vazio.png'),
-  p10: require('../../assets/potes/Pote_10.png'),
-  p30: require('../../assets/potes/Pote_30.png'),
-  p50: require('../../assets/potes/Pote_50.png'),
-  p70: require('../../assets/potes/Pote_70.png'),
-  p90: require('../../assets/potes/Pote_90.png'),
-  p100: require('../../assets/potes/Pote_100.png'),
-}
-
-function getPotImage(percent: number) {
-  if (percent <= 0) return POT_IMAGES.empty
-  if (percent < 20) return POT_IMAGES.p10
-  if (percent < 40) return POT_IMAGES.p30
-  if (percent < 60) return POT_IMAGES.p50
-  if (percent < 80) return POT_IMAGES.p70
-  if (percent < 100) return POT_IMAGES.p90
-  return POT_IMAGES.p100
-}
 
 type TimelineItem = { year: number; label: string }
 
@@ -126,10 +106,6 @@ export default function GoalsScreen() {
     )
   }
 
-  const urgentPercent = urgentGoal && urgentGoal.target_amount > 0
-    ? Math.min(100, Math.round((urgentGoal.current_amount / urgentGoal.target_amount) * 100))
-    : 0
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -164,21 +140,6 @@ export default function GoalsScreen() {
               </Text>
             </View>
 
-            {/* Card 3 — Progresso com pote */}
-            <View style={[styles.statCard, { alignItems: 'center', borderLeftWidth: 0 }]}>
-              <Text style={[styles.statLabel, { alignSelf: 'flex-start' }]}>📊 Progresso</Text>
-              <Image
-                source={getPotImage(urgentPercent)}
-                style={{ width: 44, height: 52, resizeMode: 'contain' }}
-              />
-              <Text style={[styles.statValue, {
-                color: urgentPercent >= 80 ? Colors.danger
-                  : urgentPercent >= 50 ? Colors.warning
-                  : Colors.accent,
-              }]}>
-                {urgentPercent}%
-              </Text>
-            </View>
           </View>
         )}
 
