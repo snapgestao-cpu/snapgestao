@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  TouchableOpacity, RefreshControl, Modal, Alert,
+  TouchableOpacity, RefreshControl, Modal, Alert, Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { GoalCard } from '../../components/GoalCard'
 import { NewGoalModal } from '../../components/NewGoalModal'
@@ -14,21 +15,37 @@ import { Toast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { Goal } from '../../types'
-import { calcFV, brl } from '../../lib/finance'
+import { brl } from '../../lib/finance'
 
-const TIMELINE = [
-  { label: 'Hoje', offset: 0, color: Colors.primary },
-  { label: '5 anos', offset: 5, color: Colors.success },
-  { label: '10 anos', offset: 10, color: Colors.warning },
-  { label: '30 anos', offset: 30, color: '#534AB7' },
-]
+const POT_IMAGES = {
+  empty: require('../../assets/potes/Pote_vazio.png'),
+  p10: require('../../assets/potes/Pote_10.png'),
+  p30: require('../../assets/potes/Pote_30.png'),
+  p50: require('../../assets/potes/Pote_50.png'),
+  p70: require('../../assets/potes/Pote_70.png'),
+  p90: require('../../assets/potes/Pote_90.png'),
+  p100: require('../../assets/potes/Pote_100.png'),
+}
 
-const now = new Date().getFullYear()
+function getPotImage(percent: number) {
+  if (percent <= 0) return POT_IMAGES.empty
+  if (percent < 20) return POT_IMAGES.p10
+  if (percent < 40) return POT_IMAGES.p30
+  if (percent < 60) return POT_IMAGES.p50
+  if (percent < 80) return POT_IMAGES.p70
+  if (percent < 100) return POT_IMAGES.p90
+  return POT_IMAGES.p100
+}
+
+type TimelineItem = { year: number; label: string }
 
 export default function GoalsScreen() {
   const { user } = useAuthStore()
+  const insets = useSafeAreaInsets()
 
   const [goals, setGoals] = useState<Goal[]>([])
+  const [urgentGoal, setUrgentGoal] = useState<Goal | null>(null)
+  const [timelineYears, setTimelineYears] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -48,7 +65,28 @@ export default function GoalsScreen() {
         .select('*')
         .eq('user_id', user.id)
         .order('horizon_years', { ascending: true })
-      setGoals((data as Goal[]) ?? [])
+      const loaded = (data as Goal[]) ?? []
+      setGoals(loaded)
+
+      // Meta mais urgente: target_date >= hoje, ordenada por target_date
+      const today = new Date().toISOString().split('T')[0]
+      const urgent = loaded
+        .filter(g => g.target_date != null && g.target_date >= today)
+        .sort((a, b) => (a.target_date ?? '').localeCompare(b.target_date ?? ''))[0] ?? null
+      setUrgentGoal(urgent)
+
+      // Timeline: ano atual + anos únicos das metas com target_date
+      const currentYear = new Date().getFullYear()
+      const items: TimelineItem[] = [{ year: currentYear, label: 'Hoje' }]
+      const seen = new Set([currentYear])
+      loaded
+        .filter(g => g.target_date != null)
+        .sort((a, b) => (a.target_date ?? '').localeCompare(b.target_date ?? ''))
+        .forEach(g => {
+          const y = new Date(g.target_date! + 'T12:00:00').getFullYear()
+          if (!seen.has(y)) { seen.add(y); items.push({ year: y, label: String(y) }) }
+        })
+      setTimelineYears(items)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -88,51 +126,91 @@ export default function GoalsScreen() {
     )
   }
 
-  const totalCurrent = goals.reduce((s, g) => s + g.current_amount, 0)
-  const totalProjected = goals.reduce((s, g) => {
-    if (!g.monthly_deposit || !g.interest_rate) return s + g.current_amount
-    return s + calcFV(g.monthly_deposit, g.interest_rate, g.horizon_years)
-  }, 0)
+  const urgentPercent = urgentGoal && urgentGoal.target_amount > 0
+    ? Math.min(100, Math.round((urgentGoal.current_amount / urgentGoal.target_amount) * 100))
+    : 0
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 96 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Metas de longo prazo</Text>
 
-        {/* Summary */}
+        {/* Cards da meta mais urgente */}
         {goals.length > 0 && (
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, { backgroundColor: Colors.lightBlue }]}>
-              <Text style={styles.summaryLabel}>Total alocado</Text>
-              <Text style={[styles.summaryValue, { color: Colors.primary }]}>{brl(totalCurrent)}</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+            {/* Card 1 — Meta planejada */}
+            <View style={[styles.statCard, { borderLeftColor: Colors.primary }]}>
+              <Text style={styles.statLabel}>🎯 Meta planejada</Text>
+              <Text style={[styles.statValue, { color: Colors.primary }]} numberOfLines={1}>
+                {brl(urgentGoal?.target_amount ?? 0)}
+              </Text>
+              <Text style={styles.statHint} numberOfLines={1}>
+                {urgentGoal?.name ?? '—'}
+              </Text>
             </View>
-            <View style={[styles.summaryCard, { backgroundColor: '#F3F0FF' }]}>
-              <Text style={styles.summaryLabel}>Total projetado</Text>
-              <Text style={[styles.summaryValue, { color: '#534AB7' }]}>{brl(totalProjected)}</Text>
+
+            {/* Card 2 — Já alocado */}
+            <View style={[styles.statCard, { borderLeftColor: Colors.accent }]}>
+              <Text style={styles.statLabel}>💰 Já alocado</Text>
+              <Text style={[styles.statValue, { color: Colors.accent }]} numberOfLines={1}>
+                {brl(urgentGoal?.current_amount ?? 0)}
+              </Text>
+              <Text style={styles.statHint}>
+                de {brl(urgentGoal?.target_amount ?? 0)}
+              </Text>
+            </View>
+
+            {/* Card 3 — Progresso com pote */}
+            <View style={[styles.statCard, { alignItems: 'center', borderLeftWidth: 0 }]}>
+              <Text style={[styles.statLabel, { alignSelf: 'flex-start' }]}>📊 Progresso</Text>
+              <Image
+                source={getPotImage(urgentPercent)}
+                style={{ width: 44, height: 52, resizeMode: 'contain' }}
+              />
+              <Text style={[styles.statValue, {
+                color: urgentPercent >= 80 ? Colors.danger
+                  : urgentPercent >= 50 ? Colors.warning
+                  : Colors.accent,
+              }]}>
+                {urgentPercent}%
+              </Text>
             </View>
           </View>
         )}
 
-        {/* Timeline */}
-        <View style={styles.timelineContainer}>
-          <View style={styles.timelineLine} />
-          {TIMELINE.map((t, i) => (
-            <View key={t.label} style={styles.timelineMark}>
-              <View style={[styles.timelineDot, { backgroundColor: t.color }]} />
-              <Text style={[styles.timelineLabel, { color: t.color }]}>{t.label}</Text>
-              <Text style={styles.timelineYear}>{t.offset === 0 ? now : now + t.offset}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Add goal button */}
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowNewGoal(true)}>
-          <Text style={styles.addBtnText}>+ Nova meta</Text>
-        </TouchableOpacity>
+        {/* Timeline dinâmica */}
+        {timelineYears.length > 1 && (
+          <View style={styles.timelineWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 12 }}>
+                {timelineYears.map((item, index) => (
+                  <View key={item.year} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {index > 0 && (
+                      <View style={{ width: 50, height: 2, backgroundColor: Colors.border }} />
+                    )}
+                    <View style={{ alignItems: 'center' }}>
+                      <View style={{
+                        width: 14, height: 14, borderRadius: 7,
+                        backgroundColor: index === 0 ? Colors.primary : Colors.accent,
+                        marginBottom: 4,
+                      }} />
+                      <Text style={[styles.timelineLabel, { color: index === 0 ? Colors.primary : Colors.textDark }]}>
+                        {item.label}
+                      </Text>
+                      {index > 0 && (
+                        <Text style={styles.timelineYear}>{item.year}</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
         {/* Goals list */}
         {loading ? (
@@ -141,7 +219,7 @@ export default function GoalsScreen() {
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🎯</Text>
             <Text style={styles.emptyTitle}>Nenhuma meta ainda</Text>
-            <Text style={styles.emptyText}>Toque em "+ Nova meta" para começar.</Text>
+            <Text style={styles.emptyText}>Toque em "Nova meta" para começar.</Text>
           </View>
         ) : (
           goals.map(goal => (
@@ -153,9 +231,19 @@ export default function GoalsScreen() {
             />
           ))
         )}
-
-        <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Botão fixo na base */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity
+          onPress={() => setShowNewGoal(true)}
+          style={styles.newGoalBtn}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.newGoalBtnPlus}>+</Text>
+          <Text style={styles.newGoalBtnText}>Nova meta</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Goal action sheet */}
       <Modal visible={!!actionGoal} transparent animationType="fade" onRequestClose={() => setActionGoal(null)}>
@@ -226,42 +314,42 @@ export default function GoalsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 20 },
-  title: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 20 },
-  summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  summaryCard: { flex: 1, borderRadius: 12, padding: 14 },
-  summaryLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
-  summaryValue: { fontSize: 16, fontWeight: '800' },
-  timelineContainer: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', marginBottom: 20,
+  title: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 16 },
+  statCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 14, padding: 12,
+    borderLeftWidth: 3,
+    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  statLabel: { fontSize: 10, color: Colors.textMuted, marginBottom: 4 },
+  statValue: { fontSize: 15, fontWeight: '800' },
+  statHint: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
+  timelineWrapper: {
     backgroundColor: Colors.white, borderRadius: 12,
-    padding: 16, position: 'relative',
-  },
-  timelineLine: {
-    position: 'absolute', left: 36, right: 36,
-    top: 24, height: 2, backgroundColor: Colors.border,
-  },
-  timelineMark: { alignItems: 'center', zIndex: 1, flex: 1 },
-  timelineDot: {
-    width: 16, height: 16, borderRadius: 8,
-    marginBottom: 6, borderWidth: 2, borderColor: Colors.white,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15, shadowRadius: 2, elevation: 2,
+    marginBottom: 16, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
   },
   timelineLabel: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  timelineYear: { fontSize: 10, color: Colors.textMuted, marginTop: 2, textAlign: 'center' },
-  addBtn: {
-    backgroundColor: Colors.lightBlue, borderRadius: 12,
-    paddingVertical: 12, alignItems: 'center', marginBottom: 20,
-    borderWidth: 1.5, borderColor: Colors.primary + '40',
-    borderStyle: 'dashed',
-  },
-  addBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  timelineYear: { fontSize: 10, color: Colors.textMuted, marginTop: 1, textAlign: 'center' },
   loader: { marginTop: 32 },
   emptyState: { alignItems: 'center', paddingTop: 48 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: Colors.textDark, marginBottom: 8 },
   emptyText: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 16, paddingTop: 12,
+    backgroundColor: Colors.background,
+    borderTopWidth: 0.5, borderTopColor: Colors.border,
+  },
+  newGoalBtn: {
+    backgroundColor: Colors.primary, borderRadius: 14,
+    paddingVertical: 16, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', gap: 8,
+    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  newGoalBtnPlus: { color: '#fff', fontSize: 22, fontWeight: '300', lineHeight: 24 },
+  newGoalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   actionBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   actionSheet: {
     backgroundColor: Colors.white,

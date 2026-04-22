@@ -49,9 +49,9 @@ export async function calculateCycleSummary(
       .eq('type', 'expense').eq('payment_method', 'credit')
       .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
 
-    // Despesas não-crédito pelo date
+    // Despesas não-crédito + depósitos em meta pelo date
     supabase.from('transactions').select('amount, pot_id').eq('user_id', userId)
-      .eq('type', 'expense').neq('payment_method', 'credit')
+      .in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
       .gte('date', cycle.startISO).lte('date', cycle.endISO),
   ])
 

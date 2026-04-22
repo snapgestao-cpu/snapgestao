@@ -72,7 +72,7 @@ export default function PotsScreen() {
           .eq('user_id', user.id).eq('type', 'expense').eq('payment_method', 'credit')
           .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
         supabase.from('transactions').select('amount, pot_id')
-          .eq('user_id', user.id).eq('type', 'expense').neq('payment_method', 'credit')
+          .eq('user_id', user.id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
           .gte('date', cycle.startISO).lte('date', cycle.endISO),
       ])
       const allCycleTxs = [
