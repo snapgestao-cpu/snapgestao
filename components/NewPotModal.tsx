@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../constants/colors'
@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PotCard } from './PotCard'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
+import { getCycle } from '../lib/cycle'
 
 export const POT_COLORS = [
   '#0F5EA8', '#1D9E75', '#E24B4A', '#BA7517',
@@ -48,6 +49,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
   const [existingEmergencyName, setExistingEmergencyName] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isDuplicate, setIsDuplicate] = useState(false)
 
   useEffect(() => {
     if (!visible) return
@@ -67,6 +69,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       setIsEmergency(false)
     }
     setError(null)
+    setIsDuplicate(false)
 
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) return
@@ -86,6 +89,16 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       ? totalIncome * (Number(percentStr || '0') / 100)
       : centsToFloat(limitDigits)
 
+  async function checkDuplicate(potName: string) {
+    if (editPot || !potName.trim() || potName.length < 2) { setIsDuplicate(false); return }
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    const { data } = await supabase
+      .from('pots').select('id').eq('user_id', userId)
+      .ilike('name', potName.trim()).limit(1)
+    setIsDuplicate(data != null && data.length > 0)
+  }
+
   const handleSave = async () => {
     if (!name.trim()) { setError('Informe o nome do pote.'); return }
     if (computedLimit <= 0) { setError('Informe um limite maior que zero.'); return }
@@ -96,6 +109,49 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
     setError(null)
     setLoading(true)
     try {
+      // Verificar duplicata apenas na criação
+      if (!editPot) {
+        const { data: existing } = await supabase
+          .from('pots').select('id, name').eq('user_id', userId)
+          .ilike('name', name.trim()).limit(1)
+
+        if (existing && existing.length > 0) {
+          const existingPot = existing[0] as { id: string; name: string }
+          setLoading(false)
+          Alert.alert(
+            'Pote já existe',
+            `O pote "${existingPot.name}" já está cadastrado.\n\nDeseja atualizar o limite para ${computedLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}?`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'Atualizar limite',
+                onPress: async () => {
+                  setLoading(true)
+                  try {
+                    const { error: updateErr } = await supabase
+                      .from('pots').update({ limit_amount: computedLimit, color })
+                      .eq('id', existingPot.id)
+                    if (updateErr) { setError('Erro ao atualizar pote.'); return }
+                    const cs = useAuthStore.getState().user?.cycle_start ?? 1
+                    await supabase.from('pot_limit_history').insert({
+                      pot_id: existingPot.id,
+                      user_id: userId,
+                      limit_amount: computedLimit,
+                      valid_from: getCycle(cs, 0).start.toISOString().split('T')[0],
+                    })
+                    onSuccess('Pote atualizado!')
+                    onClose()
+                  } finally {
+                    setLoading(false)
+                  }
+                },
+              },
+            ]
+          )
+          return
+        }
+      }
+
       const potCreatedAt = isRetroactive && cycleStartDate
         ? cycleStartDate.toISOString()
         : new Date().toISOString()
@@ -164,12 +220,18 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
             {/* Nome */}
             <Text style={styles.label}>Nome do pote</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDuplicate && { borderColor: Colors.warning }]}
               value={name}
-              onChangeText={t => { setName(t); setError(null) }}
+              onChangeText={t => { setName(t); setError(null); setIsDuplicate(false) }}
+              onBlur={() => checkDuplicate(name)}
               placeholder="Ex: Alimentação, Moradia…"
               placeholderTextColor={Colors.textMuted}
             />
+            {isDuplicate && (
+              <Text style={styles.duplicateHint}>
+                ⚠️ Já existe um pote com este nome. Ao salvar, você poderá atualizar o limite.
+              </Text>
+            )}
 
             {/* Sugestões */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
@@ -347,6 +409,7 @@ const styles = StyleSheet.create({
   },
   emergencyLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   hint: { fontSize: 12, color: Colors.textMuted, marginTop: 2, marginBottom: 4 },
+  duplicateHint: { fontSize: 12, color: Colors.warning, marginTop: 2, marginBottom: 4 },
   retroBanner: {
     backgroundColor: Colors.lightAmber, borderRadius: 10,
     padding: 10, marginBottom: 12,

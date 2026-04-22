@@ -120,8 +120,13 @@ export default function Step3() {
         }
       }
 
-      // 3. Inserir o pote
+      // 3. Inserir o pote (skip if name already exists — defensive check)
       const limitAmount = centsToFloat(limitDigits)
+      const { data: existingPot } = await supabase.from('pots').select('id')
+        .eq('user_id', userId).ilike('name', potName.trim()).limit(1)
+      if (existingPot && existingPot.length > 0) {
+        // Pote já existe — pular insert silenciosamente
+      } else {
       const { error: potError } = await supabase.from('pots').insert({
         user_id: userId,
         name: potName.trim(),
@@ -135,6 +140,7 @@ export default function Step3() {
         setError('Erro ao criar pote: ' + potError.message)
         return
       }
+      } // end existingPot check
 
       // 4. Atualizar store → guard do _layout reconhece onboarding completo
       if (savedUser) setUser(savedUser)
