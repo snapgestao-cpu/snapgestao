@@ -62,7 +62,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Pots dashboard** (`app/(tabs)/index.tsx`) — grid of pots filtered by `created_at <= cycle.end`, ordered by `created_at`. Emergency pot shown as separate footer card. Pull-to-refresh.
 
-**Pot detail** (`app/pot/[id].tsx`) — JarPot 150px + expense/income buttons + grouped transaction list with edit (✏️). Deletion is **physical DELETE** — current-cycle expense transactions are deleted first, then the pot row. Transactions from prior cycles keep `pot_id = null` (FK `ON DELETE SET NULL`).
+**Pot detail** (`app/pot/[id].tsx`) — JarPot 150px + expense/income buttons + grouped transaction list with edit (✏️). Deletion is soft delete via `deleted_at`. Transaction list uses **two parallel queries**: non-credit by `date`, credit by `billing_date` — merged and sorted by display date so installments from prior months appear in the current cycle. Transactions grouped by display date (billing_date for credit, date for others). Previous-month installments show a 🛍️ badge with purchase date and installment number. `spent` calculation uses same split (credit by billing_date, others by date).
 
 **JarPot** (`components/JarPot.tsx`) — PNG-based fill visualization using `assets/potes/` images (`Pote_vazio.png`, `Pote_10/30/50/70/90/100.png`). Image chosen by percent band. Export: `export function JarPot` (named) + `export default JarPot` — always import as named: `import { JarPot } from '...'`. Prop `limit: number | null` accepted without type error.
 
