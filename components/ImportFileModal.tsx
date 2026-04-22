@@ -286,6 +286,16 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const saveAll = async () => {
     setStep('saving')
     try {
+      // Verify userId from live auth session — prop may be stale
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      const resolvedUserId = authUser?.id ?? userId
+      console.log('[Import] userId prop:', userId, '| auth.getUser():', authUser?.id, '| match:', userId === authUser?.id)
+      if (!resolvedUserId) {
+        Alert.alert('Erro', 'Usuário não autenticado.')
+        setStep('assign')
+        return
+      }
+
       const inserts: any[] = []
 
       for (const r of rows) {
@@ -308,7 +318,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           }
 
           inserts.push({
-            user_id: userId,
+            user_id: resolvedUserId,
             pot_id: r.potId,
             card_id: (isCredit && selectedCard) ? selectedCard.id : null,
             type: r.type,

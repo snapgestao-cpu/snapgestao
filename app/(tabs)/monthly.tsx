@@ -106,6 +106,19 @@ export default function MonthlyScreen() {
       console.log('[Mensal] credit count:', txCreditRes.data?.length, '| error:', txCreditRes.error?.message)
       if (txNonCreditRes.data?.[0]) console.log('[Mensal] non-credit[0]:', JSON.stringify({ date: txNonCreditRes.data[0].date, pay: (txNonCreditRes.data[0] as any).payment_method, type: (txNonCreditRes.data[0] as any).type }))
 
+      // Diagnostic: query without date filter to detect userId or RLS issues
+      const { data: allTx, error: allTxErr } = await supabase
+        .from('transactions').select('id, description, date, billing_date, payment_method, type')
+        .eq('user_id', user.id).limit(5)
+      console.log('[Mensal] ALL (sem filtro data):', allTx?.length, '| error:', allTxErr?.message)
+      if (allTx?.[0]) {
+        const t = allTx[0] as any
+        console.log('[Mensal] sample date:', t.date, '| pay:', t.payment_method, '| type:', t.type)
+        console.log('[Mensal] date >= start:', t.date >= cycle.startISO, '| date <= end:', t.date <= cycle.endISO)
+      } else {
+        console.warn('[Mensal] 0 transactions para user_id:', user.id, '— verificar userId ou RLS')
+      }
+
       const txs: Transaction[] = [
         ...((txNonCreditRes.data ?? []) as Transaction[]),
         ...((txCreditRes.data ?? []) as Transaction[]),
