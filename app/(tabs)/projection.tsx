@@ -169,7 +169,7 @@ export default function ProjectionScreen() {
         const txList = (txs ?? []) as any[]
         const incomeActual = txList.filter(t => t.type === 'income')
           .reduce((s, t) => s + Number(t.amount), 0)
-        const expenseActual = txList.filter(t => t.type === 'expense')
+        const expenseActual = txList.filter(t => t.type === 'expense' || t.type === 'goal_deposit')
           .reduce((s, t) => s + Number(t.amount), 0)
 
         let income: number

@@ -57,16 +57,14 @@ export function GoalCard({ goal, onDeposit, onLongPress }: Props) {
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <Text style={styles.icon}>{icon}</Text>
-          <Text style={styles.name} numberOfLines={1}>{goal.name}</Text>
-        </View>
-        <View style={{ alignItems: 'center', gap: 4 }}>
-          <Image source={getPotImage(percent)} style={{ width: 52, height: 62, resizeMode: 'contain' }} />
+          <Text style={styles.name}>{goal.name}</Text>
           <View style={[styles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
             <Text style={[styles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
           </View>
         </View>
+        <Image source={getPotImage(percent)} style={{ width: 56, height: 68, resizeMode: 'contain', marginLeft: 8 }} />
       </View>
 
       {/* Amounts */}
