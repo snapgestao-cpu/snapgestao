@@ -200,6 +200,8 @@ export default function PotsScreen() {
         onSuccess={handleSuccess}
         onBadges={setPendingBadges}
         totalIncome={totalIncome}
+        cycleStartDate={cycle?.start}
+        isRetroactive={false}
       />
       <NewPotModal
         visible={!!editingPot}

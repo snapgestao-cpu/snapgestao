@@ -13,6 +13,11 @@ import { PotCard } from './PotCard'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { getCycle } from '../lib/cycle'
 
+function formatDatePT(d: Date): string {
+  const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
+  return `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`
+}
+
 export const POT_COLORS = [
   '#0F5EA8', '#1D9E75', '#E24B4A', '#BA7517',
   '#534AB7', '#D4537E', '#0891B2', '#059669',
@@ -112,41 +117,57 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       // Verificar duplicata apenas na criação
       if (!editPot) {
         const { data: existing } = await supabase
-          .from('pots').select('id, name').eq('user_id', userId)
+          .from('pots').select('id, name, created_at').eq('user_id', userId)
           .ilike('name', name.trim()).limit(1)
 
         if (existing && existing.length > 0) {
-          const existingPot = existing[0] as { id: string; name: string }
+          const existingPot = existing[0] as { id: string; name: string; created_at: string }
+          const existingCreatedAt = new Date(existingPot.created_at)
+          const isCreatedAfterCycle = isRetroactive && cycleStartDate != null
+            && existingCreatedAt > cycleStartDate
+
+          const limitFormatted = computedLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          const alertMsg = isCreatedAfterCycle
+            ? `O pote "${existingPot.name}" existe a partir de ${formatDatePT(existingCreatedAt)}.\n\nDeseja que ele passe a existir desde ${formatDatePT(cycleStartDate!)} também, atualizando o limite para ${limitFormatted}?`
+            : `O pote "${existingPot.name}" já está cadastrado.\n\nDeseja atualizar o limite para ${limitFormatted}?`
+          const btnLabel = isCreatedAfterCycle ? 'Sim, criar desde este mês' : 'Atualizar limite'
+
           setLoading(false)
           Alert.alert(
             'Pote já existe',
-            `O pote "${existingPot.name}" já está cadastrado.\n\nDeseja atualizar o limite para ${computedLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}?`,
+            alertMsg,
             [
               { text: 'Cancelar', style: 'cancel' },
               {
-                text: 'Atualizar limite',
+                text: btnLabel,
                 onPress: async () => {
                   try {
                     setLoading(true)
+                    const updateData: Record<string, unknown> = { limit_amount: computedLimit, color }
+                    if (isCreatedAfterCycle && cycleStartDate) {
+                      updateData.created_at = cycleStartDate.toISOString()
+                    }
                     const { error: updateErr } = await supabase
-                      .from('pots').update({ limit_amount: computedLimit, color })
+                      .from('pots').update(updateData)
                       .eq('id', existingPot.id).eq('user_id', userId)
                     if (updateErr) {
                       setError('Erro ao atualizar: ' + updateErr.message)
                       setLoading(false)
                       return
                     }
-                    const cs = useAuthStore.getState().user?.cycle_start ?? 1
+                    const validFrom = cycleStartDate
+                      ? cycleStartDate.toISOString().split('T')[0]
+                      : getCycle(useAuthStore.getState().user?.cycle_start ?? 1, 0).start.toISOString().split('T')[0]
                     await supabase.from('pot_limit_history').insert({
                       pot_id: existingPot.id,
                       user_id: userId,
                       limit_amount: computedLimit,
-                      valid_from: getCycle(cs, 0).start.toISOString().split('T')[0],
+                      valid_from: validFrom,
                     }).select()
                     setLoading(false)
                     onClose()
                     setTimeout(() => { onSuccess('Pote atualizado!') }, 100)
-                  } catch (err) {
+                  } catch {
                     setError('Erro inesperado.')
                     setLoading(false)
                   }
