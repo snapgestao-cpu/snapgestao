@@ -109,12 +109,15 @@ export default function MonthlyScreen() {
       // Diagnostic: query without date filter to detect userId or RLS issues
       const { data: allTx, error: allTxErr } = await supabase
         .from('transactions').select('id, description, date, billing_date, payment_method, type')
-        .eq('user_id', user.id).limit(5)
+        .eq('user_id', user.id).limit(10)
       console.log('[Mensal] ALL (sem filtro data):', allTx?.length, '| error:', allTxErr?.message)
-      if (allTx?.[0]) {
+      if (allTx && allTx.length > 0) {
         const t = allTx[0] as any
-        console.log('[Mensal] sample date:', t.date, '| pay:', t.payment_method, '| type:', t.type)
+        console.log('[Mensal] sample date:', t.date, '| pay:', t.payment_method, '| type:', t.type, '| billing_date:', t.billing_date)
         console.log('[Mensal] date >= start:', t.date >= cycle.startISO, '| date <= end:', t.date <= cycle.endISO)
+        // Show all billing_dates for credit to diagnose
+        const creditRows = (allTx as any[]).filter(x => x.payment_method === 'credit')
+        console.log('[Mensal] credit rows (sem filtro):', creditRows.length, '| billing_dates:', creditRows.map(x => x.billing_date))
       } else {
         console.warn('[Mensal] 0 transactions para user_id:', user.id, '— verificar userId ou RLS')
       }

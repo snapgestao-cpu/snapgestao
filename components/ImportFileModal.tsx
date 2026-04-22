@@ -320,12 +320,16 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             if (selectedCard) {
               billingDate = calcBillingDate(r.date, selectedCard, i)
             } else {
-              // No card selected: billing_date = next month + offset
-              const [y, mo, d] = r.date.split('-').map(Number)
-              const dt = new Date(y, mo - 1 + 1 + i, d)
-              billingDate = dt.toISOString().split('T')[0]
+              // No card selected: billing_date = 1st of next month + offset
+              // Use local date construction (no UTC offset issues)
+              const purchase = new Date(r.date + 'T12:00:00')
+              let month0 = purchase.getMonth() + 1 + i  // 0-indexed, +1 = next month
+              let year = purchase.getFullYear()
+              while (month0 > 11) { month0 -= 12; year += 1 }
+              billingDate = `${year}-${String(month0 + 1).padStart(2, '0')}-01`
             }
           }
+          console.log('[Import] parcela', i + 1, '| date:', r.date, '| billing_date:', billingDate)
 
           inserts.push({
             user_id: resolvedUserId,
