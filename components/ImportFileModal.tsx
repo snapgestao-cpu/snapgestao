@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity,
   ActivityIndicator, FlatList, Alert, ScrollView,
@@ -10,18 +10,20 @@ import { Colors } from '../constants/colors'
 import { supabase } from '../lib/supabase'
 import { getPotIcon } from '../lib/potIcons'
 import { brl } from '../lib/finance'
-import { Pot } from '../types'
+import { Pot, CreditCard } from '../types'
 
 type ImportRow = {
   date: string
   description: string
+  merchant: string
   amount: number
   type: 'expense' | 'income'
+  paymentMethod: string
+  installmentTotal: number
   potId: string | null
-  installmentTotal: number  // 1 = à vista
 }
 
-type Step = 'pick' | 'preview' | 'assign' | 'saving' | 'done'
+type Step = 'pick' | 'preview' | 'card_select' | 'assign' | 'saving' | 'done'
 
 type Props = {
   visible: boolean
@@ -33,7 +35,9 @@ type Props = {
   cycleEndISO: string
 }
 
-function parseDate(raw: any): string {
+// --- Helpers ---
+
+function parseDateISO(raw: any): string {
   if (!raw) return new Date().toISOString().split('T')[0]
   if (typeof raw === 'number') {
     const d = XLSX.SSF.parse_date_code(raw)
@@ -52,6 +56,28 @@ function parseAmount(raw: any): number {
   return Math.abs(parseFloat(s) || 0)
 }
 
+function parsePaymentMethod(raw: any): string {
+  const s = String(raw ?? '').toLowerCase().trim()
+  if (s.includes('créd') || s.includes('cred')) return 'credit'
+  if (s.includes('déb') || s.includes('deb')) return 'debit'
+  if (s.includes('pix')) return 'pix'
+  if (s.includes('dinh') || s.includes('cash')) return 'cash'
+  if (s.includes('transf')) return 'transfer'
+  return 'other'
+}
+
+// Same logic as NewExpenseModal
+function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
+  const [y, m, d] = txISO.split('-').map(Number)
+  let month0 = m - 1
+  let year = y
+  if (d >= card.closing_day) month0 += 1
+  if (card.due_day < card.closing_day) month0 += 1
+  month0 += offset
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
+}
+
 function genUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0
@@ -65,11 +91,13 @@ function parseSheet(data: any[][]): ImportRow[] {
   const colIdx = (names: string[]) =>
     names.reduce<number>((found, n) => found >= 0 ? found : header.findIndex(h => h.includes(n)), -1)
 
-  const dateCol    = colIdx(['data', 'date'])
-  const descCol    = colIdx(['descri', 'desc', 'hist', 'memo'])
-  const amtCol     = colIdx(['valor', 'amount', 'value', 'total'])
-  const typeCol    = colIdx(['tipo', 'type'])
-  const installCol = colIdx(['parcela', 'parcel', 'installment'])
+  const dateCol     = colIdx(['data', 'date'])
+  const descCol     = colIdx(['descri', 'desc', 'hist', 'memo'])
+  const amtCol      = colIdx(['valor', 'amount', 'value', 'total'])
+  const typeCol     = colIdx(['tipo', 'type'])
+  const payCol      = colIdx(['pagamento', 'payment', 'forma'])
+  const merchantCol = colIdx(['estabelecimento', 'merchant', 'loja', 'fornecedor'])
+  const installCol  = colIdx(['parcela', 'parcel', 'installment'])
 
   if (amtCol < 0) return []
 
@@ -79,28 +107,119 @@ function parseSheet(data: any[][]): ImportRow[] {
     const type: 'expense' | 'income' = typeCol >= 0
       ? (String(row[typeCol] ?? '').toLowerCase().includes('recei') ? 'income' : 'expense')
       : (typeof rawAmt === 'number' && rawAmt < 0 ? 'income' : 'expense')
+    const paymentMethod = payCol >= 0 ? parsePaymentMethod(row[payCol]) : 'other'
     const installmentTotal = installCol >= 0
       ? (parseInt(String(row[installCol] ?? '1')) || 1)
       : 1
     return {
-      date: parseDate(dateCol >= 0 ? row[dateCol] : null),
+      date: parseDateISO(dateCol >= 0 ? row[dateCol] : null),
       description: descCol >= 0 ? String(row[descCol] ?? '').trim() : 'Importado',
+      merchant: merchantCol >= 0 ? String(row[merchantCol] ?? '').trim() : '',
       amount,
       type,
-      potId: null,
+      paymentMethod,
       installmentTotal: type === 'expense' ? installmentTotal : 1,
+      potId: null,
     }
   }).filter(r => r.amount > 0)
 }
+
+// --- Excel preview (static model) ---
+
+const EXCEL_COLS = [
+  { label: 'tipo', width: 60 },
+  { label: 'descrição', width: 110 },
+  { label: 'data', width: 80 },
+  { label: 'valor', width: 80 },
+  { label: 'pagamento', width: 90 },
+  { label: 'estabelecimento', width: 110 },
+  { label: 'parcelas', width: 70 },
+]
+
+const EXCEL_SAMPLE = [
+  ['despesa', 'Supermercado', '15/04/2026', '158,90', 'débito', 'Pão de Açúcar', '1'],
+  ['despesa', 'Celular novo', '10/04/2026', '1200,00', 'crédito', 'Samsung Store', '12'],
+  ['receita', 'Salário', '05/04/2026', '4500,00', 'pix', 'Empresa XYZ', ''],
+]
+
+function ExcelPreview() {
+  return (
+    <View style={exStyles.wrapper}>
+      <Text style={exStyles.label}>Modelo de planilha esperado:</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View>
+          <View style={exStyles.headerRow}>
+            {EXCEL_COLS.map(col => (
+              <View key={col.label} style={[exStyles.cell, exStyles.headerCell, { width: col.width }]}>
+                <Text style={exStyles.headerText}>{col.label}</Text>
+              </View>
+            ))}
+          </View>
+          {EXCEL_SAMPLE.map((vals, i) => {
+            const bg = i % 2 === 0 ? '#fff' : '#f0f7f0'
+            const tipoColor = vals[0] === 'despesa' ? Colors.danger : Colors.success
+            return (
+              <View key={i} style={[exStyles.dataRow, { backgroundColor: bg }]}>
+                {EXCEL_COLS.map((col, ci) => (
+                  <View key={col.label} style={[exStyles.cell, { width: col.width }]}>
+                    <Text style={[exStyles.dataText, ci === 0 && { color: tipoColor, fontWeight: '700' }]} numberOfLines={1}>
+                      {vals[ci]}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )
+          })}
+        </View>
+      </ScrollView>
+      <View style={exStyles.legend}>
+        <Text style={exStyles.legendText}>
+          <Text style={{ fontWeight: '700' }}>Obrigatória:</Text> valor{'\n'}
+          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> tipo, descrição, data, pagamento, estabelecimento, parcelas
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+const exStyles = StyleSheet.create({
+  wrapper: { width: '100%', gap: 8 },
+  label: { fontSize: 12, fontWeight: '700', color: Colors.textDark },
+  headerRow: { flexDirection: 'row' },
+  headerCell: { backgroundColor: '#217346' },
+  dataRow: { flexDirection: 'row' },
+  cell: { paddingVertical: 5, paddingHorizontal: 6, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#c8e6c9' },
+  headerText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  dataText: { fontSize: 10, color: Colors.textDark },
+  legend: { backgroundColor: Colors.lightBlue, borderRadius: 8, padding: 10 },
+  legendText: { fontSize: 11, color: Colors.textDark, lineHeight: 18 },
+})
+
+// --- Main component ---
 
 export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cycleStartISO, cycleEndISO }: Props) {
   const [step, setStep] = useState<Step>('pick')
   const [rows, setRows] = useState<ImportRow[]>([])
   const [filename, setFilename] = useState('')
-  const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [cards, setCards] = useState<CreditCard[]>([])
+  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
 
-  const reset = () => { setStep('pick'); setRows([]); setFilename('') }
+  useEffect(() => {
+    if (visible) loadCards()
+  }, [visible])
+
+  const loadCards = async () => {
+    const { data } = await supabase
+      .from('credit_cards').select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+    setCards((data ?? []) as CreditCard[])
+  }
+
+  const reset = () => {
+    setStep('pick'); setRows([]); setFilename(''); setSelectedCard(null)
+  }
   const handleClose = () => { reset(); onClose() }
 
   const pickFile = async () => {
@@ -129,46 +248,58 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     }
   }
 
-  const removeRow = (idx: number) => {
-    setRows(prev => prev.filter((_, i) => i !== idx))
-  }
+  const removeRow = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx))
 
   const setRowPot = (idx: number, potId: string | null) => {
     setRows(prev => { const next = [...prev]; next[idx] = { ...next[idx], potId }; return next })
   }
 
+  const handleConfirmPreview = () => {
+    const hasCreditItems = rows.some(r => r.type === 'expense' && r.paymentMethod === 'credit')
+    setStep(hasCreditItems ? 'card_select' : 'assign')
+  }
+
   const saveAll = async () => {
-    setSaving(true)
+    setStep('saving')
     try {
       const inserts: any[] = []
 
       for (const r of rows) {
-        if (r.installmentTotal > 1) {
-          const groupId = genUUID()
-          const installmentValue = Math.round((r.amount / r.installmentTotal) * 100) / 100
-          for (let i = 0; i < r.installmentTotal; i++) {
-            inserts.push({
-              user_id: userId,
-              pot_id: r.potId,
-              date: r.date,
-              description: `${r.description} (${i + 1}/${r.installmentTotal})`,
-              amount: installmentValue,
-              type: r.type,
-              payment_method: 'credit',
-              installment_total: r.installmentTotal,
-              installment_number: i + 1,
-              installment_group_id: groupId,
-            })
+        const installments = r.installmentTotal
+        const isCredit = r.paymentMethod === 'credit'
+        const installmentValue = Math.round((r.amount / installments) * 100) / 100
+        const groupId = installments > 1 ? genUUID() : null
+
+        for (let i = 0; i < installments; i++) {
+          let billingDate: string | null = null
+          if (isCredit) {
+            if (selectedCard) {
+              billingDate = calcBillingDate(r.date, selectedCard, i)
+            } else {
+              // No card selected: billing_date = next month + offset
+              const [y, mo, d] = r.date.split('-').map(Number)
+              const dt = new Date(y, mo - 1 + 1 + i, d)
+              billingDate = dt.toISOString().split('T')[0]
+            }
           }
-        } else {
+
           inserts.push({
             user_id: userId,
             pot_id: r.potId,
-            date: r.date,
-            description: r.description,
-            amount: r.amount,
+            card_id: (isCredit && selectedCard) ? selectedCard.id : null,
             type: r.type,
-            payment_method: 'other',
+            amount: installmentValue,
+            description: installments > 1
+              ? `${r.description} (${i + 1}/${installments})`
+              : r.description,
+            merchant: r.merchant || null,
+            date: r.date,
+            billing_date: billingDate,
+            payment_method: r.paymentMethod,
+            is_need: null,
+            installment_total: installments > 1 ? installments : null,
+            installment_number: installments > 1 ? i + 1 : null,
+            installment_group_id: groupId,
           })
         }
       }
@@ -179,8 +310,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       setStep('done')
     } catch (e: any) {
       Alert.alert('Erro ao salvar', e?.message ?? 'Tente novamente.')
-    } finally {
-      setSaving(false)
+      setStep('assign')
     }
   }
 
@@ -193,13 +323,18 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       </Text>
       <View style={{ flex: 1, marginHorizontal: 8 }}>
         <Text style={styles.previewDesc} numberOfLines={1}>{item.description}</Text>
-        <Text style={styles.previewMeta}>{item.date}</Text>
+        <Text style={styles.previewMeta}>{item.date} · {item.paymentMethod}</Text>
+        {item.type === 'expense' && item.paymentMethod === 'credit' && item.installmentTotal > 1 && (
+          <Text style={[styles.previewMeta, { color: Colors.warning }]}>
+            💳 {item.installmentTotal}x de {brl(item.amount / item.installmentTotal)} — vencimentos calculados pelo cartão
+          </Text>
+        )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 3 }}>
         <Text style={[styles.previewAmt, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
           {item.type === 'income' ? '+' : '-'}{brl(item.amount)}
         </Text>
-        {item.installmentTotal > 1 && (
+        {item.installmentTotal > 1 && item.paymentMethod !== 'credit' && (
           <View style={styles.installBadge}>
             <Text style={styles.installBadgeText}>
               {item.installmentTotal}x de {brl(item.amount / item.installmentTotal)}
@@ -248,16 +383,20 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     </View>
   )
 
+  const stepTitle = () => {
+    if (step === 'pick') return 'Importar Planilha'
+    if (step === 'preview') return `${rows.length} itens detectados`
+    if (step === 'card_select') return 'Selecionar cartão'
+    if (step === 'assign') return 'Atribuir potes'
+    if (step === 'done') return 'Concluído'
+    return 'Salvando...'
+  }
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>
-            {step === 'pick' ? 'Importar Planilha' :
-             step === 'preview' ? `${rows.length} itens detectados` :
-             step === 'assign' ? 'Atribuir potes' :
-             step === 'done' ? 'Concluído' : 'Salvando...'}
-          </Text>
+          <Text style={styles.title}>{stepTitle()}</Text>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
@@ -265,26 +404,14 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
 
         {/* STEP: pick */}
         {step === 'pick' && (
-          <View style={styles.pickContainer}>
+          <ScrollView contentContainerStyle={styles.pickContainer} showsVerticalScrollIndicator={false}>
             <Text style={styles.pickEmoji}>📊</Text>
             <Text style={styles.pickTitle}>Arquivo Excel (.xlsx)</Text>
-
-            <View style={styles.colReference}>
-              <Text style={styles.colRefTitle}>Colunas esperadas no arquivo:</Text>
-              <Text style={styles.colRefCode}>
-                tipo | descrição | data | valor |{'\n'}
-                pagamento | estabelecimento | parcelas
-              </Text>
-              <Text style={styles.colRefNote}>
-                * parcelas: número inteiro (ex: 3 = 3x).{'\n'}
-                * Deixar vazio ou 1 para compra à vista.
-              </Text>
-            </View>
-
-            <TouchableOpacity style={styles.primaryBtn} onPress={pickFile}>
+            <ExcelPreview />
+            <TouchableOpacity style={[styles.primaryBtn, { width: '100%' }]} onPress={pickFile}>
               <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         )}
 
         {/* STEP: preview */}
@@ -293,7 +420,6 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             <View style={styles.filenameBadge}>
               <Text style={styles.filenameText}>📄 {filename}</Text>
             </View>
-
             <Text style={styles.sectionLabel}>
               Prévia ({rows.length} linhas → {totalTransactions} lançamentos)
             </Text>
@@ -304,16 +430,53 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
             />
-
             <View style={styles.bottomRow}>
               <TouchableOpacity style={styles.secondaryBtn} onPress={reset}>
                 <Text style={styles.secondaryBtnText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={() => setStep('assign')}>
+              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={handleConfirmPreview}>
                 <Text style={styles.primaryBtnText}>Confirmar itens →</Text>
               </TouchableOpacity>
             </View>
           </View>
+        )}
+
+        {/* STEP: card_select */}
+        {step === 'card_select' && (
+          <ScrollView contentContainerStyle={{ padding: 24 }} showsVerticalScrollIndicator={false}>
+            <Text style={styles.cardSelectTitle}>💳 Selecionar cartão</Text>
+            <Text style={styles.cardSelectSubtitle}>
+              Os lançamentos de crédito serão vinculados a este cartão para calcular o vencimento correto de cada parcela.
+            </Text>
+            {cards.map(card => (
+              <TouchableOpacity
+                key={card.id}
+                onPress={() => { setSelectedCard(card); setStep('assign') }}
+                style={[styles.cardRow,
+                  selectedCard?.id === card.id && { borderColor: Colors.primary, backgroundColor: Colors.lightBlue }]}
+              >
+                <Text style={{ fontSize: 24, marginRight: 12 }}>💳</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardName}>{card.name}</Text>
+                  <Text style={styles.cardMeta}>
+                    Fecha dia {card.closing_day} · Vence dia {card.due_day}
+                    {card.last_four ? ` · ****${card.last_four}` : ''}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            {cards.length === 0 && (
+              <Text style={[styles.cardMeta, { textAlign: 'center', marginBottom: 16 }]}>
+                Nenhum cartão cadastrado. Cadastre em Perfil → Cartões.
+              </Text>
+            )}
+            <TouchableOpacity
+              onPress={() => { setSelectedCard(null); setStep('assign') }}
+              style={styles.cardSkipBtn}
+            >
+              <Text style={{ color: Colors.textMuted, fontSize: 13 }}>Continuar sem vincular cartão</Text>
+            </TouchableOpacity>
+          </ScrollView>
         )}
 
         {/* STEP: assign */}
@@ -328,22 +491,30 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               showsVerticalScrollIndicator={false}
             />
             <View style={styles.bottomRow}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setStep('preview')}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => {
+                const hasCreditItems = rows.some(r => r.type === 'expense' && r.paymentMethod === 'credit')
+                setStep(hasCreditItems ? 'card_select' : 'preview')
+              }}>
                 <Text style={styles.secondaryBtnText}>← Voltar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={saveAll} disabled={saving}>
-                {saving
-                  ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.primaryBtnText}>Importar {totalTransactions} lançamentos</Text>
-                }
+              <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }]} onPress={saveAll}>
+                <Text style={styles.primaryBtnText}>Importar {totalTransactions} lançamentos</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
+        {/* STEP: saving */}
+        {step === 'saving' && (
+          <View style={styles.centeredContainer}>
+            <ActivityIndicator color={Colors.primary} size="large" />
+            <Text style={[styles.pickTitle, { marginTop: 16 }]}>Salvando lançamentos...</Text>
+          </View>
+        )}
+
         {/* STEP: done */}
         {step === 'done' && (
-          <View style={styles.pickContainer}>
+          <View style={styles.centeredContainer}>
             <Text style={styles.pickEmoji}>✅</Text>
             <Text style={styles.pickTitle}>{savedCount} lançamentos importados!</Text>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => { onSuccess(`${savedCount} lançamentos importados!`); handleClose() }}>
@@ -366,16 +537,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: Colors.textDark },
   closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
   closeBtnText: { fontSize: 14, color: Colors.textMuted },
-  pickContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
+  pickContainer: { alignItems: 'center', padding: 24, gap: 16 },
+  centeredContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   pickEmoji: { fontSize: 56 },
   pickTitle: { fontSize: 18, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
-  colReference: {
-    backgroundColor: Colors.background, borderRadius: 10, padding: 12,
-    width: '100%', borderWidth: 1, borderColor: Colors.border,
-  },
-  colRefTitle: { fontSize: 12, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
-  colRefCode: { fontSize: 11, color: Colors.textMuted, fontFamily: 'monospace', lineHeight: 18 },
-  colRefNote: { fontSize: 11, color: Colors.textMuted, marginTop: 6, lineHeight: 16 },
   filenameBadge: {
     margin: 16, padding: 10, borderRadius: 8,
     backgroundColor: Colors.lightBlue, alignItems: 'center',
@@ -404,7 +569,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.white,
   },
-  potScroll: { paddingHorizontal: 12, paddingVertical: 8 },
   potChip: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
     borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.white,
@@ -429,4 +593,19 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.white,
   },
   secondaryBtnText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
+  cardRow: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 16, marginBottom: 10,
+    backgroundColor: Colors.white, borderRadius: 14,
+    borderWidth: 1.5, borderColor: Colors.border,
+  },
+  cardName: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  cardMeta: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  cardSelectTitle: { fontSize: 18, fontWeight: '700', color: Colors.textDark, marginBottom: 8 },
+  cardSelectSubtitle: { fontSize: 13, color: Colors.textMuted, marginBottom: 20, lineHeight: 18 },
+  cardSkipBtn: {
+    padding: 16, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', marginTop: 8,
+  },
 })
