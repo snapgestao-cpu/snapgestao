@@ -70,14 +70,24 @@ function parseAmount(raw: any): number {
   return Math.abs(parseFloat(s) || 0)
 }
 
+function normalize(s: string): string {
+  return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
 function parsePaymentMethod(raw: any): string {
-  const s = String(raw ?? '').toLowerCase().trim()
-  if (s.includes('créd') || s.includes('cred')) return 'credit'
-  if (s.includes('déb') || s.includes('deb')) return 'debit'
-  if (s.includes('pix')) return 'pix'
+  const s = normalize(String(raw ?? ''))
+  if (s.includes('cred')) return 'credit'
+  if (s.includes('deb')) return 'debit'
+  if (s === 'pix' || s.includes('pix')) return 'pix'
   if (s.includes('dinh') || s.includes('cash')) return 'cash'
   if (s.includes('transf')) return 'transfer'
-  return 'cash'  // safe fallback — 'other' is not a valid payment_method in the DB
+  return 'cash'  // 'other' is not a valid payment_method in the DB
+}
+
+function parseType(raw: any): 'expense' | 'income' {
+  const s = normalize(String(raw ?? ''))
+  if (s.includes('recei') || s === 'income') return 'income'
+  return 'expense'  // despesa, gasto, expense → expense
 }
 
 // Same logic as NewExpenseModal
@@ -119,9 +129,9 @@ function parseSheet(data: any[][]): ImportRow[] {
     const rawAmt = row[amtCol]
     const amount = parseAmount(rawAmt)
     const type: 'expense' | 'income' = typeCol >= 0
-      ? (String(row[typeCol] ?? '').toLowerCase().includes('recei') ? 'income' : 'expense')
+      ? parseType(row[typeCol])
       : (typeof rawAmt === 'number' && rawAmt < 0 ? 'income' : 'expense')
-    const paymentMethod = payCol >= 0 ? parsePaymentMethod(row[payCol]) : 'other'
+    const paymentMethod = payCol >= 0 ? parsePaymentMethod(row[payCol]) : 'cash'  // was 'other' — invalid in DB
     const installmentTotal = installCol >= 0
       ? (parseInt(String(row[installCol] ?? '1')) || 1)
       : 1
@@ -318,8 +328,26 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         }
       }
 
+      // Validate before insert — log first row for diagnosis
+      const sample = inserts[0]
+      console.log('[Import] Sample row to insert:', JSON.stringify({
+        type: sample?.type,
+        payment_method: sample?.payment_method,
+        date: sample?.date,
+        billing_date: sample?.billing_date,
+        amount: sample?.amount,
+        pot_id: sample?.pot_id,
+      }))
+      const invalidType = inserts.find(t => !['expense', 'income', 'goal_deposit'].includes(t.type))
+      const invalidPay  = inserts.find(t => !['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method))
+      const invalidDate = inserts.find(t => !t.date || !/^\d{4}-\d{2}-\d{2}$/.test(t.date))
+      if (invalidType) console.error('[Import] INVALID type:', invalidType.type, invalidType.description)
+      if (invalidPay)  console.error('[Import] INVALID payment_method:', invalidPay.payment_method, invalidPay.description)
+      if (invalidDate) console.error('[Import] INVALID date:', invalidDate.date, invalidDate.description)
+
       const { data: inserted, error } = await supabase.from('transactions').insert(inserts).select()
       if (error) throw error
+      console.log('[Import] Inserted count:', inserted?.length, '| error:', error)
       const savedN = inserted?.length ?? inserts.length
       setSavedCount(savedN)
       setStep('done')

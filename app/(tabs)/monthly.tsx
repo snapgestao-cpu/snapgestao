@@ -79,6 +79,7 @@ export default function MonthlyScreen() {
   const loadData = useCallback(async () => {
     if (!user) return
     try {
+      console.log('[Mensal] loadData — ciclo:', cycle.startISO, '→', cycle.endISO, '| userId:', user.id)
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
       const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
         // Non-credit: filter by date
@@ -100,6 +101,10 @@ export default function MonthlyScreen() {
         supabase.from('cycle_rollovers').select('processed')
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
       ])
+
+      console.log('[Mensal] non-credit count:', txNonCreditRes.data?.length, '| error:', txNonCreditRes.error?.message)
+      console.log('[Mensal] credit count:', txCreditRes.data?.length, '| error:', txCreditRes.error?.message)
+      if (txNonCreditRes.data?.[0]) console.log('[Mensal] non-credit[0]:', JSON.stringify({ date: txNonCreditRes.data[0].date, pay: (txNonCreditRes.data[0] as any).payment_method, type: (txNonCreditRes.data[0] as any).type }))
 
       const txs: Transaction[] = [
         ...((txNonCreditRes.data ?? []) as Transaction[]),
