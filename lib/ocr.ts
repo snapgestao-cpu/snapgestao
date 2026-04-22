@@ -185,11 +185,6 @@ function parseNFCeHTML(html: string, url: string): NFCeResult {
     }
   }
 
-  if (items.length === 0) {
-    console.log('=== parseNFCeHTML: sem itens — HTML debug ===')
-    console.log(html.substring(0, 5000))
-    console.log('=== FIM HTML ===')
-  }
 
   // ── TOTAL ──
   const totalMatch =

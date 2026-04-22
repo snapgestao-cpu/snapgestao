@@ -70,7 +70,6 @@ function parseDateISO(raw: any): string {
   // YYYY-M-D or YYYY-MM-DD — always normalize with zero padding
   const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
-  console.warn('[Import] data não reconhecida:', raw)
   return today
 }
 
@@ -299,7 +298,6 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       // Always use live auth session — prop may be stale or from wrong user
       const { data: { user: authUser } } = await supabase.auth.getUser()
       const resolvedUserId = authUser?.id
-      console.log('[Import] auth.getUser() id:', resolvedUserId, '| prop id:', userId, '| match:', resolvedUserId === userId)
       if (!resolvedUserId) {
         Alert.alert('Erro', 'Sessão expirada. Faça login novamente.')
         setStep('assign')
@@ -329,8 +327,6 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               billingDate = `${year}-${String(month0 + 1).padStart(2, '0')}-01`
             }
           }
-          console.log('[Import] parcela', i + 1, '| date:', r.date, '| billing_date:', billingDate)
-
           inserts.push({
             user_id: resolvedUserId,
             pot_id: r.potId,
@@ -352,31 +348,17 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         }
       }
 
-      // Validate and auto-fix before insert
+      // Auto-fix any invalid fields before insert
       const dateRe = /^\d{4}-\d{2}-\d{2}$/
       for (const t of inserts) {
-        if (!t.date || !dateRe.test(t.date)) {
-          console.error('[Import] DATE INVÁLIDO corrigido:', t.date, '→ hoje')
-          t.date = formatDateISO(new Date())
-        }
-        if (t.billing_date && !dateRe.test(t.billing_date)) {
-          console.error('[Import] BILLING_DATE INVÁLIDO corrigido:', t.billing_date)
-          t.billing_date = null
-        }
-        if (!['expense', 'income', 'goal_deposit'].includes(t.type)) {
-          console.error('[Import] TYPE INVÁLIDO:', t.type, '→ expense')
-          t.type = 'expense'
-        }
-        if (!['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method)) {
-          console.error('[Import] PAYMENT INVÁLIDO:', t.payment_method, '→ cash')
-          t.payment_method = 'cash'
-        }
+        if (!t.date || !dateRe.test(t.date)) t.date = formatDateISO(new Date())
+        if (t.billing_date && !dateRe.test(t.billing_date)) t.billing_date = null
+        if (!['expense', 'income', 'goal_deposit'].includes(t.type)) t.type = 'expense'
+        if (!['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method)) t.payment_method = 'cash'
       }
-      console.log('[Import] Sample final:', JSON.stringify({ user_id: inserts[0]?.user_id, date: inserts[0]?.date, payment_method: inserts[0]?.payment_method, type: inserts[0]?.type, amount: inserts[0]?.amount }))
 
       const { data: inserted, error } = await supabase.from('transactions').insert(inserts).select()
       if (error) throw error
-      console.log('[Import] Inserted count:', inserted?.length, '| error:', error)
       const savedN = inserted?.length ?? inserts.length
       setSavedCount(savedN)
       setStep('done')
