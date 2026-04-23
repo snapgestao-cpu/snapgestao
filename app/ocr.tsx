@@ -76,6 +76,7 @@ export default function OCRScreen() {
   const [nfceUrl, setNfceUrl] = useState<string | null>(null)
   const [nfceState, setNfceState] = useState<NFCeState | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<string>('debit')
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
 
   const loadPots = async () => {
     if (!user) return
@@ -503,6 +504,9 @@ export default function OCRScreen() {
                     style={[styles.fieldInput, { flex: 1, marginBottom: 4 }]}
                     value={item.name}
                     onChangeText={v => updateItem(item.id, { name: v })}
+                    onFocus={() => setFocusedItemId(item.id)}
+                    onBlur={() => setFocusedItemId(null)}
+                    selection={focusedItemId !== item.id ? { start: 0, end: 0 } : undefined}
                     placeholder="Descrição"
                     placeholderTextColor={Colors.textMuted}
                   />
