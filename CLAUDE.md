@@ -97,19 +97,20 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Profile** (`app/(tabs)/profile.tsx`) — cycle edit, income sources, credit cards, IR CSV export (`handleExportarIR()` via `expo-file-system/legacy` + `expo-sharing`), data clear, logout. Summary cards: current cycle balance (via `calculateCycleSummary`), active goals count, priority goal progress.
 
+**NFC-e states** (`lib/nfce-states.ts`) — multi-state support: RJ (33), SP (35), MG (31). `extractStateCode(qrData)` reads the first 2 digits of the 44-digit access key embedded in the QR Code URL (`?p=KEY|...`), with domain-based and raw-key fallbacks. `getStateByCode` / `isStateSupported` / `STATE_NAMES` (all 27 states). Each `NFCeState` entry has `isFinalUrl()` and `isRedirectUrl()` functions used by `NFCeWebView` for URL-aware injection. To add a new state: add an entry to `NFCE_STATES` with its code, portal URL, and URL detection functions.
+
 **OCR / NFC-e** (`app/ocr.tsx`) — menu-first flow with two paths:
-1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → `sanitizeNFCeUrl()` (exported from `NFCeWebView.tsx`) fixes double-protocol (`http://https//`) and encodes `|` in query string → URL stored in `nfceUrl` state → `NFCeWebView` renders. WebView loads the SEFAZ-RJ page using the device's real browser engine (bypasses all IP blocks). After load, `EXTRACT_SCRIPT` is injected via `injectJavaScript()` to parse the DOM. Result posted back via `window.ReactNativeWebView.postMessage`. WebView is hidden (opacity 0) — user sees only the loading overlay.
+1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → `extractStateCode()` detects state from access key → unsupported states show Alert with OCR fallback → `sanitizeNFCeUrl()` fixes double-protocol and encodes `|` → `nfceUrl` + `nfceState` stored in state → `NFCeWebView` renders with state-aware URL detection. Menu shows "Suporta cupons de RJ, SP e MG".
 2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision. Also auto-triggered if QR fails (step `ocr_camera` opens camera via `useEffect`).
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
 
-**NFCeWebView** (`components/NFCeWebView.tsx`) — injection guard pattern:
+**NFCeWebView** (`components/NFCeWebView.tsx`) — accepts optional `state?: NFCeState` prop; uses `state.isRedirectUrl()` / `state.isFinalUrl()` when provided, falls back to generic functions for unknown states. Injection guard pattern:
 - `scriptInjectedRef` — prevents duplicate injections; reset when `onNavigationStateChange` detects transition from redirect → result URL
 - `loadEndTimerRef` — 1s delay after `onLoadEnd` to let jQuery Mobile start rendering before polling begins
 - `finalUrlRef` — tracks current URL after redirects via `onNavigationStateChange`
-- `sawRedirectRef` — records whether the redirect URL (`QRCode?p=`) was seen, so the result-page transition can be detected and `scriptInjectedRef` reset correctly
-- `isRedirectUrl()` — detects `QRCode?p=` / `qrcode?p=` (entry point, must NOT inject here)
-- `isFinalResultUrl()` — detects result pages: `resultadoQRCode`, `resultadoNfce`, `consultaChaveAcesso`, `consultaDFe`, or any non-redirect non-blank URL
+- `sawRedirectRef` — records whether the redirect URL was seen, so the result-page transition can be detected and `scriptInjectedRef` reset correctly
 - `onLoadEnd` skips injection if still on redirect URL; only injects on the final result page
+- Loading overlay shows `Consultando SEFAZ-{UF}...` when state is known
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
 - EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page).
 
