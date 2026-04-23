@@ -103,9 +103,13 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
 
 **NFCeWebView** (`components/NFCeWebView.tsx`) — injection guard pattern:
-- `scriptInjectedRef` — prevents duplicate injections when `onLoadEnd` fires multiple times
-- `loadEndTimerRef` — 1s delay after `onLoadEnd` to let any redirect settle before injecting
-- `finalUrlRef` — tracks URL after SEFAZ redirects via `onNavigationStateChange`
+- `scriptInjectedRef` — prevents duplicate injections; reset when `onNavigationStateChange` detects transition from redirect → result URL
+- `loadEndTimerRef` — 1s delay after `onLoadEnd` to let jQuery Mobile start rendering before polling begins
+- `finalUrlRef` — tracks current URL after redirects via `onNavigationStateChange`
+- `sawRedirectRef` — records whether the redirect URL (`QRCode?p=`) was seen, so the result-page transition can be detected and `scriptInjectedRef` reset correctly
+- `isRedirectUrl()` — detects `QRCode?p=` / `qrcode?p=` (entry point, must NOT inject here)
+- `isFinalResultUrl()` — detects result pages: `resultadoQRCode`, `resultadoNfce`, `consultaChaveAcesso`, `consultaDFe`, or any non-redirect non-blank URL
+- `onLoadEnd` skips injection if still on redirect URL; only injects on the final result page
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
 - EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page).
 
