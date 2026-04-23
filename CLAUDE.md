@@ -104,6 +104,8 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision. Also auto-triggered if QR fails (step `ocr_camera` opens camera via `useEffect`).
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
 
+**Review step** — `ReviewItem` type: `{ id, name, valueCents: number, quantity, unit, potId }`. Value stored as integer cents; `formatCents(cents)` formats for display; `digitsOnly` strips non-numeric for the mask. Payment method selector (`paymentMethod` state, default `'debit'`) is pre-filled from `result.payment_method` (NFCe path) and editable via chip buttons (debit/credit/pix/cash/transfer). `handleSave` uses `paymentMethod` for all transactions (both simplified and per-item). `updateItem(id, changes)` is id-based (not index-based). `addItem` uses `Date.now()` as id.
+
 **NFCeWebView** (`components/NFCeWebView.tsx`) — accepts optional `state?: NFCeState` prop; uses `state.isRedirectUrl()` / `state.isFinalUrl()` when provided, falls back to generic functions for unknown states. Injection guard pattern:
 - `scriptInjectedRef` — prevents duplicate injections; reset when `onNavigationStateChange` detects transition from redirect → result URL
 - `loadEndTimerRef` — 1s delay after `onLoadEnd` to let jQuery Mobile start rendering before polling begins
@@ -112,7 +114,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - `onLoadEnd` skips injection if still on redirect URL; only injects on the final result page
 - Loading overlay shows `Consultando SEFAZ-{UF}...` when state is known
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
-- EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page).
+- EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page). Payment detection uses `payText.includes()` (lowercase) covering full phrases like "cartão de débito"; also detects `transfer`/`transferência`.
 
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
