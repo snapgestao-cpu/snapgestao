@@ -104,11 +104,10 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 
 **NFCeWebView** (`components/NFCeWebView.tsx`) — injection guard pattern:
 - `scriptInjectedRef` — prevents duplicate injections when `onLoadEnd` fires multiple times
-- `loadEndTimerRef` — debounces injection: 5000ms for QRCode URL format, 3000ms for direct
-- `retryCountRef` — up to 3 retries (2s each) when EXTRACT_SCRIPT reports `not_ready` (page body < 200 chars)
+- `loadEndTimerRef` — 1s delay after `onLoadEnd` to let any redirect settle before injecting
 - `finalUrlRef` — tracks URL after SEFAZ redirects via `onNavigationStateChange`
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
-- EXTRACT_SCRIPT checks `blocked` (IP block keywords) and `not_ready` before attempting DOM parse; items from `tabResult` table rows
+- EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page).
 
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
