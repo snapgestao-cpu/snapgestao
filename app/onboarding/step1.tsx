@@ -33,25 +33,18 @@ export default function Step1() {
   const insets = useSafeAreaInsets()
   const [rawDigits, setRawDigits] = useState('')
   const [currency, setCurrency] = useState<Currency>('BRL')
-  const [error, setError] = useState<string | null>(null)
+  const [error] = useState<string | null>(null)
 
   const displayValue = rawDigits
     ? formatCents(rawDigits).replace('R$', CURRENCY_SYMBOL[currency])
     : ''
 
   const handleChange = (text: string) => {
-    const digits = digitsOnly(text)
-    setRawDigits(digits)
-    if (error) setError(null)
+    setRawDigits(digitsOnly(text))
   }
 
   const handleContinue = () => {
-    const value = centsToFloat(rawDigits)
-    if (value <= 0) {
-      setError('Informe um saldo inicial maior que zero.')
-      return
-    }
-    onboardingDraft.set({ balance: value, currency })
+    onboardingDraft.set({ balance: centsToFloat(rawDigits), currency })
     router.push('/onboarding/step2')
   }
 
@@ -75,7 +68,7 @@ export default function Step1() {
           <Text style={styles.stepLabel}>Passo 1 de 3</Text>
           <Text style={styles.title}>Qual é seu saldo inicial?</Text>
           <Text style={styles.subtitle}>
-            É o valor que você tem disponível agora. Será o ponto de partida do seu controle.
+            Opcional. Informe quanto você tem disponível agora para começar o controle. Pode deixar em zero.
           </Text>
 
           {/* Input de valor */}

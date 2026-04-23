@@ -14,6 +14,7 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { onboardingDraft, formatCents, digitsOnly, centsToFloat } from '../../lib/onboardingDraft'
+import { getCycle } from '../../lib/cycle'
 import { PotCard } from '../../components/PotCard'
 
 const POT_COLORS = [
@@ -101,7 +102,26 @@ export default function Step3() {
         return
       }
 
-      // 2. Inserir fontes de receita (se houver)
+      // 2. Criar transaction de saldo inicial (se != 0)
+      const initialBalance = draft.balance ?? 0
+      if (initialBalance !== 0) {
+        const { start } = getCycle(draft.cycleStart || 1, 0)
+        const cycleStartDate = start.toISOString().split('T')[0]
+        const { error: balanceError } = await supabase.from('transactions').insert({
+          user_id: userId,
+          type: initialBalance > 0 ? 'income' : 'expense',
+          amount: Math.abs(initialBalance),
+          description: initialBalance > 0 ? 'Saldo inicial' : 'Saldo inicial negativo',
+          date: cycleStartDate,
+          payment_method: 'transfer',
+          pot_id: null,
+        })
+        if (balanceError) {
+          console.error('Erro ao salvar saldo inicial:', balanceError)
+        }
+      }
+
+      // 3. Inserir fontes de receita (se houver)
       if (draft.incomeSources.length > 0) {
         const { error: incomeError } = await supabase
           .from('income_sources')
