@@ -11,9 +11,49 @@ type Props = {
   onCancel: () => void
 }
 
+// Exported so ocr.tsx can call it before passing the URL
+export function sanitizeNFCeUrl(raw: string): string {
+  let url = raw.trim()
+  // Fix double-protocol: "http://https//" or "https://https://"
+  url = url.replace(/^https?:\/\/https?:\/\//i, 'https://')
+  url = url.replace(/^http:\/\/(https:\/\/)/i, '$1')
+  if (!url.startsWith('https://') && !url.startsWith('http://')) {
+    url = 'https://' + url
+  }
+  // Encode pipes in query string (break some WebView parsers)
+  const idx = url.indexOf('?')
+  if (idx > -1) {
+    url = url.substring(0, idx + 1) + url.substring(idx + 1).replace(/\|/g, '%7C')
+  }
+  return url
+}
+
 const EXTRACT_SCRIPT = `
 (function() {
   try {
+    const bodyText = document.body?.innerText || ''
+    const title = document.title || ''
+
+    // Detect IP block
+    if (bodyText.includes('bloqueia acessos') ||
+        bodyText.includes('endereço IP') ||
+        bodyText.includes('acesso bloqueado')) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ error: 'blocked' }))
+      return
+    }
+
+    // Detect page not yet loaded
+    if (bodyText.trim().length < 200 ||
+        title.toLowerCase().includes('loading')) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        error: 'not_ready',
+        message: 'Página ainda carregando',
+        title: title,
+        bodyLength: bodyText.length
+      }))
+      return
+    }
+
     // ── ESTABELECIMENTO ──
     const merchantEl = document.getElementById('u20')
       || document.querySelector('.txtTopo')
@@ -23,15 +63,11 @@ const EXTRACT_SCRIPT = `
 
     // ── CNPJ ──
     let cnpj = null
-    const cnpjMatch = document.body.innerText.match(
-      /CNPJ[:\\s]*([\\d\\.\\-\\/]+)/
-    )
-    if (cnpjMatch) {
-      cnpj = cnpjMatch[1].replace(/\\D/g, '')
-    }
+    const cnpjMatch = bodyText.match(/CNPJ[:\\s]*([\\d\\.\\-\\/]+)/)
+    if (cnpjMatch) cnpj = cnpjMatch[1].replace(/\\D/g, '')
 
     // ── DATA ──
-    const dateMatch = document.body.innerText.match(
+    const dateMatch = bodyText.match(
       /Emiss[ãa]o[:\\s]*(\\d{2})\\/(\\d{2})\\/(\\d{4})/
     )
     const emissionDate = dateMatch
@@ -55,10 +91,7 @@ const EXTRACT_SCRIPT = `
           rawName = nameLink.innerText.trim()
         } else {
           const walker = document.createTreeWalker(
-            nameCell,
-            NodeFilter.SHOW_TEXT,
-            null,
-            false
+            nameCell, NodeFilter.SHOW_TEXT, null, false
           )
           const textParts = []
           let node
@@ -78,16 +111,12 @@ const EXTRACT_SCRIPT = `
         const infoText = cells.length > 1 ? cells[1].innerText : ''
 
         const qtdeMatch = infoText.match(/Qtde\\.?:?\\s*([\\d,]+)/i)
-        const qty = qtdeMatch
-          ? parseFloat(qtdeMatch[1].replace(',', '.'))
-          : 1
+        const qty = qtdeMatch ? parseFloat(qtdeMatch[1].replace(',', '.')) : 1
 
         const unMatch = infoText.match(/UN:?\\s*(\\w+)/i)
         const unit = unMatch ? unMatch[1] : 'UN'
 
-        const unitMatch = infoText.match(
-          /Vl\\.?\\s*Unit\\.?[:\\s]+([\\d\\.]+,[\\d]{2})/i
-        )
+        const unitMatch = infoText.match(/Vl\\.?\\s*Unit\\.?[:\\s]+([\\d\\.]+,[\\d]{2})/i)
         const unitValue = unitMatch
           ? parseFloat(unitMatch[1].replace(/\\./g, '').replace(',', '.'))
           : 0
@@ -100,68 +129,42 @@ const EXTRACT_SCRIPT = `
           : unitValue * qty
 
         if (totalValue > 0 && name.length > 2) {
-          items.push({
-            name: name,
-            quantity: qty,
-            unit: unit,
-            unitValue: unitValue || totalValue / qty,
-            totalValue: totalValue
-          })
+          items.push({ name, quantity: qty, unit, unitValue: unitValue || totalValue / qty, totalValue })
         }
       })
     }
 
     // ── TOTAL A PAGAR ──
     let total = 0
-    const pageText = document.body.innerText
-
-    const totalMatch = pageText.match(
-      /Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i
-    ) || pageText.match(
-      /Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i
-    )
-
-    if (totalMatch) {
-      total = parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
-    }
-    if (!total) {
-      total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
-    }
+    const totalMatch = bodyText.match(/Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
+      || bodyText.match(/Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i)
+    if (totalMatch) total = parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
+    if (!total) total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
 
     // ── DESCONTOS ──
-    const discountMatch = pageText.match(
-      /Descontos\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i
-    )
+    const discountMatch = bodyText.match(/Descontos\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
     const discount = discountMatch
       ? parseFloat(discountMatch[1].replace(/\\./g, '').replace(',', '.'))
       : 0
 
     // ── FORMA DE PAGAMENTO ──
     let paymentMethod = 'debit'
-    if (/débito|debito|Débito/i.test(pageText)) paymentMethod = 'debit'
-    else if (/crédito|credito|Crédito/i.test(pageText)) paymentMethod = 'credit'
-    else if (/[Pp]ix/i.test(pageText)) paymentMethod = 'pix'
-    else if (/[Dd]inheiro|[Ee]spécie/i.test(pageText)) paymentMethod = 'cash'
+    if (/débito|debito|Débito/i.test(bodyText)) paymentMethod = 'debit'
+    else if (/crédito|credito|Crédito/i.test(bodyText)) paymentMethod = 'credit'
+    else if (/[Pp]ix/i.test(bodyText)) paymentMethod = 'pix'
+    else if (/[Dd]inheiro|[Ee]spécie/i.test(bodyText)) paymentMethod = 'cash'
 
     window.ReactNativeWebView.postMessage(JSON.stringify({
       success: items.length > 0,
       source: 'sefaz_rj',
-      merchant: merchant,
-      cnpj: cnpj,
-      emission_date: emissionDate,
-      items: items,
-      total: total,
-      discount: discount,
-      payment_method: paymentMethod,
-      error: items.length === 0
-        ? 'Itens não encontrados na tabela tabResult'
-        : null
+      merchant, cnpj, emission_date: emissionDate,
+      items, total, discount, payment_method: paymentMethod,
+      error: items.length === 0 ? 'Itens não encontrados na tabela tabResult' : null
     }))
 
   } catch(e) {
     window.ReactNativeWebView.postMessage(JSON.stringify({
-      error: 'parse_error',
-      message: String(e)
+      error: 'parse_error', message: String(e)
     }))
   }
 })()
@@ -173,31 +176,40 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
   const [loadingMessage, setLoadingMessage] = useState('Conectando à SEFAZ...')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
-  // Elapsed-seconds counter — runs while loading
+  // Refs to prevent multiple injections and track retries
+  const scriptInjectedRef = useRef(false)
+  const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCountRef = useRef(0)
+  const finalUrlRef = useRef(sanitizeNFCeUrl(url))
+
+  // Elapsed-seconds counter
   useEffect(() => {
     if (!loading) return
     const timer = setInterval(() => setElapsedSeconds(s => s + 1), 1000)
     return () => clearInterval(timer)
   }, [loading])
 
-  // 30-second timeout
+  // Global 35s timeout — cleanup load-end timer on unmount too
   useEffect(() => {
-    const timeout = setTimeout(() => {
+    const globalTimeout = setTimeout(() => {
       setLoading(prev => {
-        if (prev) {
-          console.log('[WebView] TIMEOUT — 30s sem resposta')
-          onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais. Verifique sua conexão e tente novamente.')
-          return false
-        }
-        return prev
+        if (!prev) return prev
+        console.log('[WebView] TIMEOUT GLOBAL 35s | último estado:', loadingMessage)
+        onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais.\nVerifique sua conexão e tente novamente.')
+        return false
       })
-    }, 30000)
-    return () => clearTimeout(timeout)
+    }, 35000)
+    return () => {
+      clearTimeout(globalTimeout)
+      if (loadEndTimerRef.current) clearTimeout(loadEndTimerRef.current)
+    }
   }, [])
 
-  const finishLoading = (ok: boolean) => {
-    setLoading(false)
-    setElapsedSeconds(0)
+  const injectScript = () => {
+    if (scriptInjectedRef.current) return
+    scriptInjectedRef.current = true
+    console.log('[WebView] Injetando script de extração')
+    webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
   }
 
   return (
@@ -250,16 +262,22 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
         </View>
       )}
 
-      {/* WebView — always opacity 0 (data extracted via JS injection) */}
+      {/* WebView — always hidden; data extracted via JS injection */}
       <WebView
         ref={webViewRef}
-        source={{ uri: url }}
+        source={{ uri: finalUrlRef.current }}
         style={{ flex: 1, opacity: 0 }}
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebView/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        onNavigationStateChange={(navState) => {
+          if (navState.url && navState.url !== 'about:blank') {
+            finalUrlRef.current = navState.url
+            console.log('[WebView] URL atual:', navState.url.substring(0, 100))
+          }
+        }}
         onLoadStart={() => {
-          console.log('[WebView] Iniciando carregamento | URL:', url)
+          console.log('[WebView] Iniciando carregamento | URL:', finalUrlRef.current.substring(0, 100))
           setLoading(true)
           setLoadingMessage('Conectando à SEFAZ...')
         }}
@@ -268,44 +286,72 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           if (nativeEvent.progress > 0.5) setLoadingMessage('Carregando dados...')
         }}
         onLoadEnd={() => {
-          console.log('[WebView] Carregamento concluído — aguardando 3s para injetar JS')
+          // Cancel any pending injection timer
+          if (loadEndTimerRef.current) {
+            clearTimeout(loadEndTimerRef.current)
+            loadEndTimerRef.current = null
+          }
+          // Ignore if script already injected successfully
+          if (scriptInjectedRef.current) {
+            console.log('[WebView] onLoadEnd ignorado — script já injetado')
+            return
+          }
+          const isQRCodeFormat = finalUrlRef.current.includes('QRCode?p=') || finalUrlRef.current.includes('qrcode?p=')
+          const timeout = isQRCodeFormat ? 5000 : 3000
+          console.log('[WebView] Carregamento concluído | formato:', isQRCodeFormat ? 'QRCode' : 'direto', '| aguardando', timeout + 'ms')
           setLoadingMessage('Extraindo itens...')
-          setTimeout(() => {
-            console.log('[WebView] Injetando script de extração')
-            webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
-          }, 3000)
+          loadEndTimerRef.current = setTimeout(injectScript, timeout)
         }}
         onMessage={({ nativeEvent }) => {
-          console.log('[WebView] Mensagem recebida do JS')
-          finishLoading(true)
           try {
             const data = JSON.parse(nativeEvent.data) as any
-            console.log('[WebView] success:', data.success, '| items:', data.items?.length ?? 0, '| merchant:', data.merchant, '| error:', data.error)
+            console.log('[WebView] Mensagem | success:', data.success, '| items:', data.items?.length ?? 0, '| error:', data.error)
+
+            // Page not ready — retry up to 3 times
+            if (data.error === 'not_ready') {
+              if (retryCountRef.current < 3) {
+                retryCountRef.current += 1
+                console.log('[WebView] Página não pronta — retry', retryCountRef.current, '/3 | bodyLength:', data.bodyLength)
+                scriptInjectedRef.current = false
+                setTimeout(injectScript, 2000)
+              } else {
+                console.log('[WebView] Máximo de retries atingido')
+                setLoading(false)
+                onError('Não foi possível carregar o cupom.\nVerifique sua conexão e tente novamente.')
+              }
+              return
+            }
+
+            setLoading(false)
+
             if (data.error === 'blocked') {
               console.log('[WebView] IP BLOQUEADO pela SEFAZ')
-              onError('Acesso bloqueado pela SEFAZ.\n\nTente conectar em uma rede Wi-Fi diferente ou use a opção OCR.')
+              onError('Acesso bloqueado pela SEFAZ.\n\nTente em uma rede Wi-Fi diferente\nou use a opção OCR.')
               return
             }
-            if (data.error || !data.success) {
+
+            if (!data.success || !data.items?.length) {
               console.log('[WebView] Falha na extração:', data.error || data.message)
-              onError(data.message || 'Não foi possível extrair os itens.')
+              onError(data.error || 'Não foi possível extrair os itens.\nTente a opção OCR como alternativa.')
               return
             }
-            console.log('[WebView] Extração bem-sucedida!')
+
+            console.log('[WebView] Extração bem-sucedida! Items:', data.items.length, '| merchant:', data.merchant)
             onSuccess(data as NFCeResult)
           } catch (e) {
-            console.log('[WebView] Erro ao fazer parse:', String(e), '| raw:', nativeEvent.data?.substring(0, 200))
+            console.log('[WebView] Erro parse:', String(e), '| raw:', nativeEvent.data?.substring(0, 200))
+            setLoading(false)
             onError('Erro ao processar resposta da SEFAZ.')
           }
         }}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent
-          console.log('[WebView] ERRO de carregamento | código:', (nativeEvent as any).code, '| desc:', nativeEvent.description, '| url:', nativeEvent.url)
-          finishLoading(false)
-          onError('Erro de conexão com o portal da SEFAZ.\n' + nativeEvent.description)
+          console.log('[WebView] ERRO | código:', (nativeEvent as any).code, '| desc:', nativeEvent.description, '| url:', nativeEvent.url?.substring(0, 100))
+          setLoading(false)
+          onError('Erro de conexão com a SEFAZ.\nVerifique sua conexão e tente novamente.')
         }}
         onHttpError={({ nativeEvent }) => {
-          console.log('[WebView] HTTP ERROR | status:', nativeEvent.statusCode, '| url:', nativeEvent.url)
+          console.log('[WebView] HTTP ERROR | status:', nativeEvent.statusCode, '| url:', nativeEvent.url?.substring(0, 100))
         }}
       />
     </View>

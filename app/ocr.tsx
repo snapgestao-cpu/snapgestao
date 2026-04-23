@@ -18,7 +18,7 @@ import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { Pot } from '../types'
 import QRCameraScanner from '../components/QRCameraScanner'
-import NFCeWebView from '../components/NFCeWebView'
+import NFCeWebView, { sanitizeNFCeUrl } from '../components/NFCeWebView'
 
 type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
@@ -106,7 +106,7 @@ export default function OCRScreen() {
   // QR Code path: open SEFAZ URL in WebView → inject JS extractor
   const handleQRCodeScanned = async (url: string) => {
     await loadPots()
-    setNfceUrl(url)
+    setNfceUrl(sanitizeNFCeUrl(url))
     setStep('processing')
   }
 
