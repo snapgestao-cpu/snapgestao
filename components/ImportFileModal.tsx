@@ -21,6 +21,7 @@ type ImportRow = {
   paymentMethod: string
   installmentTotal: number
   potId: string | null
+  poteName: string  // nome do pote da planilha (para exibição e resolução)
 }
 
 type Step = 'pick' | 'preview' | 'card_select' | 'assign' | 'saving' | 'done'
@@ -111,6 +112,12 @@ function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   return new Date(year, month0, card.due_day).toISOString().split('T')[0]
 }
 
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const [year, month, day] = dateStr.split('-')
+  return `${day}/${month}/${year}`
+}
+
 function genUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0
@@ -131,6 +138,7 @@ function parseSheet(data: any[][]): ImportRow[] {
   const payCol      = colIdx(['pagamento', 'payment', 'forma'])
   const merchantCol = colIdx(['estabelecimento', 'merchant', 'loja', 'fornecedor'])
   const installCol  = colIdx(['parcela', 'parcel', 'installment'])
+  const poteCol     = colIdx(['pote', 'categoria', 'category'])
 
   if (amtCol < 0) return []
 
@@ -153,6 +161,7 @@ function parseSheet(data: any[][]): ImportRow[] {
       paymentMethod,
       installmentTotal: type === 'expense' ? installmentTotal : 1,
       potId: null,
+      poteName: poteCol >= 0 ? String(row[poteCol] ?? '').trim() : '',
     }
   }).filter(r => r.amount > 0)
 }
@@ -167,12 +176,13 @@ const EXCEL_COLS = [
   { label: 'pagamento', width: 90 },
   { label: 'estabelecimento', width: 110 },
   { label: 'parcelas', width: 70 },
+  { label: 'pote', width: 90 },
 ]
 
 const EXCEL_SAMPLE = [
-  ['despesa', 'Supermercado', '15/04/2026', '158,90', 'débito', 'Pão de Açúcar', '1'],
-  ['despesa', 'Celular novo', '10/04/2026', '1200,00', 'crédito', 'Samsung Store', '12'],
-  ['receita', 'Salário', '05/04/2026', '4500,00', 'pix', 'Empresa XYZ', ''],
+  ['despesa', 'Almoço', '22/03/2026', '135,15', 'crédito', 'Restaurante X', '1', 'Alimentação'],
+  ['despesa', 'Notebook', '22/03/2026', '3600,00', 'crédito', 'Magazine', '12', 'Tecnologia'],
+  ['receita', 'Salário', '01/03/2026', '17000,00', 'depósito', '', '', ''],
 ]
 
 function ExcelPreview() {
@@ -208,7 +218,7 @@ function ExcelPreview() {
       <View style={exStyles.legend}>
         <Text style={exStyles.legendText}>
           <Text style={{ fontWeight: '700' }}>Obrigatória:</Text> valor{'\n'}
-          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> tipo, descrição, data, pagamento, estabelecimento, parcelas
+          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> tipo, descrição, data, pagamento, estabelecimento, parcelas, <Text style={{ fontWeight: '700' }}>pote</Text>
         </Text>
       </View>
     </View>
@@ -274,7 +284,15 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         Alert.alert('Arquivo vazio', 'Não encontramos transações válidas. Verifique o formato do arquivo.')
         return
       }
-      setRows(parsed)
+      // Resolve potId from poteName using the pots prop (case-insensitive match)
+      const resolved = parsed.map(row => {
+        if (!row.poteName) return row
+        const found = pots.find(p =>
+          p.name.toLowerCase().trim() === row.poteName.toLowerCase().trim()
+        )
+        return { ...row, potId: found?.id ?? null }
+      })
+      setRows(resolved)
       setStep('preview')
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Não foi possível abrir o arquivo.')
@@ -402,40 +420,74 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     </View>
   )
 
-  const renderAssignRow = ({ item, index }: { item: ImportRow; index: number }) => (
-    <View style={styles.assignRow}>
-      <View style={{ flex: 1, marginBottom: 4 }}>
-        <Text style={styles.previewDesc} numberOfLines={1}>{item.description}</Text>
-        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 }}>
-          <Text style={styles.previewMeta}>{item.date} · {item.type === 'income' ? '+' : '-'}{brl(item.amount)}</Text>
+  const renderAssignRow = ({ item, index }: { item: ImportRow; index: number }) => {
+    const poteNotFound = !!item.poteName && !item.potId
+    const poteFound = !!item.poteName && !!item.potId
+    return (
+      <View style={styles.assignCard}>
+        {/* Row 1: type indicator + description + amount */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Text style={[styles.typeIndicator, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
+            {item.type === 'income' ? '↑' : '↓'}
+          </Text>
+          <Text style={[styles.previewDesc, { flex: 1 }]} numberOfLines={1}>{item.description}</Text>
+          <Text style={[styles.previewAmt, { color: item.type === 'income' ? Colors.success : Colors.danger }]}>
+            {item.type === 'income' ? '+' : '-'}{brl(item.amount)}
+          </Text>
+        </View>
+
+        {/* Row 2: merchant badge + date */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          {item.merchant ? (
+            <View style={styles.merchantBadge}>
+              <Text style={styles.merchantBadgeText}>🏪 {item.merchant}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.previewMeta}>{formatDisplayDate(item.date)}</Text>
           {item.installmentTotal > 1 && (
             <View style={styles.installBadge}>
               <Text style={styles.installBadgeText}>{item.installmentTotal}x</Text>
             </View>
           )}
         </View>
+
+        {/* Row 3: pote selector */}
+        <View>
+          <Text style={styles.previewMeta}>
+            {'Pote: '}
+            {poteNotFound && (
+              <Text style={{ color: Colors.warning }}>"{item.poteName}" não encontrado</Text>
+            )}
+            {poteFound && (
+              <Text style={{ color: Colors.success }}>✓ encontrado</Text>
+            )}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+            <TouchableOpacity
+              style={[styles.potChip, item.potId === null && styles.potChipActive]}
+              onPress={() => setRowPot(index, null)}
+            >
+              <Text style={[styles.potChipText, item.potId === null && styles.potChipTextActive]}>Nenhum</Text>
+            </TouchableOpacity>
+            {pots.map(p => (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.potChip, item.potId === p.id && styles.potChipActive]}
+                onPress={() => setRowPot(index, p.id)}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: p.color }} />
+                  <Text style={[styles.potChipText, item.potId === p.id && styles.potChipTextActive]}>
+                    {getPotIcon(p.name)} {p.name}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
-        <TouchableOpacity
-          style={[styles.potChip, item.potId === null && styles.potChipActive]}
-          onPress={() => setRowPot(index, null)}
-        >
-          <Text style={[styles.potChipText, item.potId === null && styles.potChipTextActive]}>Nenhum</Text>
-        </TouchableOpacity>
-        {pots.map(p => (
-          <TouchableOpacity
-            key={p.id}
-            style={[styles.potChip, item.potId === p.id && styles.potChipActive, { borderColor: p.color }]}
-            onPress={() => setRowPot(index, p.id)}
-          >
-            <Text style={[styles.potChipText, item.potId === p.id && { color: p.color }]}>
-              {getPotIcon(p.name)} {p.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  )
+    )
+  }
 
   const stepTitle = () => {
     if (step === 'pick') return 'Importar Planilha'
@@ -623,6 +675,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.white,
   },
+  assignCard: {
+    backgroundColor: Colors.white, borderRadius: 14,
+    padding: 14, marginHorizontal: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  merchantBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.background, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  merchantBadgeText: { fontSize: 11, color: Colors.textMuted },
   potChip: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
     borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.white,
