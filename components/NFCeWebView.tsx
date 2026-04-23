@@ -3,9 +3,11 @@ import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Colors } from '../constants/colors'
 import type { NFCeResult } from '../lib/ocr'
+import type { NFCeState } from '../lib/nfce-states'
 
 type Props = {
   url: string
+  state?: NFCeState | null
   onSuccess: (result: NFCeResult) => void
   onError: (message: string) => void
   onCancel: () => void
@@ -26,20 +28,18 @@ export function sanitizeNFCeUrl(raw: string): string {
   return url
 }
 
-// QRCode?p=... is the redirect entry point — script must NOT be injected here
-function isRedirectUrl(url: string): boolean {
+// Generic fallbacks used when no state is provided
+function genericIsRedirectUrl(url: string): boolean {
   return url.includes('QRCode?p=') || url.includes('qrcode?p=')
 }
 
-// Detect the final rendered result page (after jQuery Mobile redirect)
-function isFinalResultUrl(url: string): boolean {
+function genericIsFinalResultUrl(url: string): boolean {
   return (
     url.includes('resultadoQRCode') ||
     url.includes('resultadoNfce') ||
     url.includes('consultaChaveAcesso') ||
     url.includes('consultaDFe') ||
-    // Generic fallback: not a redirect URL and not blank
-    (!isRedirectUrl(url) && url !== 'about:blank' && url.length > 10)
+    (!genericIsRedirectUrl(url) && url !== 'about:blank' && url.length > 10)
   )
 }
 
@@ -176,7 +176,7 @@ const EXTRACT_SCRIPT = `
 })()
 `
 
-export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props) {
+export default function NFCeWebView({ url, state, onSuccess, onError, onCancel }: Props) {
   const webViewRef = useRef<WebView>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('Conectando à SEFAZ...')
@@ -184,10 +184,13 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
 
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Start with the sanitized initial URL; updated by onNavigationStateChange
   const finalUrlRef = useRef(sanitizeNFCeUrl(url))
-  // Track whether we've seen the redirect URL so we can detect transition to result page
-  const sawRedirectRef = useRef(isRedirectUrl(sanitizeNFCeUrl(url)))
+  const sawRedirectRef = useRef(
+    state ? state.isRedirectUrl(sanitizeNFCeUrl(url)) : genericIsRedirectUrl(sanitizeNFCeUrl(url))
+  )
+
+  const checkIsRedirect = (u: string) => state ? state.isRedirectUrl(u) : genericIsRedirectUrl(u)
+  const checkIsFinal = (u: string) => state ? state.isFinalUrl(u) : genericIsFinalResultUrl(u)
 
   // Elapsed-seconds counter
   useEffect(() => {
@@ -247,6 +250,9 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
             {loadingMessage}
           </Text>
           <Text style={{ marginTop: 8, fontSize: 12, color: Colors.textMuted }}>
+            {state ? `Consultando SEFAZ-${state.uf}...` : 'Consultando portal fiscal...'}
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.textMuted }}>
             {elapsedSeconds}s
           </Text>
           {elapsedSeconds > 10 && (
@@ -283,16 +289,14 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
 
           console.log('[WebView] Navegando para:', navUrl.substring(0, 100))
 
-          // Track whether we've passed through the redirect URL
-          if (isRedirectUrl(navUrl)) {
+          if (checkIsRedirect(navUrl)) {
             sawRedirectRef.current = true
             finalUrlRef.current = navUrl
             console.log('[WebView] URL de redirect — aguardando resultado...')
             return
           }
 
-          // Transitioned from redirect → result page: reset injection flag
-          if (sawRedirectRef.current && isFinalResultUrl(navUrl) && scriptInjectedRef.current) {
+          if (sawRedirectRef.current && checkIsFinal(navUrl) && scriptInjectedRef.current) {
             console.log('[WebView] Resultado detectado após redirect — resetando scriptInjectedRef')
             scriptInjectedRef.current = false
           }
@@ -311,8 +315,8 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           const currentUrl = finalUrlRef.current
 
           console.log('[WebView] onLoadEnd | URL:', currentUrl.substring(0, 80),
-            '| é redirect:', isRedirectUrl(currentUrl),
-            '| é resultado:', isFinalResultUrl(currentUrl),
+            '| é redirect:', checkIsRedirect(currentUrl),
+            '| é resultado:', checkIsFinal(currentUrl),
             '| já injetou:', scriptInjectedRef.current)
 
           if (loadEndTimerRef.current) {
@@ -325,13 +329,11 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
             return
           }
 
-          // Still on the redirect URL — wait for the result page to load
-          if (isRedirectUrl(currentUrl)) {
+          if (checkIsRedirect(currentUrl)) {
             console.log('[WebView] onLoadEnd ignorado — ainda na URL de redirect')
             return
           }
 
-          // Final result page loaded — inject with 1s delay for jQuery Mobile to start rendering
           console.log('[WebView] Agendando injeção na página de resultado')
           setLoadingMessage('Extraindo itens...')
           loadEndTimerRef.current = setTimeout(injectScript, 1000)

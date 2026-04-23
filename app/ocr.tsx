@@ -19,6 +19,10 @@ import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { Pot } from '../types'
 import QRCameraScanner from '../components/QRCameraScanner'
 import NFCeWebView, { sanitizeNFCeUrl } from '../components/NFCeWebView'
+import {
+  extractStateCode, getStateByCode, isStateSupported, STATE_NAMES,
+} from '../lib/nfce-states'
+import type { NFCeState } from '../lib/nfce-states'
 
 type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
@@ -47,6 +51,7 @@ export default function OCRScreen() {
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
   const [processingMessage, setProcessingMessage] = useState('Lendo o cupom...')
   const [nfceUrl, setNfceUrl] = useState<string | null>(null)
+  const [nfceState, setNfceState] = useState<NFCeState | null>(null)
 
   const loadPots = async () => {
     if (!user) return
@@ -104,14 +109,37 @@ export default function OCRScreen() {
   }
 
   // QR Code path: open SEFAZ URL in WebView → inject JS extractor
-  const handleQRCodeScanned = async (url: string) => {
+  const handleQRCodeScanned = async (rawUrl: string) => {
+    const stateCode = extractStateCode(rawUrl)
+    const state = getStateByCode(stateCode)
+
+    console.log('[QR] Estado detectado:', stateCode, STATE_NAMES[stateCode ?? ''] ?? 'Desconhecido')
+    console.log('[QR] Suportado:', isStateSupported(stateCode))
+
+    if (!isStateSupported(stateCode)) {
+      const stateName = stateCode
+        ? (STATE_NAMES[stateCode] ?? `Estado ${stateCode}`)
+        : 'Estado não identificado'
+      Alert.alert(
+        'Estado não suportado ainda',
+        `O cupom é de ${stateName}.\n\nAtualmente suportamos:\n• Rio de Janeiro (RJ)\n• São Paulo (SP)\n• Minas Gerais (MG)\n\nUse a opção OCR para ler o texto do cupom.`,
+        [
+          { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
+          { text: 'Cancelar', onPress: () => setStep('menu') },
+        ]
+      )
+      return
+    }
+
     await loadPots()
-    setNfceUrl(sanitizeNFCeUrl(url))
+    setNfceUrl(sanitizeNFCeUrl(rawUrl))
+    setNfceState(state)
     setStep('processing')
   }
 
   const handleNFCeSuccess = (result: NFCeResult) => {
     setNfceUrl(null)
+    setNfceState(null)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
@@ -127,6 +155,7 @@ export default function OCRScreen() {
 
   const handleNFCeError = (msg: string) => {
     setNfceUrl(null)
+    setNfceState(null)
     Alert.alert(
       'Não foi possível ler o cupom',
       msg,
@@ -233,6 +262,10 @@ export default function OCRScreen() {
             </View>
           </TouchableOpacity>
 
+          <Text style={{ fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: -6 }}>
+            Suporta cupons de RJ, SP e MG
+          </Text>
+
           {/* OCR — alternativa */}
           <TouchableOpacity
             style={styles.menuOptionSecondary}
@@ -295,9 +328,10 @@ export default function OCRScreen() {
       return (
         <NFCeWebView
           url={nfceUrl}
+          state={nfceState}
           onSuccess={handleNFCeSuccess}
           onError={handleNFCeError}
-          onCancel={() => { setNfceUrl(null); setStep('menu') }}
+          onCancel={() => { setNfceUrl(null); setNfceState(null); setStep('menu') }}
         />
       )
     }
