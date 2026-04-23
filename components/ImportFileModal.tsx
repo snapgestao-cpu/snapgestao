@@ -168,20 +168,14 @@ function parseSheet(data: any[][]): ImportRow[] {
 
 // --- Excel preview (static model) ---
 
-const EXCEL_COLS = [
-  { label: 'tipo', width: 60 },
-  { label: 'descrição', width: 110 },
-  { label: 'data', width: 80 },
-  { label: 'valor', width: 80 },
-  { label: 'pagamento', width: 90 },
-  { label: 'estabelecimento', width: 110 },
-  { label: 'parcelas', width: 70 },
-  { label: 'pote', width: 90 },
-]
+const EXCEL_HEADERS = ['tipo', 'descrição', 'data', 'valor', 'pagamento', 'estabelecimento', 'parcelas', 'pote']
+
+const getColWidth = (header: string) =>
+  ['descrição', 'estabelecimento', 'pote'].includes(header) ? 110 : 80
 
 const EXCEL_SAMPLE = [
-  ['despesa', 'Almoço', '22/03/2026', '135,15', 'crédito', 'Restaurante X', '1', 'Alimentação'],
-  ['despesa', 'Notebook', '22/03/2026', '3600,00', 'crédito', 'Magazine', '12', 'Tecnologia'],
+  ['gasto', 'Almoço', '22/03/2026', '135,15', 'crédito', 'Restaurante X', '1', 'Alimentação'],
+  ['gasto', 'Notebook', '22/03/2026', '3600,00', 'crédito', 'Magazine', '12', 'Tecnologia'],
   ['receita', 'Salário', '01/03/2026', '17000,00', 'depósito', '', '', ''],
 ]
 
@@ -192,19 +186,19 @@ function ExcelPreview() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View>
           <View style={exStyles.headerRow}>
-            {EXCEL_COLS.map(col => (
-              <View key={col.label} style={[exStyles.cell, exStyles.headerCell, { width: col.width }]}>
-                <Text style={exStyles.headerText}>{col.label}</Text>
+            {EXCEL_HEADERS.map(h => (
+              <View key={h} style={[exStyles.cell, exStyles.headerCell, { width: getColWidth(h) }]}>
+                <Text style={exStyles.headerText}>{h}</Text>
               </View>
             ))}
           </View>
           {EXCEL_SAMPLE.map((vals, i) => {
             const bg = i % 2 === 0 ? '#fff' : '#f0f7f0'
-            const tipoColor = vals[0] === 'despesa' ? Colors.danger : Colors.success
+            const tipoColor = vals[0] === 'receita' ? Colors.success : Colors.danger
             return (
               <View key={i} style={[exStyles.dataRow, { backgroundColor: bg }]}>
-                {EXCEL_COLS.map((col, ci) => (
-                  <View key={col.label} style={[exStyles.cell, { width: col.width }]}>
+                {EXCEL_HEADERS.map((h, ci) => (
+                  <View key={h} style={[exStyles.cell, { width: getColWidth(h) }]}>
                     <Text style={[exStyles.dataText, ci === 0 && { color: tipoColor, fontWeight: '700' }]} numberOfLines={1}>
                       {vals[ci]}
                     </Text>
@@ -218,7 +212,9 @@ function ExcelPreview() {
       <View style={exStyles.legend}>
         <Text style={exStyles.legendText}>
           <Text style={{ fontWeight: '700' }}>Obrigatória:</Text> valor{'\n'}
-          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> tipo, descrição, data, pagamento, estabelecimento, parcelas, <Text style={{ fontWeight: '700' }}>pote</Text>
+          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> estabelecimento, parcelas, pote{'\n'}
+          <Text style={{ color: Colors.primary, fontWeight: '600' }}>💡 Dica:</Text>
+          <Text>{' '}O nome do pote deve ser igual ao cadastrado no app. Ex: "Alimentação". Se não encontrado, será marcado como "Nenhum".</Text>
         </Text>
       </View>
     </View>
