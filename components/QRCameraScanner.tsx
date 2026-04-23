@@ -34,9 +34,12 @@ export default function QRCameraScanner({ onQRCodeScanned, onCancel }: Props) {
         style={{ flex: 1 }}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={({ data }) => {
+        onBarcodeScanned={({ data, type }) => {
           if (scanned) return
           setScanned(true)
+          console.log('[QR] Código detectado | tipo:', type, '| tamanho:', data.length)
+          console.log('[QR] É URL SEFAZ:', data.includes('fazenda') || data.includes('nfce') || data.includes('consultadfe'))
+          console.log('[QR] Dados:', data)
           onQRCodeScanned(data)
         }}
       />

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Colors } from '../constants/colors'
@@ -171,6 +171,34 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
   const webViewRef = useRef<WebView>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('Conectando à SEFAZ...')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  // Elapsed-seconds counter — runs while loading
+  useEffect(() => {
+    if (!loading) return
+    const timer = setInterval(() => setElapsedSeconds(s => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [loading])
+
+  // 30-second timeout
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) {
+          console.log('[WebView] TIMEOUT — 30s sem resposta')
+          onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais. Verifique sua conexão e tente novamente.')
+          return false
+        }
+        return prev
+      })
+    }, 30000)
+    return () => clearTimeout(timeout)
+  }, [])
+
+  const finishLoading = (ok: boolean) => {
+    setLoading(false)
+    setElapsedSeconds(0)
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -199,54 +227,85 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           <Text style={{ marginTop: 16, fontSize: 15, color: Colors.textDark, fontWeight: '600' }}>
             {loadingMessage}
           </Text>
-          <Text style={{ marginTop: 8, fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingHorizontal: 32 }}>
-            Buscando dados estruturados da SEFAZ-RJ
+          <Text style={{ marginTop: 8, fontSize: 12, color: Colors.textMuted }}>
+            {elapsedSeconds}s
           </Text>
+          {elapsedSeconds > 10 && (
+            <Text style={{ marginTop: 8, fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingHorizontal: 32 }}>
+              Isso está demorando mais que o normal.{'\n'}Verifique sua conexão.
+            </Text>
+          )}
+          {elapsedSeconds > 15 && (
+            <TouchableOpacity
+              onPress={onCancel}
+              style={{
+                marginTop: 16, paddingHorizontal: 24, paddingVertical: 10,
+                backgroundColor: Colors.background, borderRadius: 20,
+                borderWidth: 1, borderColor: Colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 14, color: Colors.textMuted }}>Cancelar</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
-      {/* WebView — opaque while loading, hidden after data extracted */}
+      {/* WebView — always opacity 0 (data extracted via JS injection) */}
       <WebView
         ref={webViewRef}
         source={{ uri: url }}
-        style={{ flex: 1, opacity: loading ? 0 : 0 }}
+        style={{ flex: 1, opacity: 0 }}
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebView/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         javaScriptEnabled={true}
         domStorageEnabled={true}
         onLoadStart={() => {
+          console.log('[WebView] Iniciando carregamento | URL:', url)
           setLoading(true)
           setLoadingMessage('Conectando à SEFAZ...')
         }}
         onLoadProgress={({ nativeEvent }) => {
+          console.log('[WebView] Progresso:', Math.round(nativeEvent.progress * 100) + '%')
           if (nativeEvent.progress > 0.5) setLoadingMessage('Carregando dados...')
         }}
         onLoadEnd={() => {
+          console.log('[WebView] Carregamento concluído — aguardando 3s para injetar JS')
           setLoadingMessage('Extraindo itens...')
-          // Wait 1.5s for page JS to finish rendering before extracting
           setTimeout(() => {
+            console.log('[WebView] Injetando script de extração')
             webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
           }, 3000)
         }}
         onMessage={({ nativeEvent }) => {
-          setLoading(false)
+          console.log('[WebView] Mensagem recebida do JS')
+          finishLoading(true)
           try {
             const data = JSON.parse(nativeEvent.data) as any
+            console.log('[WebView] success:', data.success, '| items:', data.items?.length ?? 0, '| merchant:', data.merchant, '| error:', data.error)
             if (data.error === 'blocked') {
+              console.log('[WebView] IP BLOQUEADO pela SEFAZ')
               onError('Acesso bloqueado pela SEFAZ.\n\nTente conectar em uma rede Wi-Fi diferente ou use a opção OCR.')
               return
             }
             if (data.error || !data.success) {
+              console.log('[WebView] Falha na extração:', data.error || data.message)
               onError(data.message || 'Não foi possível extrair os itens.')
               return
             }
+            console.log('[WebView] Extração bem-sucedida!')
             onSuccess(data as NFCeResult)
-          } catch {
+          } catch (e) {
+            console.log('[WebView] Erro ao fazer parse:', String(e), '| raw:', nativeEvent.data?.substring(0, 200))
             onError('Erro ao processar resposta da SEFAZ.')
           }
         }}
-        onError={() => {
-          setLoading(false)
-          onError('Erro de conexão com o portal da SEFAZ.')
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent
+          console.log('[WebView] ERRO de carregamento | código:', (nativeEvent as any).code, '| desc:', nativeEvent.description, '| url:', nativeEvent.url)
+          finishLoading(false)
+          onError('Erro de conexão com o portal da SEFAZ.\n' + nativeEvent.description)
+        }}
+        onHttpError={({ nativeEvent }) => {
+          console.log('[WebView] HTTP ERROR | status:', nativeEvent.statusCode, '| url:', nativeEvent.url)
         }}
       />
     </View>
