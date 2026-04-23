@@ -28,145 +28,136 @@ export function sanitizeNFCeUrl(raw: string): string {
   return url
 }
 
+// Script with internal polling — waits up to 15s (1s intervals) for jQuery Mobile to render
 const EXTRACT_SCRIPT = `
 (function() {
-  try {
-    const bodyText = document.body?.innerText || ''
-    const title = document.title || ''
+  function tryExtract(attempt) {
+    try {
+      var bodyText = document.body ? document.body.innerText || '' : ''
+      var bodyLen = bodyText.trim().length
 
-    // Detect IP block
-    if (bodyText.includes('bloqueia acessos') ||
-        bodyText.includes('endereço IP') ||
-        bodyText.includes('acesso bloqueado')) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ error: 'blocked' }))
-      return
-    }
+      console.log('[Script] Tentativa ' + attempt + ' | bodyLength: ' + bodyLen)
 
-    // Detect page not yet loaded
-    if (bodyText.trim().length < 200 ||
-        title.toLowerCase().includes('loading')) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        error: 'not_ready',
-        message: 'Página ainda carregando',
-        title: title,
-        bodyLength: bodyText.length
-      }))
-      return
-    }
+      if (bodyText.includes('bloqueia acessos') || bodyText.includes('endereço IP')) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ error: 'blocked' }))
+        return
+      }
 
-    // ── ESTABELECIMENTO ──
-    const merchantEl = document.getElementById('u20')
-      || document.querySelector('.txtTopo')
-    const merchant = merchantEl
-      ? merchantEl.innerText.trim()
-      : 'Não identificado'
-
-    // ── CNPJ ──
-    let cnpj = null
-    const cnpjMatch = bodyText.match(/CNPJ[:\\s]*([\\d\\.\\-\\/]+)/)
-    if (cnpjMatch) cnpj = cnpjMatch[1].replace(/\\D/g, '')
-
-    // ── DATA ──
-    const dateMatch = bodyText.match(
-      /Emiss[ãa]o[:\\s]*(\\d{2})\\/(\\d{2})\\/(\\d{4})/
-    )
-    const emissionDate = dateMatch
-      ? dateMatch[3]+'-'+dateMatch[2]+'-'+dateMatch[1]
-      : new Date().toISOString().split('T')[0]
-
-    // ── ITENS via tabela tabResult ──
-    const items = []
-    const tbl = document.getElementById('tabResult')
-
-    if (tbl) {
-      const rows = tbl.querySelectorAll('tr')
-      rows.forEach(function(row) {
-        const cells = row.querySelectorAll('td')
-        if (cells.length < 2) return
-
-        let rawName = ''
-        const nameCell = cells[0]
-        const nameLink = nameCell.querySelector('a, span, b')
-        if (nameLink) {
-          rawName = nameLink.innerText.trim()
+      if (bodyLen < 200) {
+        if (attempt < 15) {
+          setTimeout(function() { tryExtract(attempt + 1) }, 1000)
         } else {
-          const walker = document.createTreeWalker(
-            nameCell, NodeFilter.SHOW_TEXT, null, false
-          )
-          const textParts = []
-          let node
-          while ((node = walker.nextNode())) {
-            const t = node.textContent.trim()
-            if (t) textParts.push(t)
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            error: 'timeout',
+            message: 'Página não carregou em 15s',
+            bodyLength: bodyLen
+          }))
+        }
+        return
+      }
+
+      console.log('[Script] Body pronto! Extraindo...')
+
+      // ── ESTABELECIMENTO ──
+      var merchantEl = document.getElementById('u20')
+        || document.querySelector('.txtTopo')
+        || document.querySelector('[class*="topo"]')
+      var merchant = merchantEl ? merchantEl.innerText.trim() : 'Não identificado'
+
+      // ── TABELA DE ITENS ──
+      var tbl = document.getElementById('tabResult')
+        || document.querySelector('table[data-filter]')
+        || document.querySelector('table')
+
+      console.log('[Script] Tabela:', tbl ? (tbl.id || tbl.className) : 'não encontrada')
+
+      var items = []
+
+      if (tbl) {
+        var rows = tbl.querySelectorAll('tr')
+        console.log('[Script] Linhas:', rows.length)
+
+        rows.forEach(function(row) {
+          var cells = row.querySelectorAll('td')
+          if (cells.length < 2) return
+
+          var rawName = cells[0].innerText.trim()
+          var name = rawName
+            .replace(/\\(Código[^)]+\\)/gi, '')
+            .replace(/\\s+/g, ' ')
+            .trim()
+
+          if (!name || name.length < 3) return
+
+          var infoText = cells.length > 1 ? cells[1].innerText : ''
+
+          var qtdeMatch = infoText.match(/Qtde\\.?:?\\s*([\\d,]+)/i)
+          var qty = qtdeMatch ? parseFloat(qtdeMatch[1].replace(',', '.')) : 1
+
+          var unMatch = infoText.match(/UN:?\\s*(\\w+)/i)
+          var unit = unMatch ? unMatch[1] : 'UN'
+
+          var lastCell = cells[cells.length - 1]
+          var totalText = lastCell.innerText.trim()
+          var totalMatch = totalText.match(/([\\d\\.]+,[\\d]{2})/)
+          var totalValue = totalMatch
+            ? parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
+            : 0
+
+          if (totalValue > 0 && name.length > 2) {
+            items.push({
+              name: name,
+              quantity: qty,
+              unit: unit,
+              unitValue: totalValue / qty,
+              totalValue: totalValue
+            })
           }
-          rawName = textParts.join(' ')
-        }
-        const name = rawName
-          .replace(/\\(Código[^)]+\\)/gi, '')
-          .replace(/\\s+/g, ' ')
-          .trim()
+        })
+      }
 
-        if (!name || name.length < 3) return
+      // ── TOTAL ──
+      var total = 0
+      var totalMatch2 = bodyText.match(/Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
+        || bodyText.match(/Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i)
+      if (totalMatch2) total = parseFloat(totalMatch2[1].replace(/\\./g, '').replace(',', '.'))
+      if (!total) total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
 
-        const infoText = cells.length > 1 ? cells[1].innerText : ''
+      // ── DATA ──
+      var dateMatch = bodyText.match(/Emiss[ãa]o[:\\s]*(\\d{2})\\/(\\d{2})\\/(\\d{4})/)
+      var emissionDate = dateMatch
+        ? dateMatch[3] + '-' + dateMatch[2] + '-' + dateMatch[1]
+        : new Date().toISOString().split('T')[0]
 
-        const qtdeMatch = infoText.match(/Qtde\\.?:?\\s*([\\d,]+)/i)
-        const qty = qtdeMatch ? parseFloat(qtdeMatch[1].replace(',', '.')) : 1
+      // ── CNPJ ──
+      var cnpjMatch = bodyText.match(/CNPJ[:\\s]*([\\d\\.\\-\\/]+)/)
+      var cnpj = cnpjMatch ? cnpjMatch[1].replace(/\\D/g, '') : null
 
-        const unMatch = infoText.match(/UN:?\\s*(\\w+)/i)
-        const unit = unMatch ? unMatch[1] : 'UN'
+      // ── PAGAMENTO ──
+      var paymentMethod = 'debit'
+      if (/débito|debito/i.test(bodyText)) paymentMethod = 'debit'
+      else if (/crédito|credito/i.test(bodyText)) paymentMethod = 'credit'
+      else if (/[Pp]ix/i.test(bodyText)) paymentMethod = 'pix'
+      else if (/dinheiro/i.test(bodyText)) paymentMethod = 'cash'
 
-        const unitMatch = infoText.match(/Vl\\.?\\s*Unit\\.?[:\\s]+([\\d\\.]+,[\\d]{2})/i)
-        const unitValue = unitMatch
-          ? parseFloat(unitMatch[1].replace(/\\./g, '').replace(',', '.'))
-          : 0
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        success: items.length > 0,
+        source: 'sefaz_rj',
+        merchant: merchant,
+        cnpj: cnpj,
+        emission_date: emissionDate,
+        items: items,
+        total: total,
+        payment_method: paymentMethod,
+        error: items.length === 0 ? 'Itens não encontrados após ' + attempt + ' tentativas' : null
+      }))
 
-        const lastCell = cells[cells.length - 1]
-        const totalText = lastCell.innerText.trim()
-        const totalMatch = totalText.match(/([\\d\\.]+,[\\d]{2})/)
-        const totalValue = totalMatch
-          ? parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
-          : unitValue * qty
-
-        if (totalValue > 0 && name.length > 2) {
-          items.push({ name, quantity: qty, unit, unitValue: unitValue || totalValue / qty, totalValue })
-        }
-      })
+    } catch(e) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ error: 'parse_error', message: String(e) }))
     }
-
-    // ── TOTAL A PAGAR ──
-    let total = 0
-    const totalMatch = bodyText.match(/Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
-      || bodyText.match(/Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i)
-    if (totalMatch) total = parseFloat(totalMatch[1].replace(/\\./g, '').replace(',', '.'))
-    if (!total) total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
-
-    // ── DESCONTOS ──
-    const discountMatch = bodyText.match(/Descontos\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
-    const discount = discountMatch
-      ? parseFloat(discountMatch[1].replace(/\\./g, '').replace(',', '.'))
-      : 0
-
-    // ── FORMA DE PAGAMENTO ──
-    let paymentMethod = 'debit'
-    if (/débito|debito|Débito/i.test(bodyText)) paymentMethod = 'debit'
-    else if (/crédito|credito|Crédito/i.test(bodyText)) paymentMethod = 'credit'
-    else if (/[Pp]ix/i.test(bodyText)) paymentMethod = 'pix'
-    else if (/[Dd]inheiro|[Ee]spécie/i.test(bodyText)) paymentMethod = 'cash'
-
-    window.ReactNativeWebView.postMessage(JSON.stringify({
-      success: items.length > 0,
-      source: 'sefaz_rj',
-      merchant, cnpj, emission_date: emissionDate,
-      items, total, discount, payment_method: paymentMethod,
-      error: items.length === 0 ? 'Itens não encontrados na tabela tabResult' : null
-    }))
-
-  } catch(e) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({
-      error: 'parse_error', message: String(e)
-    }))
   }
+
+  tryExtract(1)
 })()
 `
 
@@ -176,10 +167,8 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
   const [loadingMessage, setLoadingMessage] = useState('Conectando à SEFAZ...')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
-  // Refs to prevent multiple injections and track retries
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const retryCountRef = useRef(0)
   const finalUrlRef = useRef(sanitizeNFCeUrl(url))
 
   // Elapsed-seconds counter
@@ -189,12 +178,12 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
     return () => clearInterval(timer)
   }, [loading])
 
-  // Global 35s timeout — cleanup load-end timer on unmount too
+  // Global 35s timeout
   useEffect(() => {
     const globalTimeout = setTimeout(() => {
       setLoading(prev => {
         if (!prev) return prev
-        console.log('[WebView] TIMEOUT GLOBAL 35s | último estado:', loadingMessage)
+        console.log('[WebView] TIMEOUT GLOBAL 35s')
         onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais.\nVerifique sua conexão e tente novamente.')
         return false
       })
@@ -204,13 +193,6 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
       if (loadEndTimerRef.current) clearTimeout(loadEndTimerRef.current)
     }
   }, [])
-
-  const injectScript = () => {
-    if (scriptInjectedRef.current) return
-    scriptInjectedRef.current = true
-    console.log('[WebView] Injetando script de extração')
-    webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
-  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -282,56 +264,45 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           setLoadingMessage('Conectando à SEFAZ...')
         }}
         onLoadProgress={({ nativeEvent }) => {
-          console.log('[WebView] Progresso:', Math.round(nativeEvent.progress * 100) + '%')
           if (nativeEvent.progress > 0.5) setLoadingMessage('Carregando dados...')
         }}
         onLoadEnd={() => {
-          // Cancel any pending injection timer
           if (loadEndTimerRef.current) {
             clearTimeout(loadEndTimerRef.current)
             loadEndTimerRef.current = null
           }
-          // Ignore if script already injected successfully
           if (scriptInjectedRef.current) {
             console.log('[WebView] onLoadEnd ignorado — script já injetado')
             return
           }
-          const isQRCodeFormat = finalUrlRef.current.includes('QRCode?p=') || finalUrlRef.current.includes('qrcode?p=')
-          const timeout = isQRCodeFormat ? 5000 : 3000
-          console.log('[WebView] Carregamento concluído | formato:', isQRCodeFormat ? 'QRCode' : 'direto', '| aguardando', timeout + 'ms')
+          console.log('[WebView] Carregamento concluído | injetando script com polling interno')
           setLoadingMessage('Extraindo itens...')
-          loadEndTimerRef.current = setTimeout(injectScript, timeout)
+          // 1s delay to ensure any redirect has settled before injecting
+          loadEndTimerRef.current = setTimeout(() => {
+            if (scriptInjectedRef.current) return
+            scriptInjectedRef.current = true
+            console.log('[WebView] Injetando script')
+            webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
+          }, 1000)
         }}
         onMessage={({ nativeEvent }) => {
           try {
             const data = JSON.parse(nativeEvent.data) as any
             console.log('[WebView] Mensagem | success:', data.success, '| items:', data.items?.length ?? 0, '| error:', data.error)
 
-            // Page not ready — retry up to 3 times
-            if (data.error === 'not_ready') {
-              if (retryCountRef.current < 3) {
-                retryCountRef.current += 1
-                console.log('[WebView] Página não pronta — retry', retryCountRef.current, '/3 | bodyLength:', data.bodyLength)
-                scriptInjectedRef.current = false
-                setTimeout(injectScript, 2000)
-              } else {
-                console.log('[WebView] Máximo de retries atingido')
-                setLoading(false)
-                onError('Não foi possível carregar o cupom.\nVerifique sua conexão e tente novamente.')
-              }
-              return
-            }
-
             setLoading(false)
 
             if (data.error === 'blocked') {
-              console.log('[WebView] IP BLOQUEADO pela SEFAZ')
               onError('Acesso bloqueado pela SEFAZ.\n\nTente em uma rede Wi-Fi diferente\nou use a opção OCR.')
               return
             }
 
+            if (data.error === 'timeout') {
+              onError('A página da SEFAZ demorou para carregar.\nVerifique sua conexão e tente novamente.')
+              return
+            }
+
             if (!data.success || !data.items?.length) {
-              console.log('[WebView] Falha na extração:', data.error || data.message)
               onError(data.error || 'Não foi possível extrair os itens.\nTente a opção OCR como alternativa.')
               return
             }
@@ -339,14 +310,14 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
             console.log('[WebView] Extração bem-sucedida! Items:', data.items.length, '| merchant:', data.merchant)
             onSuccess(data as NFCeResult)
           } catch (e) {
-            console.log('[WebView] Erro parse:', String(e), '| raw:', nativeEvent.data?.substring(0, 200))
+            console.log('[WebView] Erro parse:', String(e))
             setLoading(false)
             onError('Erro ao processar resposta da SEFAZ.')
           }
         }}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent
-          console.log('[WebView] ERRO | código:', (nativeEvent as any).code, '| desc:', nativeEvent.description, '| url:', nativeEvent.url?.substring(0, 100))
+          console.log('[WebView] ERRO | código:', (nativeEvent as any).code, '| desc:', nativeEvent.description)
           setLoading(false)
           onError('Erro de conexão com a SEFAZ.\nVerifique sua conexão e tente novamente.')
         }}
