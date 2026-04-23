@@ -58,7 +58,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Auth** — login, register, session restore, logout. Invalid token recovery: stale tokens are wiped and user is redirected to login without looping.
 
-**Onboarding** — 3-step wizard (balance/currency → cycle/income sources → first pot). Runs once when `user.initial_balance === 0` or `users` row is missing.
+**Onboarding** — 3-step wizard (balance/currency → cycle/income sources → first pot). Runs once when `user.initial_balance === 0` or `users` row is missing. Step 1: saldo inicial é **opcional** (pode ser zero ou negativo). Step 3: após o upsert do usuário, se `draft.balance !== 0`, cria uma `transaction` no ciclo atual (`type: 'income'` se positivo, `'expense'` se negativo, `description: 'Saldo inicial'`, `payment_method: 'transfer'`, `date: cycleStart`). Isso faz o saldo inicial aparecer automaticamente em Mensal, Projeção e Perfil sem lógica especial.
 
 **Pots dashboard** (`app/(tabs)/index.tsx`) — grid of pots filtered by `created_at <= cycle.end`, ordered by `created_at`. Emergency pot shown as separate footer card. Pull-to-refresh.
 
@@ -197,7 +197,7 @@ Module-level singleton shared across steps (not router params — income sources
 
 Currency mask helpers: `formatCents("15000")` → `"R$ 150,00"`, `digitsOnly`, `centsToFloat`.
 
-**Step3 Supabase sequence** — pots INSERT only: `user_id, name, color, limit_amount, limit_type, is_emergency`. Double-tap guarded with `if (loading) return`.
+**Step3 Supabase sequence** — (1) upsert `users`, (2) insert `transactions` saldo inicial if `draft.balance !== 0`, (3) insert `income_sources`, (4) insert `pots`. Double-tap guarded with `if (loading) return`. Pots INSERT: `user_id, name, color, limit_amount, limit_type, is_emergency` only.
 
 ### Onboarding modal structure (Android-safe)
 
