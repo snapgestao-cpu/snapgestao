@@ -98,9 +98,17 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 **Profile** (`app/(tabs)/profile.tsx`) — cycle edit, income sources, credit cards, IR CSV export (`handleExportarIR()` via `expo-file-system/legacy` + `expo-sharing`), data clear, logout. Summary cards: current cycle balance (via `calculateCycleSummary`), active goals count, priority goal progress.
 
 **OCR / NFC-e** (`app/ocr.tsx`) — menu-first flow with two paths:
-1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → URL opened in `NFCeWebView` (react-native-webview). WebView loads the SEFAZ-RJ page using the device's real browser engine (bypasses all IP blocks). After load + 1.5s settle time, `EXTRACT_SCRIPT` is injected via `injectJavaScript()` to parse the DOM: merchant (h4 or first all-caps div), items (table#tblItens rows; fallback: span/td/div text line-by-line), total ("Valor a pagar" regex), payment method (keyword). Result posted back via `window.ReactNativeWebView.postMessage`. WebView is hidden (opacity 0) — user sees only the loading overlay.
+1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → `sanitizeNFCeUrl()` (exported from `NFCeWebView.tsx`) fixes double-protocol (`http://https//`) and encodes `|` in query string → URL stored in `nfceUrl` state → `NFCeWebView` renders. WebView loads the SEFAZ-RJ page using the device's real browser engine (bypasses all IP blocks). After load, `EXTRACT_SCRIPT` is injected via `injectJavaScript()` to parse the DOM. Result posted back via `window.ReactNativeWebView.postMessage`. WebView is hidden (opacity 0) — user sees only the loading overlay.
 2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision. Also auto-triggered if QR fails (step `ocr_camera` opens camera via `useEffect`).
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
+
+**NFCeWebView** (`components/NFCeWebView.tsx`) — injection guard pattern:
+- `scriptInjectedRef` — prevents duplicate injections when `onLoadEnd` fires multiple times
+- `loadEndTimerRef` — debounces injection: 5000ms for QRCode URL format, 3000ms for direct
+- `retryCountRef` — up to 3 retries (2s each) when EXTRACT_SCRIPT reports `not_ready` (page body < 200 chars)
+- `finalUrlRef` — tracks URL after SEFAZ redirects via `onNavigationStateChange`
+- Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
+- EXTRACT_SCRIPT checks `blocked` (IP block keywords) and `not_ready` before attempting DOM parse; items from `tabResult` table rows
 
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
