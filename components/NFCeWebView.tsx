@@ -150,10 +150,21 @@ const EXTRACT_SCRIPT = `
 
       // ── PAGAMENTO ──
       var paymentMethod = 'debit'
-      if (/débito|debito/i.test(bodyText)) paymentMethod = 'debit'
-      else if (/crédito|credito/i.test(bodyText)) paymentMethod = 'credit'
-      else if (/[Pp]ix/i.test(bodyText)) paymentMethod = 'pix'
-      else if (/dinheiro/i.test(bodyText)) paymentMethod = 'cash'
+      var payText = bodyText.toLowerCase()
+      if (payText.includes('débito') || payText.includes('debito') ||
+          payText.includes('cartão de débito') || payText.includes('cartao de debito'))
+        paymentMethod = 'debit'
+      else if (payText.includes('crédito') || payText.includes('credito') ||
+          payText.includes('cartão de crédito') || payText.includes('cartao de credito'))
+        paymentMethod = 'credit'
+      else if (payText.includes('pix'))
+        paymentMethod = 'pix'
+      else if (payText.includes('dinheiro') || payText.includes('espécie') ||
+          payText.includes('especie') || payText.includes('cash'))
+        paymentMethod = 'cash'
+      else if (payText.includes('transferência') || payText.includes('transferencia'))
+        paymentMethod = 'transfer'
+      console.log('[Script] Pagamento detectado:', paymentMethod)
 
       window.ReactNativeWebView.postMessage(JSON.stringify({
         success: items.length > 0,

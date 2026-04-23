@@ -26,7 +26,30 @@ import type { NFCeState } from '../lib/nfce-states'
 
 type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
-type ReviewItem = { name: string; value: number; potId: string | null }
+type ReviewItem = {
+  id: string
+  name: string
+  valueCents: number
+  quantity: number
+  unit: string
+  potId: string | null
+}
+
+const PAYMENT_OPTIONS = [
+  { key: 'debit',    label: 'Débito'    },
+  { key: 'credit',   label: 'Crédito'   },
+  { key: 'pix',      label: 'Pix'       },
+  { key: 'cash',     label: 'Dinheiro'  },
+  { key: 'transfer', label: 'Transfer.' },
+]
+
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function digitsOnly(str: string): string {
+  return str.replace(/\D/g, '')
+}
 
 export default function OCRScreen() {
   const { user } = useAuthStore()
@@ -44,7 +67,7 @@ export default function OCRScreen() {
   const [merchant, setMerchant] = useState('')
   const [total, setTotal] = useState('')
   const [receiptDate, setReceiptDate] = useState(initialDate)
-  const [items, setItems] = useState<ReviewItem[]>([])
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [pots, setPots] = useState<Pot[]>([])
   const [simplified, setSimplified] = useState(false)
   const [singlePotId, setSinglePotId] = useState<string | null>(defaultPotId ?? null)
@@ -52,6 +75,7 @@ export default function OCRScreen() {
   const [processingMessage, setProcessingMessage] = useState('Lendo o cupom...')
   const [nfceUrl, setNfceUrl] = useState<string | null>(null)
   const [nfceState, setNfceState] = useState<NFCeState | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<string>('debit')
 
   const loadPots = async () => {
     if (!user) return
@@ -63,7 +87,7 @@ export default function OCRScreen() {
     setPots((data ?? []) as Pot[])
   }
 
-  // Auto-launch camera when step becomes 'ocr_camera' (e.g. after QR failure)
+  // Auto-launch camera when step becomes 'ocr_camera'
   useEffect(() => {
     if (step !== 'ocr_camera') return
     captureReceipt().then(uri => {
@@ -104,11 +128,19 @@ export default function OCRScreen() {
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.receipt_date ?? initialDate)
-    setItems((result.items ?? []).map(i => ({ name: i.name, value: i.value, potId: defaultPotId ?? null })))
+    setPaymentMethod('debit')
+    setReviewItems((result.items ?? []).map((item, i) => ({
+      id: String(i),
+      name: item.name,
+      valueCents: Math.round(item.value * 100),
+      quantity: 1,
+      unit: 'UN',
+      potId: defaultPotId ?? null,
+    })))
     setStep('review')
   }
 
-  // QR Code path: open SEFAZ URL in WebView → inject JS extractor
+  // QR Code path: detect state → sanitize URL → WebView
   const handleQRCodeScanned = async (rawUrl: string) => {
     const stateCode = extractStateCode(rawUrl)
     const state = getStateByCode(stateCode)
@@ -143,9 +175,13 @@ export default function OCRScreen() {
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
-    setItems((result.items ?? []).map(item => ({
+    setPaymentMethod(result.payment_method ?? 'debit')
+    setReviewItems((result.items ?? []).map((item, i) => ({
+      id: String(i),
       name: item.name,
-      value: item.totalValue,
+      valueCents: Math.round(item.totalValue * 100),
+      quantity: item.quantity,
+      unit: item.unit,
       potId: defaultPotId ?? null,
     })))
     setImageUri(null)
@@ -182,18 +218,18 @@ export default function OCRScreen() {
             type: 'expense', amount: totalAmount,
             description: merchant || 'Cupom fiscal',
             merchant: merchant || null,
-            date: today, payment_method: 'cash', is_need: true,
+            date: today, payment_method: paymentMethod, is_need: true,
           })
         }
       } else {
-        const validItems = items.filter(i => i.value > 0)
+        const validItems = reviewItems.filter(i => i.valueCents > 0)
         for (const item of validItems) {
           await supabase.from('transactions').insert({
             user_id: userId, pot_id: item.potId,
-            type: 'expense', amount: item.value,
+            type: 'expense', amount: item.valueCents / 100,
             description: item.name,
             merchant: merchant || null,
-            date: today, payment_method: 'cash', is_need: true,
+            date: today, payment_method: paymentMethod, is_need: true,
           })
         }
       }
@@ -204,7 +240,7 @@ export default function OCRScreen() {
 
       checkAndGrantBadges(userId, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
 
-      const count = simplified ? 1 : items.filter(i => i.value > 0).length
+      const count = simplified ? 1 : reviewItems.filter(i => i.valueCents > 0).length
       Alert.alert('Sucesso', `${count} lançamento${count !== 1 ? 's' : ''} registrado${count !== 1 ? 's' : ''}!`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)/monthly') },
       ])
@@ -214,19 +250,17 @@ export default function OCRScreen() {
     }
   }
 
-  const updateItemPot = (index: number, potId: string | null) =>
-    setItems(prev => prev.map((item, i) => i === index ? { ...item, potId } : item))
+  const updateItem = (id: string, changes: Partial<ReviewItem>) =>
+    setReviewItems(prev => prev.map(item => item.id === id ? { ...item, ...changes } : item))
 
-  const removeItem = (index: number) =>
-    setItems(prev => prev.filter((_, i) => i !== index))
+  const removeItem = (id: string) =>
+    setReviewItems(prev => prev.filter(item => item.id !== id))
 
   const addItem = () =>
-    setItems(prev => [...prev, { name: '', value: 0, potId: null }])
-
-  const updateItem = (index: number, field: 'name' | 'value', value: string) =>
-    setItems(prev => prev.map((item, i) =>
-      i === index ? { ...item, [field]: field === 'value' ? parseFloat(value) || 0 : value } : item
-    ))
+    setReviewItems(prev => [...prev, {
+      id: String(Date.now()),
+      name: '', valueCents: 0, quantity: 1, unit: 'UN', potId: null,
+    }])
 
   // ── STEP: menu ────────────────────────────────────────────────────────────
   if (step === 'menu') {
@@ -323,7 +357,6 @@ export default function OCRScreen() {
 
   // ── STEP: processing ──────────────────────────────────────────────────────
   if (step === 'processing') {
-    // QR Code path: render WebView to load SEFAZ page and extract data via JS
     if (nfceUrl) {
       return (
         <NFCeWebView
@@ -335,7 +368,6 @@ export default function OCRScreen() {
         />
       )
     }
-    // OCR path: spinner while Google Vision processes
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.processingStep}>
@@ -376,6 +408,7 @@ export default function OCRScreen() {
           <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
         )}
 
+        {/* Merchant / total / date */}
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>Estabelecimento</Text>
           <TextInput
@@ -404,6 +437,31 @@ export default function OCRScreen() {
             placeholder="AAAA-MM-DD"
             placeholderTextColor={Colors.textMuted}
           />
+        </View>
+
+        {/* Payment method selector */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Forma de pagamento</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PAYMENT_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setPaymentMethod(opt.key)}
+                style={[
+                  styles.payChip,
+                  paymentMethod === opt.key && styles.payChipActive,
+                ]}
+              >
+                <Text style={[
+                  styles.payChipText,
+                  paymentMethod === opt.key && styles.payChipTextActive,
+                ]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.payHint}>Detectado automaticamente — toque para alterar</Text>
         </View>
 
         <TouchableOpacity style={styles.toggleRow} onPress={() => setSimplified(v => !v)}>
@@ -438,29 +496,32 @@ export default function OCRScreen() {
         ) : (
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Itens detectados</Text>
-            {items.map((item, index) => (
-              <View key={index} style={styles.itemRow}>
+            {reviewItems.map(item => (
+              <View key={item.id} style={styles.itemRow}>
                 <View style={styles.itemFields}>
                   <TextInput
                     style={[styles.fieldInput, { flex: 1, marginBottom: 4 }]}
                     value={item.name}
-                    onChangeText={v => updateItem(index, 'name', v)}
+                    onChangeText={v => updateItem(item.id, { name: v })}
                     placeholder="Descrição"
                     placeholderTextColor={Colors.textMuted}
                   />
                   <View style={styles.itemBottom}>
                     <TextInput
-                      style={[styles.fieldInput, { width: 90 }]}
-                      value={item.value > 0 ? String(item.value) : ''}
-                      onChangeText={v => updateItem(index, 'value', v)}
-                      keyboardType="decimal-pad"
-                      placeholder="R$"
+                      style={styles.valueInput}
+                      value={formatCents(item.valueCents)}
+                      onChangeText={text => {
+                        const cents = parseInt(digitsOnly(text) || '0', 10)
+                        updateItem(item.id, { valueCents: cents })
+                      }}
+                      keyboardType="numeric"
+                      placeholder="R$ 0,00"
                       placeholderTextColor={Colors.textMuted}
                     />
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
                       <TouchableOpacity
                         style={[styles.potChipSm, item.potId === null && styles.potChipActive]}
-                        onPress={() => updateItemPot(index, null)}
+                        onPress={() => updateItem(item.id, { potId: null })}
                       >
                         <Text style={[styles.potChipText, item.potId === null && styles.potChipTextActive]}>—</Text>
                       </TouchableOpacity>
@@ -468,7 +529,7 @@ export default function OCRScreen() {
                         <TouchableOpacity
                           key={p.id}
                           style={[styles.potChipSm, item.potId === p.id && styles.potChipActive]}
-                          onPress={() => updateItemPot(index, p.id)}
+                          onPress={() => updateItem(item.id, { potId: p.id })}
                         >
                           <Text style={[styles.potChipText, item.potId === p.id && styles.potChipTextActive]}>
                             {getPotIcon(p.name)} {p.name}
@@ -478,7 +539,7 @@ export default function OCRScreen() {
                     </ScrollView>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.removeBtn} onPress={() => removeItem(index)}>
+                <TouchableOpacity style={styles.removeBtn} onPress={() => removeItem(item.id)}>
                   <Text style={styles.removeBtnText}>✕</Text>
                 </TouchableOpacity>
               </View>
@@ -561,15 +622,32 @@ const styles = StyleSheet.create({
     borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 10,
     fontSize: 14, color: Colors.textDark,
   },
+  // Payment chips
+  payChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background,
+  },
+  payChipActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
+  payChipText: { fontSize: 13, fontWeight: '500', color: Colors.textMuted },
+  payChipTextActive: { color: Colors.primary, fontWeight: '700' },
+  payHint: { fontSize: 11, color: Colors.textMuted, marginTop: 10 },
+  // Mode toggle
   toggleRow: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 14,
     marginBottom: 12, flexDirection: 'row', alignItems: 'center',
   },
   toggleLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 10 },
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 12 },
+  // Item rows
   itemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 12 },
   itemFields: { flex: 1 },
   itemBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  valueInput: {
+    width: 90,
+    backgroundColor: Colors.background, borderRadius: 10, borderWidth: 1.5,
+    borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 10,
+    fontSize: 14, color: Colors.textDark, textAlign: 'right',
+  },
   removeBtn: { padding: 8, marginTop: 4 },
   removeBtnText: { fontSize: 16, color: Colors.textMuted },
   potChip: {
