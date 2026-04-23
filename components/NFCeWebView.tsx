@@ -14,13 +14,11 @@ type Props = {
 // Exported so ocr.tsx can call it before passing the URL
 export function sanitizeNFCeUrl(raw: string): string {
   let url = raw.trim()
-  // Fix double-protocol: "http://https//" or "https://https://"
   url = url.replace(/^https?:\/\/https?:\/\//i, 'https://')
   url = url.replace(/^http:\/\/(https:\/\/)/i, '$1')
   if (!url.startsWith('https://') && !url.startsWith('http://')) {
     url = 'https://' + url
   }
-  // Encode pipes in query string (break some WebView parsers)
   const idx = url.indexOf('?')
   if (idx > -1) {
     url = url.substring(0, idx + 1) + url.substring(idx + 1).replace(/\|/g, '%7C')
@@ -28,7 +26,24 @@ export function sanitizeNFCeUrl(raw: string): string {
   return url
 }
 
-// Script with internal polling — waits up to 15s (1s intervals) for jQuery Mobile to render
+// QRCode?p=... is the redirect entry point — script must NOT be injected here
+function isRedirectUrl(url: string): boolean {
+  return url.includes('QRCode?p=') || url.includes('qrcode?p=')
+}
+
+// Detect the final rendered result page (after jQuery Mobile redirect)
+function isFinalResultUrl(url: string): boolean {
+  return (
+    url.includes('resultadoQRCode') ||
+    url.includes('resultadoNfce') ||
+    url.includes('consultaChaveAcesso') ||
+    url.includes('consultaDFe') ||
+    // Generic fallback: not a redirect URL and not blank
+    (!isRedirectUrl(url) && url !== 'about:blank' && url.length > 10)
+  )
+}
+
+// Internal polling script — waits up to 15s for jQuery Mobile to render the body
 const EXTRACT_SCRIPT = `
 (function() {
   function tryExtract(attempt) {
@@ -169,7 +184,10 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
 
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Start with the sanitized initial URL; updated by onNavigationStateChange
   const finalUrlRef = useRef(sanitizeNFCeUrl(url))
+  // Track whether we've seen the redirect URL so we can detect transition to result page
+  const sawRedirectRef = useRef(isRedirectUrl(sanitizeNFCeUrl(url)))
 
   // Elapsed-seconds counter
   useEffect(() => {
@@ -193,6 +211,13 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
       if (loadEndTimerRef.current) clearTimeout(loadEndTimerRef.current)
     }
   }, [])
+
+  const injectScript = () => {
+    if (scriptInjectedRef.current) return
+    scriptInjectedRef.current = true
+    console.log('[WebView] Injetando script de extração')
+    webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -253,13 +278,29 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
         javaScriptEnabled={true}
         domStorageEnabled={true}
         onNavigationStateChange={(navState) => {
-          if (navState.url && navState.url !== 'about:blank') {
-            finalUrlRef.current = navState.url
-            console.log('[WebView] URL atual:', navState.url.substring(0, 100))
+          const navUrl = navState.url
+          if (!navUrl || navUrl === 'about:blank') return
+
+          console.log('[WebView] Navegando para:', navUrl.substring(0, 100))
+
+          // Track whether we've passed through the redirect URL
+          if (isRedirectUrl(navUrl)) {
+            sawRedirectRef.current = true
+            finalUrlRef.current = navUrl
+            console.log('[WebView] URL de redirect — aguardando resultado...')
+            return
           }
+
+          // Transitioned from redirect → result page: reset injection flag
+          if (sawRedirectRef.current && isFinalResultUrl(navUrl) && scriptInjectedRef.current) {
+            console.log('[WebView] Resultado detectado após redirect — resetando scriptInjectedRef')
+            scriptInjectedRef.current = false
+          }
+
+          finalUrlRef.current = navUrl
         }}
         onLoadStart={() => {
-          console.log('[WebView] Iniciando carregamento | URL:', finalUrlRef.current.substring(0, 100))
+          console.log('[WebView] onLoadStart | URL:', finalUrlRef.current.substring(0, 100))
           setLoading(true)
           setLoadingMessage('Conectando à SEFAZ...')
         }}
@@ -267,23 +308,33 @@ export default function NFCeWebView({ url, onSuccess, onError, onCancel }: Props
           if (nativeEvent.progress > 0.5) setLoadingMessage('Carregando dados...')
         }}
         onLoadEnd={() => {
+          const currentUrl = finalUrlRef.current
+
+          console.log('[WebView] onLoadEnd | URL:', currentUrl.substring(0, 80),
+            '| é redirect:', isRedirectUrl(currentUrl),
+            '| é resultado:', isFinalResultUrl(currentUrl),
+            '| já injetou:', scriptInjectedRef.current)
+
           if (loadEndTimerRef.current) {
             clearTimeout(loadEndTimerRef.current)
             loadEndTimerRef.current = null
           }
+
           if (scriptInjectedRef.current) {
             console.log('[WebView] onLoadEnd ignorado — script já injetado')
             return
           }
-          console.log('[WebView] Carregamento concluído | injetando script com polling interno')
+
+          // Still on the redirect URL — wait for the result page to load
+          if (isRedirectUrl(currentUrl)) {
+            console.log('[WebView] onLoadEnd ignorado — ainda na URL de redirect')
+            return
+          }
+
+          // Final result page loaded — inject with 1s delay for jQuery Mobile to start rendering
+          console.log('[WebView] Agendando injeção na página de resultado')
           setLoadingMessage('Extraindo itens...')
-          // 1s delay to ensure any redirect has settled before injecting
-          loadEndTimerRef.current = setTimeout(() => {
-            if (scriptInjectedRef.current) return
-            scriptInjectedRef.current = true
-            console.log('[WebView] Injetando script')
-            webViewRef.current?.injectJavaScript(EXTRACT_SCRIPT + '; true;')
-          }, 1000)
+          loadEndTimerRef.current = setTimeout(injectScript, 1000)
         }}
         onMessage={({ nativeEvent }) => {
           try {
