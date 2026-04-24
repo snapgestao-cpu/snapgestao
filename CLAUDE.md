@@ -121,7 +121,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - Intro screen → quiz (fade transition) → generating overlay → result with "Salvar PDF" + "Compartilhar PDF"
 - Quiz: option chips (tap to highlight) + optional free TextInput per question; "Próxima" button advances (no auto-advance). `metaPrincipal` question loads user goals dynamically from Supabase. `QuestionarioRespostas`: `{ objetivo, dificuldade, metaPrincipal, prazo, tom, comentarios: Record<string, string> }`.
 - `lib/mentor-financeiro.ts`: `coletarContextoFinanceiro()` fetches pots + income_sources + transactions (current cycle + last 90 days) + goals; `gerarRelatorioMentor()` calls Gemini 2.5 Flash via `EXPO_PUBLIC_GEMINI_API_KEY`; `maxOutputTokens: 8192`; prompt includes real values + free-text comentarios
-- `lib/gerar-pdf.ts`: `markdownToHtml()` — order ### before ## before # to avoid partial match; `gerarPDF()` → `expo-print`; `compartilharPDF()` → `expo-sharing`. "Salvar PDF" uses `FileSystem.copyAsync` to `documentDirectory`.
+- `lib/gerar-pdf.ts`: `markdownToHtml()` — order ### before ## before # to avoid partial match; `gerarPDF()` → `expo-print`; `compartilharPDF()` → `expo-sharing`. "Salvar PDF" uses `MediaLibrary.createAssetAsync` + `createAlbumAsync('Download')` to save visibly in Android Downloads folder (requests `MEDIA_LIBRARY` permission at runtime; copies to `cacheDirectory` first, then deletes temp file). **Do not use `documentDirectory` for PDF saving** — it writes to app-private storage not visible in Downloads.
 - Route registered in `_layout.tsx` as `name="mentor"`; guard allows `segments[0] === 'mentor'`
 - Entry point: blue "Mentor Financeiro IA" card in profile screen above settings groups
 
