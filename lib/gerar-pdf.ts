@@ -9,31 +9,30 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function markdownToHtml(md: string): string {
-  return md
-    // Bold **text**
+function markdownToHtml(texto: string): string {
+  return texto
+    // Headers — ordem: ### antes de ## antes de #
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Negrito
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Headers ### and ##
-    .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
-    .replace(/^##\s+(.+)$/gm, '<h2>$2</h2>')
-    // Numbered list items
-    .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
-    // Bullet list items
-    .replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>')
-    // Wrap consecutive <li> in <ul>
-    .replace(/((<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
-    // Paragraphs — double newline → <p>
-    .split(/\n{2,}/)
-    .map(block => {
-      if (block.startsWith('<h') || block.startsWith('<ul>') || block.startsWith('<li>')) return block
-      if (!block.trim()) return ''
-      return `<p>${block.replace(/\n/g, '<br>')}</p>`
-    })
-    .join('\n')
+    // Itálico
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Listas com bullet
+    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+    // Listas numeradas
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    // Quebras de linha duplas viram parágrafos
+    .replace(/\n\n/g, '</p><p>')
+    // Quebras simples viram <br>
+    .replace(/\n/g, '<br>')
+    // Envolver em parágrafo
+    .replace(/^(.)/, '<p>$1') + '</p>'
 }
 
 function buildHtml(relatorio: string, userName: string, dataGeracao: string): string {
-  const htmlContent = markdownToHtml(relatorio)
+  const conteudoHTML = markdownToHtml(relatorio)
   const safeUser = escapeHtml(userName)
 
   return `<!DOCTYPE html>
@@ -43,12 +42,10 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Relatório Mentor Financeiro — SnapGestão</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     background: #F4F6F9;
     color: #1A2030;
     padding: 0;
@@ -61,9 +58,8 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
     min-height: 100vh;
   }
 
-  /* Header */
   .header {
-    background: linear-gradient(135deg, #0F5EA8 0%, #0A3D6B 100%);
+    background: #0F5EA8;
     padding: 40px 40px 32px;
     color: #fff;
   }
@@ -108,17 +104,23 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
     opacity: 1;
   }
 
-  /* Accent bar */
   .accent-bar {
     height: 4px;
-    background: linear-gradient(90deg, #1EB87A, #0F5EA8);
+    background: #1EB87A;
   }
 
-  /* Body */
-  .body {
+  .content {
     padding: 40px;
   }
 
+  h1 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #0F5EA8;
+    margin: 32px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #E8EEF5;
+  }
   h2 {
     font-size: 20px;
     font-weight: 800;
@@ -159,12 +161,9 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
     color: #0F5EA8;
     font-weight: 700;
   }
-  strong {
-    font-weight: 700;
-    color: #1A2030;
-  }
+  strong { font-weight: 700; color: #1A2030; }
+  em { font-style: italic; color: #374151; }
 
-  /* Footer */
   .footer {
     background: #F4F6F9;
     padding: 24px 40px;
@@ -201,8 +200,8 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
     </div>
   </div>
   <div class="accent-bar"></div>
-  <div class="body">
-    ${htmlContent}
+  <div class="content">
+    ${conteudoHTML}
   </div>
   <div class="footer">
     <div class="footer-text">

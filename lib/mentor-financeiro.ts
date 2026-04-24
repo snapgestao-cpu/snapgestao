@@ -2,11 +2,12 @@ import { supabase } from './supabase'
 import { getCycle } from './cycle'
 
 export type QuestionarioRespostas = {
-  objetivo: string        // 'economizar' | 'quitar_dividas' | 'investir' | 'controlar'
-  rendaMensal: string     // 'ate_3k' | '3k_7k' | '7k_15k' | 'acima_15k'
-  maiorDesafio: string    // 'impulso' | 'fixos_altos' | 'sem_reserva' | 'dividas'
-  temReserva: string      // 'sim' | 'nao' | 'pouco'
-  prioridade: string      // 'seguranca' | 'qualidade_vida' | 'patrimonio' | 'liberdade'
+  objetivo: string
+  dificuldade: string
+  metaPrincipal: string
+  prazo: string
+  tom: string
+  comentarios: Record<string, string>
 }
 
 export type ContextoFinanceiro = {
@@ -30,7 +31,7 @@ Analise os dados financeiros e o questionário do usuário e gere um relatório 
 4. **Plano de Ação** — 5 recomendações específicas e práticas (numeradas)
 5. **Meta 90 dias** — Uma meta concreta e mensurável para os próximos 3 meses
 
-Seja específico, use os valores reais do usuário. Evite conselhos genéricos. Máximo 600 palavras no total.`
+Seja específico, use os valores reais do usuário. Evite conselhos genéricos.`
 
 export async function coletarContextoFinanceiro(userId: string, cycleStart: number): Promise<ContextoFinanceiro> {
   const cycle = getCycle(cycleStart, 0)
@@ -63,9 +64,7 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
   const totalReceita = ((incomeSources ?? []) as any[]).reduce((s: number, r: any) => s + Number(r.amount), 0)
   const expenses = (txsThisCycle ?? []) as any[]
   const totalGasto = expenses.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + Number(t.amount), 0)
-  const totalPoupado = (txs3Months ?? []) as any[]
 
-  // Spent per pot this cycle
   const spentByPot: Record<string, number> = {}
   expenses.forEach((t: any) => {
     if (t.pot_id && t.type === 'expense') {
@@ -79,7 +78,6 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
     spent: spentByPot[p.id] ?? 0,
   }))
 
-  // Top merchants last 90 days
   const merchantMap: Record<string, number> = {}
   ;((txs3Months ?? []) as any[])
     .filter((t: any) => t.type === 'expense' && t.merchant)
@@ -105,33 +103,34 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
 
 function buildPrompt(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro): string {
   const objetivoMap: Record<string, string> = {
-    economizar: 'Economizar mais dinheiro',
-    quitar_dividas: 'Quitar dívidas',
-    investir: 'Começar a investir',
-    controlar: 'Ter controle financeiro',
+    meta: 'Realizar uma meta específica',
+    economizar: 'Economizar mais todo mês',
+    negativo: 'Sair do saldo negativo',
+    organizar: 'Organizar melhor os gastos',
+    dividas: 'Quitar dívidas',
   }
-  const rendaMap: Record<string, string> = {
-    ate_3k: 'até R$ 3.000',
-    '3k_7k': 'R$ 3.000 a R$ 7.000',
-    '7k_15k': 'R$ 7.000 a R$ 15.000',
-    acima_15k: 'acima de R$ 15.000',
+  const dificuldadeMap: Record<string, string> = {
+    alimentacao: 'Alimentação fora de casa',
+    impulso: 'Compras por impulso',
+    lazer: 'Lazer e entretenimento',
+    assinaturas: 'Assinaturas e serviços',
+    identificar: 'Ajuda para identificar o problema',
   }
-  const desafioMap: Record<string, string> = {
-    impulso: 'Gastos por impulso',
-    fixos_altos: 'Gastos fixos muito altos',
-    sem_reserva: 'Falta de reserva de emergência',
-    dividas: 'Dívidas acumuladas',
+  const prazoMap: Record<string, string> = {
+    '3meses': '3 meses',
+    '6meses': '6 meses',
+    '1ano': '1 ano',
+    'mais1ano': 'Mais de 1 ano',
   }
-  const reservaMap: Record<string, string> = {
-    sim: 'Sim, tenho reserva de emergência',
-    nao: 'Não tenho reserva',
-    pouco: 'Tenho pouco (menos de 3 meses)',
+  const tomMap: Record<string, string> = {
+    direto: 'Direto e objetivo',
+    detalhado: 'Detalhado com números',
+    motivador: 'Motivador e encorajador',
   }
-  const prioridadeMap: Record<string, string> = {
-    seguranca: 'Segurança financeira',
-    qualidade_vida: 'Qualidade de vida',
-    patrimonio: 'Construir patrimônio',
-    liberdade: 'Liberdade financeira',
+
+  const withComment = (val: string, id: string) => {
+    const c = respostas.comentarios[id]
+    return c ? `${val} — comentário: "${c}"` : val
   }
 
   const potLines = ctx.potes.map(p => {
@@ -145,11 +144,11 @@ function buildPrompt(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro):
   ).join('\n')
 
   return `QUESTIONÁRIO DO USUÁRIO:
-- Objetivo principal: ${objetivoMap[respostas.objetivo] ?? respostas.objetivo}
-- Faixa de renda mensal: ${rendaMap[respostas.rendaMensal] ?? respostas.rendaMensal}
-- Maior desafio financeiro: ${desafioMap[respostas.maiorDesafio] ?? respostas.maiorDesafio}
-- Reserva de emergência: ${reservaMap[respostas.temReserva] ?? respostas.temReserva}
-- Prioridade de vida: ${prioridadeMap[respostas.prioridade] ?? respostas.prioridade}
+- Objetivo principal: ${withComment(objetivoMap[respostas.objetivo] ?? respostas.objetivo, 'objetivo')}
+- Maior dificuldade: ${withComment(dificuldadeMap[respostas.dificuldade] ?? respostas.dificuldade, 'dificuldade')}
+- Meta principal: ${withComment(respostas.metaPrincipal || '(não informada)', 'metaPrincipal')}
+- Prazo: ${withComment(prazoMap[respostas.prazo] ?? respostas.prazo, 'prazo')}
+- Tom preferido: ${withComment(tomMap[respostas.tom] ?? respostas.tom, 'tom')}
 
 DADOS FINANCEIROS REAIS (ciclo atual):
 - Receita mensal total: R$ ${ctx.totalReceita.toFixed(2)}
@@ -186,7 +185,7 @@ export async function gerarRelatorioMentor(
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 8192,
         },
       }),
     }

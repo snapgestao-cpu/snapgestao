@@ -1,12 +1,15 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Animated, Alert, Platform,
+  ActivityIndicator, Animated, Alert, TextInput,
+  KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
+import * as FileSystem from 'expo-file-system/legacy'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
+import { supabase } from '../lib/supabase'
 import {
   QuestionarioRespostas,
   coletarContextoFinanceiro,
@@ -14,73 +17,83 @@ import {
 } from '../lib/mentor-financeiro'
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
 
-// ── Quiz questions ──────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
+type PerguntaOpcao = { key: string; label: string }
 type Pergunta = {
-  id: keyof QuestionarioRespostas
-  texto: string
+  id: string
+  titulo: string
   emoji: string
-  opcoes: { valor: string; label: string; emoji: string }[]
+  opcoes: PerguntaOpcao[]
+  dinamico?: boolean
+  placeholder: string
 }
 
-const PERGUNTAS: Pergunta[] = [
+// ── Perguntas ─────────────────────────────────────────────────────────────────
+
+const PERGUNTAS_BASE: Pergunta[] = [
   {
     id: 'objetivo',
-    texto: 'Qual é seu principal objetivo financeiro agora?',
+    titulo: 'Qual seu objetivo\nprincipal agora?',
     emoji: '🎯',
     opcoes: [
-      { valor: 'economizar', label: 'Economizar mais', emoji: '🐷' },
-      { valor: 'quitar_dividas', label: 'Quitar dívidas', emoji: '⛓' },
-      { valor: 'investir', label: 'Começar a investir', emoji: '📈' },
-      { valor: 'controlar', label: 'Ter controle total', emoji: '🧭' },
+      { key: 'meta', label: '🎯 Realizar uma meta específica' },
+      { key: 'economizar', label: '💰 Economizar mais todo mês' },
+      { key: 'negativo', label: '📉 Sair do saldo negativo' },
+      { key: 'organizar', label: '🔄 Organizar melhor meus gastos' },
+      { key: 'dividas', label: '💳 Quitar dívidas' },
     ],
+    placeholder: 'Ou descreva seu objetivo...',
   },
   {
-    id: 'rendaMensal',
-    texto: 'Qual é sua faixa de renda mensal?',
-    emoji: '💰',
+    id: 'dificuldade',
+    titulo: 'Onde você tem mais\ndificuldade?',
+    emoji: '😓',
     opcoes: [
-      { valor: 'ate_3k', label: 'Até R$ 3.000', emoji: '🌱' },
-      { valor: '3k_7k', label: 'R$ 3k – R$ 7k', emoji: '🌿' },
-      { valor: '7k_15k', label: 'R$ 7k – R$ 15k', emoji: '🌳' },
-      { valor: 'acima_15k', label: 'Acima de R$ 15k', emoji: '🚀' },
+      { key: 'alimentacao', label: '🍔 Alimentação fora de casa' },
+      { key: 'impulso', label: '📱 Compras por impulso' },
+      { key: 'lazer', label: '🎬 Lazer e entretenimento' },
+      { key: 'assinaturas', label: '📦 Assinaturas e serviços' },
+      { key: 'identificar', label: '🤷 Me ajude a identificar' },
     ],
+    placeholder: 'Ou descreva sua dificuldade...',
   },
   {
-    id: 'maiorDesafio',
-    texto: 'Qual é seu maior desafio financeiro?',
-    emoji: '⚡',
-    opcoes: [
-      { valor: 'impulso', label: 'Gastos por impulso', emoji: '🛍️' },
-      { valor: 'fixos_altos', label: 'Gastos fixos altos', emoji: '🏠' },
-      { valor: 'sem_reserva', label: 'Falta de reserva', emoji: '🆘' },
-      { valor: 'dividas', label: 'Dívidas acumuladas', emoji: '😰' },
-    ],
+    id: 'metaPrincipal',
+    titulo: 'Qual meta é mais\nimportante para você?',
+    emoji: '⭐',
+    opcoes: [],
+    dinamico: true,
+    placeholder: 'Descreva sua meta principal...',
   },
   {
-    id: 'temReserva',
-    texto: 'Você tem reserva de emergência?',
-    emoji: '🛡️',
+    id: 'prazo',
+    titulo: 'Qual seu prazo para\natingir o objetivo?',
+    emoji: '📅',
     opcoes: [
-      { valor: 'sim', label: 'Sim, tenho!', emoji: '✅' },
-      { valor: 'pouco', label: 'Pouco (< 3 meses)', emoji: '⚠️' },
-      { valor: 'nao', label: 'Ainda não', emoji: '❌' },
+      { key: '3meses', label: '⚡ 3 meses' },
+      { key: '6meses', label: '📅 6 meses' },
+      { key: '1ano', label: '🗓️ 1 ano' },
+      { key: 'mais1ano', label: '🔭 Mais de 1 ano' },
     ],
+    placeholder: 'Ou especifique o prazo...',
   },
   {
-    id: 'prioridade',
-    texto: 'O que é mais importante para você?',
-    emoji: '✨',
+    id: 'tom',
+    titulo: 'Como prefere receber\nos conselhos?',
+    emoji: '💬',
     opcoes: [
-      { valor: 'seguranca', label: 'Segurança financeira', emoji: '🔒' },
-      { valor: 'qualidade_vida', label: 'Qualidade de vida', emoji: '🌴' },
-      { valor: 'patrimonio', label: 'Construir patrimônio', emoji: '🏗️' },
-      { valor: 'liberdade', label: 'Liberdade financeira', emoji: '🕊️' },
+      { key: 'direto', label: '🎯 Direto e objetivo' },
+      { key: 'detalhado', label: '📊 Detalhado com números' },
+      { key: 'motivador', label: '💪 Motivador e encorajador' },
     ],
+    placeholder: 'Ou descreva como prefere...',
   },
 ]
 
 type Step = 'intro' | 'quiz' | 'generating' | 'result' | 'error'
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function MentorScreen() {
   const insets = useSafeAreaInsets()
@@ -88,13 +101,32 @@ export default function MentorScreen() {
 
   const [step, setStep] = useState<Step>('intro')
   const [currentQ, setCurrentQ] = useState(0)
-  const [respostas, setRespostas] = useState<Partial<QuestionarioRespostas>>({})
+  const [selectedOpcoes, setSelectedOpcoes] = useState<Record<string, string>>({})
+  const [comentarios, setComentarios] = useState<Record<string, string>>({})
+  const [metas, setMetas] = useState<PerguntaOpcao[]>([])
   const [relatorio, setRelatorio] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [pdfUri, setPdfUri] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
+  const [savingPdf, setSavingPdf] = useState(false)
 
   const fadeAnim = useRef(new Animated.Value(1)).current
+
+  // Load user goals for the metaPrincipal question
+  useEffect(() => {
+    if (!user) return
+    supabase.from('goals').select('id, name').eq('user_id', user.id)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setMetas((data as any[]).map((g: any) => ({ key: g.id, label: `⭐ ${g.name}` })))
+        }
+      })
+  }, [user?.id])
+
+  // Inject dynamic metas into the metaPrincipal question
+  const PERGUNTAS: Pergunta[] = PERGUNTAS_BASE.map(p =>
+    p.dinamico ? { ...p, opcoes: metas } : p
+  )
 
   const fadeTransition = (callback: () => void) => {
     Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
@@ -103,16 +135,28 @@ export default function MentorScreen() {
     })
   }
 
-  const handleOpcao = (valor: string) => {
+  const handleProxima = () => {
     const pergunta = PERGUNTAS[currentQ]
-    const novas = { ...respostas, [pergunta.id]: valor }
-    setRespostas(novas)
+    const opcaoSelecionada = selectedOpcoes[pergunta.id] ?? ''
+    const comentario = (comentarios[pergunta.id] ?? '').trim()
+
+    if (!opcaoSelecionada && !comentario) {
+      Alert.alert('Responda a pergunta', 'Selecione uma opção ou escreva um comentário para continuar.')
+      return
+    }
 
     if (currentQ < PERGUNTAS.length - 1) {
       fadeTransition(() => setCurrentQ(q => q + 1))
     } else {
-      // Last question — generate report
-      gerarRelatorio(novas as QuestionarioRespostas)
+      const r: QuestionarioRespostas = {
+        objetivo: selectedOpcoes['objetivo'] ?? '',
+        dificuldade: selectedOpcoes['dificuldade'] ?? '',
+        metaPrincipal: selectedOpcoes['metaPrincipal'] ?? '',
+        prazo: selectedOpcoes['prazo'] ?? '',
+        tom: selectedOpcoes['tom'] ?? '',
+        comentarios,
+      }
+      gerarRelatorio(r)
     }
   }
 
@@ -123,7 +167,6 @@ export default function MentorScreen() {
       const texto = await gerarRelatorioMentor(r, ctx)
       setRelatorio(texto)
 
-      // Generate PDF in background
       try {
         const uri = await gerarPDF(texto, user?.name ?? 'Usuário')
         setPdfUri(uri)
@@ -147,6 +190,20 @@ export default function MentorScreen() {
       Alert.alert('Erro', e?.message ?? 'Não foi possível compartilhar o PDF.')
     } finally {
       setSharingPdf(false)
+    }
+  }
+
+  const handleSalvarPDF = async () => {
+    if (!pdfUri) return
+    setSavingPdf(true)
+    try {
+      const destino = FileSystem.documentDirectory + 'SnapGestao_Mentor.pdf'
+      await FileSystem.copyAsync({ from: pdfUri, to: destino })
+      Alert.alert('✅ PDF salvo!', 'O relatório foi salvo nos seus documentos.')
+    } catch (e: any) {
+      Alert.alert('Erro', String(e))
+    } finally {
+      setSavingPdf(false)
     }
   }
 
@@ -208,6 +265,10 @@ export default function MentorScreen() {
   if (step === 'quiz') {
     const pergunta = PERGUNTAS[currentQ]
     const progress = ((currentQ) / PERGUNTAS.length) * 100
+    const opcaoAtual = selectedOpcoes[pergunta.id] ?? ''
+    const comentarioAtual = comentarios[pergunta.id] ?? ''
+    const podeAvancar = !!opcaoAtual || comentarioAtual.trim().length > 0
+    const isLast = currentQ === PERGUNTAS.length - 1
 
     return (
       <SafeAreaView style={styles.root} edges={['top']}>
@@ -228,24 +289,73 @@ export default function MentorScreen() {
           <View style={[styles.progressFill, { width: `${progress + 20}%` }]} />
         </View>
 
-        <Animated.View style={[styles.quizBody, { opacity: fadeAnim }]}>
-          <Text style={styles.questionEmoji}>{pergunta.emoji}</Text>
-          <Text style={styles.questionText}>{pergunta.texto}</Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <ScrollView
+            contentContainerStyle={styles.quizScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View style={{ opacity: fadeAnim }}>
+              <Text style={styles.questionEmoji}>{pergunta.emoji}</Text>
+              <Text style={styles.questionText}>{pergunta.titulo}</Text>
 
-          <View style={styles.optionsGrid}>
-            {pergunta.opcoes.map(op => (
-              <TouchableOpacity
-                key={op.valor}
-                style={styles.optionCard}
-                onPress={() => handleOpcao(op.valor)}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.optionEmoji}>{op.emoji}</Text>
-                <Text style={styles.optionLabel}>{op.label}</Text>
-              </TouchableOpacity>
-            ))}
+              {/* Options */}
+              {pergunta.opcoes.length > 0 && (
+                <View style={styles.optionsGrid}>
+                  {pergunta.opcoes.map(op => {
+                    const active = opcaoAtual === op.key
+                    return (
+                      <TouchableOpacity
+                        key={op.key}
+                        style={[styles.optionCard, active && styles.optionCardActive]}
+                        onPress={() => setSelectedOpcoes(prev => ({ ...prev, [pergunta.id]: op.key }))}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[styles.optionLabel, active && styles.optionLabelActive]}>
+                          {op.label}
+                        </Text>
+                        {active && <Text style={styles.optionCheck}>✓</Text>}
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              )}
+
+              {/* Free text */}
+              <View style={styles.comentarioWrap}>
+                <Text style={styles.comentarioLabel}>
+                  💬 {pergunta.opcoes.length === 0 ? pergunta.placeholder : 'Adicionar comentário (opcional):'}
+                </Text>
+                <TextInput
+                  value={comentarioAtual}
+                  onChangeText={(text) => setComentarios(prev => ({ ...prev, [pergunta.id]: text }))}
+                  placeholder={pergunta.opcoes.length === 0 ? 'Descreva sua meta principal...' : pergunta.placeholder}
+                  placeholderTextColor={Colors.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  style={styles.comentarioInput}
+                  textAlignVertical="top"
+                />
+              </View>
+            </Animated.View>
+          </ScrollView>
+
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, !podeAvancar && styles.btnDisabled]}
+              onPress={handleProxima}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isLast ? 'Gerar relatório 🚀' : 'Próxima →'}
+              </Text>
+            </TouchableOpacity>
           </View>
-        </Animated.View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     )
   }
@@ -284,7 +394,7 @@ export default function MentorScreen() {
           <Text style={styles.errorMsg}>{errorMsg}</Text>
           <TouchableOpacity
             style={[styles.primaryBtn, { marginTop: 24 }]}
-            onPress={() => { setStep('quiz'); setCurrentQ(0); setRespostas({}) }}
+            onPress={() => { setStep('quiz'); setCurrentQ(0); setSelectedOpcoes({}); setComentarios({}) }}
             activeOpacity={0.85}
           >
             <Text style={styles.primaryBtnText}>Tentar novamente</Text>
@@ -318,33 +428,54 @@ export default function MentorScreen() {
 
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {pdfUri ? (
-          <TouchableOpacity
-            style={[styles.primaryBtn, sharingPdf && styles.btnDisabled]}
-            onPress={handleCompartilharPDF}
-            disabled={sharingPdf}
-            activeOpacity={0.85}
-          >
-            {sharingPdf
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.primaryBtnText}>📄 Compartilhar PDF</Text>
-            }
-          </TouchableOpacity>
+          <>
+            {/* Salvar PDF */}
+            <TouchableOpacity
+              style={styles.salvarBtn}
+              onPress={handleSalvarPDF}
+              disabled={savingPdf}
+              activeOpacity={0.85}
+            >
+              {savingPdf
+                ? <ActivityIndicator color={Colors.accent} />
+                : (
+                  <>
+                    <Text style={styles.salvarBtnIcon}>💾</Text>
+                    <Text style={styles.salvarBtnText}>Salvar PDF</Text>
+                  </>
+                )
+              }
+            </TouchableOpacity>
+
+            {/* Compartilhar PDF */}
+            <TouchableOpacity
+              style={[styles.primaryBtn, sharingPdf && styles.btnDisabled, { marginTop: 10 }]}
+              onPress={handleCompartilharPDF}
+              disabled={sharingPdf}
+              activeOpacity={0.85}
+            >
+              {sharingPdf
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.primaryBtnText}>📄 Compartilhar PDF</Text>
+              }
+            </TouchableOpacity>
+
+            {/* Nova análise */}
+            <TouchableOpacity
+              style={[styles.secondaryBtn, { marginTop: 10 }]}
+              onPress={() => { setStep('quiz'); setCurrentQ(0); setSelectedOpcoes({}); setComentarios({}) }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryBtnText}>🔄 Nova análise</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity
             style={[styles.primaryBtn, styles.btnSecondary]}
-            onPress={() => { setStep('quiz'); setCurrentQ(0); setRespostas({}) }}
+            onPress={() => { setStep('quiz'); setCurrentQ(0); setSelectedOpcoes({}); setComentarios({}) }}
             activeOpacity={0.85}
           >
             <Text style={[styles.primaryBtnText, { color: Colors.primary }]}>🔄 Nova análise</Text>
-          </TouchableOpacity>
-        )}
-        {pdfUri && (
-          <TouchableOpacity
-            style={[styles.secondaryBtn, { marginTop: 10 }]}
-            onPress={() => { setStep('quiz'); setCurrentQ(0); setRespostas({}) }}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.secondaryBtnText}>🔄 Nova análise</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -395,19 +526,39 @@ const styles = StyleSheet.create({
   disclaimerText: { fontSize: 13, color: '#92400E', lineHeight: 19 },
 
   // QUIZ
-  quizBody: { flex: 1, paddingHorizontal: 24, paddingTop: 36 },
-  questionEmoji: { fontSize: 44, textAlign: 'center', marginBottom: 16 },
-  questionText: { fontSize: 20, fontWeight: '700', color: Colors.textDark, textAlign: 'center', lineHeight: 28, marginBottom: 32 },
-  optionsGrid: { gap: 12 },
+  quizScroll: { padding: 24, paddingTop: 28, paddingBottom: 16 },
+  questionEmoji: { fontSize: 44, textAlign: 'center', marginBottom: 12 },
+  questionText: { fontSize: 22, fontWeight: '800', color: Colors.textDark, textAlign: 'center', lineHeight: 30, marginBottom: 24 },
+  optionsGrid: { gap: 10, marginBottom: 20 },
   optionCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 16,
-    backgroundColor: Colors.white, padding: 18, borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.white, padding: 16, borderRadius: 14,
     borderWidth: 1.5, borderColor: Colors.border,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  optionEmoji: { fontSize: 24 },
+  optionCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.lightBlue,
+  },
   optionLabel: { fontSize: 15, fontWeight: '600', color: Colors.textDark, flex: 1 },
+  optionLabelActive: { color: Colors.primary },
+  optionCheck: { fontSize: 16, color: Colors.primary, fontWeight: '700', marginLeft: 8 },
+
+  // Free text
+  comentarioWrap: { marginTop: 4 },
+  comentarioLabel: { fontSize: 12, color: Colors.textMuted, marginBottom: 8 },
+  comentarioInput: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: Colors.textDark,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
 
   // GENERATING
   generatingContainer: {
@@ -449,6 +600,16 @@ const styles = StyleSheet.create({
   },
   relatorioText: { fontSize: 14, color: Colors.textDark, lineHeight: 23 },
 
+  // Salvar PDF
+  salvarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.white,
+    borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1.5, borderColor: Colors.accent,
+  },
+  salvarBtnIcon: { fontSize: 18 },
+  salvarBtnText: { fontSize: 15, fontWeight: '700', color: Colors.accent },
+
   // SHARED
   bottomBar: {
     paddingHorizontal: 24, paddingTop: 12,
@@ -463,11 +624,10 @@ const styles = StyleSheet.create({
   },
   btnSecondary: {
     backgroundColor: Colors.lightBlue,
-    shadowOpacity: 0,
-    elevation: 0,
+    shadowOpacity: 0, elevation: 0,
     borderWidth: 1.5, borderColor: Colors.border,
   },
-  btnDisabled: { opacity: 0.65 },
+  btnDisabled: { opacity: 0.45 },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
   secondaryBtn: {
     borderRadius: 14, paddingVertical: 13, alignItems: 'center',
