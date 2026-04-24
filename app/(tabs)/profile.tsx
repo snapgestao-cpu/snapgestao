@@ -345,6 +345,24 @@ export default function ProfileScreen() {
           <Text style={styles.achievementsLink}>Ver todas →</Text>
         </TouchableOpacity>
 
+        {/* Mentor Financeiro */}
+        <TouchableOpacity
+          style={styles.mentorCard}
+          onPress={() => router.push('/mentor')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.mentorLeft}>
+            <View style={styles.mentorIcon}>
+              <Text style={styles.mentorIconText}>🤖</Text>
+            </View>
+            <View style={styles.mentorInfo}>
+              <Text style={styles.mentorTitle}>Mentor Financeiro IA</Text>
+              <Text style={styles.mentorSub}>Análise personalizada + relatório PDF</Text>
+            </View>
+          </View>
+          <Text style={styles.mentorChevron}>›</Text>
+        </TouchableOpacity>
+
         {/* Settings groups */}
         {groups.map(group => (
           <View key={group.title} style={styles.groupContainer}>
@@ -469,6 +487,24 @@ const styles = StyleSheet.create({
   previewName: { fontSize: 11, fontWeight: '600', maxWidth: 80 },
   achievementsEmpty: { fontSize: 12, color: Colors.textMuted, marginBottom: 10 },
   achievementsLink: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  mentorCard: {
+    backgroundColor: Colors.primary, borderRadius: 16,
+    padding: 16, marginBottom: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  mentorLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  mentorIcon: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  mentorIconText: { fontSize: 22 },
+  mentorInfo: { flex: 1 },
+  mentorTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  mentorSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  mentorChevron: { fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
   groupContainer: { marginBottom: 20 },
   groupTitle: { fontSize: 12, fontWeight: '700', color: Colors.textMuted, marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
   groupCard: {
