@@ -7,6 +7,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import * as FileSystem from 'expo-file-system/legacy'
+import * as MediaLibrary from 'expo-media-library'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
@@ -197,11 +198,39 @@ export default function MentorScreen() {
     if (!pdfUri) return
     setSavingPdf(true)
     try {
-      const destino = FileSystem.documentDirectory + 'SnapGestao_Mentor.pdf'
-      await FileSystem.copyAsync({ from: pdfUri, to: destino })
-      Alert.alert('✅ PDF salvo!', 'O relatório foi salvo nos seus documentos.')
-    } catch (e: any) {
-      Alert.alert('Erro', String(e))
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permissão necessária',
+          'Precisamos de permissão para salvar o PDF na pasta Downloads.',
+          [{ text: 'OK' }]
+        )
+        return
+      }
+
+      const dataHoje = new Date().toISOString().split('T')[0]
+      const nomeArquivo = `SnapGestao_Mentor_${dataHoje}.pdf`
+      const tempUri = FileSystem.cacheDirectory + nomeArquivo
+
+      await FileSystem.copyAsync({ from: pdfUri, to: tempUri })
+
+      const asset = await MediaLibrary.createAssetAsync(tempUri)
+      await MediaLibrary.createAlbumAsync('Download', asset, false)
+
+      await FileSystem.deleteAsync(tempUri, { idempotent: true })
+
+      Alert.alert(
+        '✅ PDF salvo!',
+        `O arquivo "${nomeArquivo}" foi salvo na pasta Downloads do seu celular.`,
+        [{ text: 'OK' }]
+      )
+    } catch (err: any) {
+      console.error('Erro ao salvar PDF:', err)
+      Alert.alert(
+        'Erro ao salvar',
+        'Não foi possível salvar o PDF.\nTente usar "Compartilhar PDF" e salvar manualmente.',
+        [{ text: 'OK' }]
+      )
     } finally {
       setSavingPdf(false)
     }

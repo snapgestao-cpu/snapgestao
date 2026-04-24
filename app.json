@@ -22,7 +22,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "MEDIA_LIBRARY"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,7 +35,15 @@
     "plugins": [
       "expo-secure-store",
       "expo-sqlite",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Permitir acesso para salvar relatórios PDF.",
+          "savePhotosPermission": "Permitir salvar relatórios PDF na galeria.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
     ]
   }
 }
