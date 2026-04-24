@@ -32,6 +32,7 @@ No test suite or linter configured yet.
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://cvyissbkfwphtmvvcvop.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
+EXPO_PUBLIC_GEMINI_API_KEY=...
 ```
 
 `EXPO_PUBLIC_*` vars are inlined at Metro build time. Backend secrets must never use this prefix.
@@ -116,6 +117,13 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
 - EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page). Payment detection uses `payText.includes()` (lowercase) covering full phrases like "cartão de débito"; also detects `transfer`/`transferência`.
 
+**Mentor Financeiro** (`app/mentor.tsx`) — 5-question animated quiz + Gemini 1.5 Flash analysis + PDF report:
+- Intro screen → quiz (fade transition) → generating overlay → result with "Compartilhar PDF"
+- `lib/mentor-financeiro.ts`: `coletarContextoFinanceiro()` fetches pots + income_sources + transactions (current cycle + last 90 days) + goals; `gerarRelatorioMentor()` calls `EXPO_PUBLIC_GEMINI_API_KEY` → Gemini 1.5 Flash API; prompt includes real values (spent/limit per pot, top merchants, savings rate)
+- `lib/gerar-pdf.ts`: `gerarPDF()` converts markdown → HTML → `expo-print` PDF; `compartilharPDF()` uses `expo-sharing`
+- Route registered in `_layout.tsx` as `name="mentor"`; guard allows `segments[0] === 'mentor'`
+- Entry point: blue "Mentor Financeiro IA" card in profile screen above settings groups
+
 **Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
 
 **Excel import** (`components/ImportFileModal.tsx`) — Steps: pick → preview → card_select (if any credit row) → assign → saving → done. Auto-detects columns: tipo, descrição, data, valor, pagamento, estabelecimento, parcelas, **pote** (also: categoria/category). Valid `payment_method` values: `cash/debit/credit/pix/transfer` — **never use `'other'`** (not valid in DB); fallback is `'cash'`. `parseDateISO` + `formatDateISO` always produce zero-padded `YYYY-MM-DD` (handles Excel serial, DD/MM/YYYY, DD/MM/YY, YYYY-M-D). **`saveAll` uses `supabase.auth.getUser()` exclusively for `user_id`** — the prop may be stale; never use it for the insert. Pre-insert loop auto-fixes invalid date/type/payment_method. Credit items trigger `card_select` step; `calcBillingDate` (same as `NewExpenseModal`) computes per-installment `billing_date`. `ImportRow.poteName` stores the raw name from the spreadsheet; `potId` is resolved case-insensitively from the `pots` prop after `parseSheet`. Assign step shows a card per item with merchant badge, `poteName` hint ("não encontrado" / "✓ encontrado"), and colored dot next to each pot chip.
@@ -132,7 +140,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 | `app/(tabs)/` | Bottom-tab navigator: 🫙 Potes, 📅 Mensal, 📈 Projeção, 🎯 Metas, 👤 Perfil |
 | `app/onboarding/` | First-run wizard: step1, step2, step3 |
 | `app/pot/[id].tsx` | Dynamic route — registered as `name="pot/[id]"` in root Stack |
-| `app/ocr.tsx`, `app/achievements.tsx` | Stack screens (not tabs) |
+| `app/ocr.tsx`, `app/achievements.tsx`, `app/mentor.tsx` | Stack screens (not tabs) |
 
 `app/_layout.tsx` root — on mount: opens SQLite DB, restores Supabase session, fetches `users` row into `useAuthStore`, wraps in `QueryClientProvider` (staleTime: 5 min, retry: 2), calls `checkAndGrantBadges`.
 
