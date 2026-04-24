@@ -117,10 +117,11 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
 - EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page). Payment detection uses `payText.includes()` (lowercase) covering full phrases like "cartão de débito"; also detects `transfer`/`transferência`.
 
-**Mentor Financeiro** (`app/mentor.tsx`) — 5-question animated quiz + Gemini 1.5 Flash analysis + PDF report:
-- Intro screen → quiz (fade transition) → generating overlay → result with "Compartilhar PDF"
-- `lib/mentor-financeiro.ts`: `coletarContextoFinanceiro()` fetches pots + income_sources + transactions (current cycle + last 90 days) + goals; `gerarRelatorioMentor()` calls `EXPO_PUBLIC_GEMINI_API_KEY` → Gemini 1.5 Flash API; prompt includes real values (spent/limit per pot, top merchants, savings rate)
-- `lib/gerar-pdf.ts`: `gerarPDF()` converts markdown → HTML → `expo-print` PDF; `compartilharPDF()` uses `expo-sharing`
+**Mentor Financeiro** (`app/mentor.tsx`) — 5-question animated quiz + Gemini 2.5 Flash analysis + PDF report:
+- Intro screen → quiz (fade transition) → generating overlay → result with "Salvar PDF" + "Compartilhar PDF"
+- Quiz: option chips (tap to highlight) + optional free TextInput per question; "Próxima" button advances (no auto-advance). `metaPrincipal` question loads user goals dynamically from Supabase. `QuestionarioRespostas`: `{ objetivo, dificuldade, metaPrincipal, prazo, tom, comentarios: Record<string, string> }`.
+- `lib/mentor-financeiro.ts`: `coletarContextoFinanceiro()` fetches pots + income_sources + transactions (current cycle + last 90 days) + goals; `gerarRelatorioMentor()` calls Gemini 2.5 Flash via `EXPO_PUBLIC_GEMINI_API_KEY`; `maxOutputTokens: 8192`; prompt includes real values + free-text comentarios
+- `lib/gerar-pdf.ts`: `markdownToHtml()` — order ### before ## before # to avoid partial match; `gerarPDF()` → `expo-print`; `compartilharPDF()` → `expo-sharing`. "Salvar PDF" uses `FileSystem.copyAsync` to `documentDirectory`.
 - Route registered in `_layout.tsx` as `name="mentor"`; guard allows `segments[0] === 'mentor'`
 - Entry point: blue "Mentor Financeiro IA" card in profile screen above settings groups
 
