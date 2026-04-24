@@ -60,6 +60,7 @@ export default function RootLayout() {
     const inOCR = segments[0] === 'ocr'
     const inAchievements = segments[0] === 'achievements'
     const inMentor = segments[0] === 'mentor'
+    const inAnalisador = segments[0] === 'analisador-precos'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -73,7 +74,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor) router.replace('/(tabs)/')
+    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador) router.replace('/(tabs)/')
   }, [isLoading, isAuthenticated, user, segments])
 
   return (
@@ -93,6 +94,7 @@ export default function RootLayout() {
           <Stack.Screen name="ocr" options={{ headerShown: false }} />
           <Stack.Screen name="achievements" options={{ headerShown: false }} />
           <Stack.Screen name="mentor" options={{ headerShown: false }} />
+          <Stack.Screen name="analisador-precos" options={{ headerShown: false }} />
         </Stack>
       )}
       {pendingBadges.length > 0 && (
