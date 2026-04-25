@@ -48,6 +48,7 @@ RLS enabled on all tables. Trigger `on_auth_user_created` active.
 1. `supabase/migrations/20240418_cycle_rollovers.sql`
 2. `supabase/migrations/20240419_pot_soft_delete_and_history.sql`
 3. `supabase/migrations/20240420_pots_physical_delete.sql` — alters FK `transactions.pot_id` to `ON DELETE SET NULL`
+4. `supabase/migrations/20240422_onboarding_completed.sql` — ADD COLUMN `onboarding_completed BOOLEAN DEFAULT false`; UPDATE existentes com pote como `true`
 
 Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the feature was reverted — do not apply.
 
@@ -59,7 +60,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Auth** — login, register, session restore, logout. Invalid token recovery: stale tokens are wiped and user is redirected to login without looping.
 
-**Onboarding** — 3-step wizard (balance/currency → cycle/income sources → first pot). Runs once when `user.initial_balance === 0` or `users` row is missing. Step 1: saldo inicial é **opcional** (pode ser zero ou negativo). Step 3: após o upsert do usuário, se `draft.balance !== 0`, cria uma `transaction` no ciclo atual (`type: 'income'` se positivo, `'expense'` se negativo, `description: 'Saldo inicial'`, `payment_method: 'transfer'`, `date: cycleStart`). Isso faz o saldo inicial aparecer automaticamente em Mensal, Projeção e Perfil sem lógica especial.
+**Onboarding** — 3-step wizard (balance/currency → cycle/income sources → first pot). Runs once when `!user.onboarding_completed` or `users` row is missing. **Never use `initial_balance === 0` as the onboarding guard** — saldo zero is a valid input and would cause an infinite loop back to step1. Step 3 upsert includes `onboarding_completed: true`; "Limpar dados" in profile resets it to `false`. Migration: `supabase/migrations/20240422_onboarding_completed.sql` — **must be run in Supabase SQL Editor before deploying**. Step 1: saldo inicial é **opcional** (pode ser zero ou negativo). Step 3: após o upsert do usuário, se `draft.balance !== 0`, cria uma `transaction` no ciclo atual (`type: 'income'` se positivo, `'expense'` se negativo, `description: 'Saldo inicial'`, `payment_method: 'transfer'`, `date: cycleStart`). Isso faz o saldo inicial aparecer automaticamente em Mensal, Projeção e Perfil sem lógica especial.
 
 **Pots dashboard** (`app/(tabs)/index.tsx`) — grid of pots filtered by `created_at <= cycle.end`, ordered by `created_at`. Emergency pot shown as separate footer card. Pull-to-refresh.
 
