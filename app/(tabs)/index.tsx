@@ -141,41 +141,34 @@ export default function PotsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Top header: greeting + buttons */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
-          <Text style={styles.monthLabel}>
-            {cycle ? cycle.monthYear : ''}
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
-            <Text style={styles.newPotBtnText}>+ Pote</Text>
+      {/* Compact header card */}
+      <View style={styles.headerCard}>
+        <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setCycleOffset(cycleOffset - 1)} style={styles.navArrowBtn}>
+            <Text style={styles.navArrow}>‹</Text>
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text style={styles.navLabel}>{cycle?.label ?? ''}</Text>
+            {cycleOffset !== 0 && (
+              <TouchableOpacity onPress={() => setCycleOffset(0)}>
+                <Text style={styles.navBack}>Voltar ao atual</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={() => { if (cycleOffset < 0) setCycleOffset(cycleOffset + 1) }}
+            disabled={cycleOffset >= 0}
+            style={[styles.navArrowBtn, { opacity: cycleOffset >= 0 ? 0.3 : 1 }]}
+          >
+            <Text style={styles.navArrow}>›</Text>
+          </TouchableOpacity>
+          <View style={styles.headerDivider} />
+          <TouchableOpacity onPress={() => setShowNewPot(true)} style={styles.newPotBtn}>
+            <Text style={styles.newPotBtnPlus}>+</Text>
+            <Text style={styles.newPotBtnText}>Pote</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Month navigation */}
-      <View style={styles.monthNav}>
-        <TouchableOpacity onPress={() => setCycleOffset(cycleOffset - 1)} style={styles.navArrowBtn}>
-          <Text style={styles.navArrow}>‹</Text>
-        </TouchableOpacity>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={styles.navLabel}>{cycle?.label ?? ''}</Text>
-          {cycleOffset !== 0 && (
-            <TouchableOpacity onPress={() => setCycleOffset(0)}>
-              <Text style={styles.navBack}>Voltar ao atual</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity
-          onPress={() => { if (cycleOffset < 0) setCycleOffset(cycleOffset + 1) }}
-          disabled={cycleOffset >= 0}
-          style={[styles.navArrowBtn, { opacity: cycleOffset >= 0 ? 0.3 : 1 }]}
-        >
-          <Text style={styles.navArrow}>›</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Mês anterior indicator */}
@@ -254,29 +247,26 @@ export default function PotsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10,
-    backgroundColor: Colors.background,
-  },
-  greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark },
-  monthLabel: { fontSize: 14, color: Colors.textMuted, marginTop: 2 },
-  headerRight: { alignItems: 'flex-end', gap: 6 },
-  newPotBtn: {
-    backgroundColor: Colors.primary, borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 7,
-  },
-  newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  monthNav: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 10,
+  headerCard: {
     backgroundColor: Colors.white,
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    marginHorizontal: 16, marginTop: 8, marginBottom: 12,
+    borderRadius: 16, padding: 12,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  navArrowBtn: { padding: 8 },
-  navArrow: { fontSize: 22, color: Colors.primary, fontWeight: '400' },
-  navLabel: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
-  navBack: { fontSize: 11, color: Colors.primary, marginTop: 2 },
+  greeting: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerDivider: { width: 1, height: 24, backgroundColor: Colors.border, marginHorizontal: 8 },
+  newPotBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.lightBlue,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,
+  },
+  newPotBtnPlus: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  newPotBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  navArrowBtn: { padding: 6 },
+  navArrow: { fontSize: 18, color: Colors.primary },
+  navLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  navBack: { fontSize: 10, color: Colors.primary, marginTop: 2 },
   prevMonthBanner: {
     backgroundColor: Colors.lightAmber,
     paddingHorizontal: 16, paddingVertical: 6,
