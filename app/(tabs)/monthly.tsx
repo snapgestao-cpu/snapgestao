@@ -16,32 +16,16 @@ import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../../lib/badges'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
-import { getCycle, CycleInfo, formatDateShort } from '../../lib/cycle'
+import { getCycle, CycleInfo } from '../../lib/cycle'
 import { calculateCycleSummary, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
 import { fetchPotsForCycle } from '../../lib/pots'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction, Goal } from '../../types'
+import TransactionGroup from '../../components/TransactionGroup'
+import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
-type TxGroup = { date: string; label: string; items: TxWithPot[] }
-
-function formatBillingDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T12:00:00')
-  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
-}
-
-function groupTransactions(txs: TxWithPot[]): TxGroup[] {
-  const map: Record<string, TxGroup> = {}
-  for (const tx of txs) {
-    // Group credit by billing_date so prior-month installments appear in the right bucket
-    const displayDate = tx.payment_method === 'credit' && tx.billing_date ? tx.billing_date : tx.date
-    if (!map[displayDate]) map[displayDate] = { date: displayDate, label: formatDateShort(displayDate), items: [] }
-    map[displayDate].items.push(tx)
-  }
-  return Object.values(map).sort((a, b) => b.date.localeCompare(a.date))
-}
 
 const FAB_SIZE = 52
 
@@ -63,6 +47,8 @@ export default function MonthlyScreen() {
   const [surplusGoalId, setSurplusGoalId] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
   const [cycleClosed, setCycleClosed] = useState(false)
+  const [rolloverExists, setRolloverExists] = useState(false)
+  const [reopening, setReopening] = useState(false)
 
   const [totalIncome, setTotalIncome] = useState(0)
   const [showNewPot, setShowNewPot] = useState(false)
@@ -97,7 +83,7 @@ export default function MonthlyScreen() {
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
         // Verificar se este ciclo já foi encerrado (tem rollover processado no próximo ciclo)
-        supabase.from('cycle_rollovers').select('processed')
+        supabase.from('cycle_rollovers').select('*')
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
       ])
 
@@ -118,6 +104,7 @@ export default function MonthlyScreen() {
       setTotalIncome(income)
       setGoals((goalsRes.data ?? []) as Goal[])
       setCycleClosed((closedRes.data as any)?.processed === true)
+      setRolloverExists(!!closedRes.data)
 
       const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
       const txsWithPot: TxWithPot[] = txs.map(tx => ({
@@ -213,8 +200,27 @@ export default function MonthlyScreen() {
     }
   }
 
+  const handleReopenCycle = async () => {
+    if (!user) return
+    setReopening(true)
+    try {
+      const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
+      await supabase.from('cycle_rollovers')
+        .update({ processed: false })
+        .eq('user_id', user.id)
+        .eq('cycle_start_date', nextCycleStart)
+      setCycleClosed(false)
+      setToast({ message: 'Ciclo reaberto para edição.', color: Colors.warning })
+      loadData()
+    } finally {
+      setReopening(false)
+    }
+  }
+
   const expPots = allPots.filter(p => !p.is_emergency)
-  const txGroups = groupTransactions(transactions)
+  const txMerchantGroups = groupTransactionsByMerchantAndDate(transactions)
+  const txByDate = groupByDate(txMerchantGroups)
+  const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -244,6 +250,13 @@ export default function MonthlyScreen() {
             <Text style={[styles.navBtnText, offset >= 0 && { color: Colors.border }]}>›</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Banner: ciclo reaberto para edição */}
+        {rolloverExists && !cycleClosed && offset < 0 && (
+          <View style={styles.reopenedBanner}>
+            <Text style={styles.reopenedBannerText}>✏️ Ciclo reaberto para edição</Text>
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
@@ -339,49 +352,22 @@ export default function MonthlyScreen() {
               </View>
             )}
 
-            {/* Transactions grouped by date */}
+            {/* Lançamentos agrupados por estabelecimento */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Lançamentos</Text>
-              {txGroups.length === 0 ? (
+              {txDates.length === 0 ? (
                 <Text style={styles.empty}>Nenhum lançamento neste ciclo.</Text>
               ) : (
-                txGroups.map(group => (
-                  <View key={group.date}>
-                    <Text style={styles.dateHeader}>{group.label}</Text>
+                txDates.map(date => (
+                  <View key={date}>
+                    <Text style={styles.dateHeader}>{formatDateHeader(date)}</Text>
                     <View style={styles.txGroupCard}>
-                      {group.items.map(tx => (
-                        <View key={tx.id} style={styles.txRow}>
-                          <View style={styles.txLeft}>
-                            {tx.potColor ? (
-                              <View style={[styles.txDot, { backgroundColor: tx.potColor }]} />
-                            ) : (
-                              <Text style={styles.txTypeIcon}>{tx.type === 'income' ? '↑' : '↓'}</Text>
-                            )}
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.txDesc} numberOfLines={1}>
-                                {tx.description ?? tx.merchant ?? 'Sem descrição'}
-                              </Text>
-                              {tx.potName ? (
-                                <Text style={styles.txMeta}>{getPotIcon(tx.potName)} {tx.potName}</Text>
-                              ) : null}
-                              {tx.payment_method === 'credit' && tx.billing_date && (
-                                <Text style={[styles.txMeta, { color: Colors.warning }]}>
-                                  Vence {formatBillingDate(tx.billing_date)}
-                                </Text>
-                              )}
-                            </View>
-                          </View>
-                          <Text style={[styles.txAmount, { color: tx.type === 'income' ? Colors.success : Colors.danger }]}>
-                            {tx.type === 'income' ? '+' : '-'}{brl(tx.amount)}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.editTxBtn}
-                            onPress={() => setEditingTx(tx)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
-                          >
-                            <Text style={styles.editTxIcon}>✏️</Text>
-                          </TouchableOpacity>
-                        </View>
+                      {txByDate[date].map(group => (
+                        <TransactionGroup
+                          key={group.key}
+                          transactions={group.transactions}
+                          onEdit={t => setEditingTx(t as any)}
+                        />
                       ))}
                     </View>
                   </View>
@@ -455,6 +441,27 @@ export default function MonthlyScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
+              </View>
+            )}
+
+            {/* Ciclo encerrado — botão reabrir */}
+            {summary && cycleClosed && (
+              <View style={styles.section}>
+                <View style={styles.closedCard}>
+                  <Text style={styles.closedTitle}>✅ Ciclo encerrado</Text>
+                  <Text style={styles.closedSubtitle}>
+                    Reabra para corrigir lançamentos e encerre novamente quando pronto.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.reopenBtn, reopening && { opacity: 0.6 }]}
+                    onPress={handleReopenCycle}
+                    disabled={reopening}
+                  >
+                    {reopening
+                      ? <ActivityIndicator color={Colors.warning} />
+                      : <Text style={styles.reopenBtnText}>Reabrir ciclo</Text>}
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -698,4 +705,22 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 3,
   },
   fabIcon: { fontSize: 24, color: '#fff', lineHeight: 28, fontWeight: '300' },
+  reopenedBanner: {
+    backgroundColor: '#FFF7ED', borderRadius: 10,
+    borderLeftWidth: 3, borderLeftColor: Colors.warning,
+    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12,
+  },
+  reopenedBannerText: { fontSize: 13, fontWeight: '600', color: Colors.warning },
+  closedCard: {
+    backgroundColor: Colors.white, borderRadius: 14, padding: 16,
+    borderLeftWidth: 3, borderLeftColor: Colors.success,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  closedTitle: { fontSize: 15, fontWeight: '700', color: Colors.success, marginBottom: 4 },
+  closedSubtitle: { fontSize: 13, color: Colors.textMuted, marginBottom: 14 },
+  reopenBtn: {
+    borderWidth: 1.5, borderColor: Colors.warning, borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  reopenBtnText: { fontSize: 14, fontWeight: '700', color: Colors.warning },
 })

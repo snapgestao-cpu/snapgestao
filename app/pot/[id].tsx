@@ -18,26 +18,10 @@ import { getCycle } from '../../lib/cycle'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction } from '../../types'
-import { formatDateShort } from '../../lib/cycle'
+import TransactionGroup from '../../components/TransactionGroup'
+import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
-
-const METHOD_LABEL: Record<string, string> = {
-  cash: 'Dinheiro', debit: 'Débito', credit: 'Crédito',
-  pix: 'Pix', transfer: 'Transferência',
-}
-
-function formatBillingDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T12:00:00')
-  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
-}
-
-function formatPurchaseDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T12:00:00')
-  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
-}
 
 export default function PotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -192,24 +176,11 @@ export default function PotDetailScreen() {
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]
 
-  // Group txs by display date (billing_date for credit, date for others)
-  const groups: { date: string; label: string; items: TxWithPot[] }[] = []
-  const seen: Record<string, number> = {}
-  for (const tx of transactions) {
-    const displayDate = tx.payment_method === 'credit' && tx.billing_date ? tx.billing_date : tx.date
-    if (seen[displayDate] === undefined) {
-      seen[displayDate] = groups.length
-      groups.push({ date: displayDate, label: formatDateShort(displayDate), items: [] })
-    }
-    groups[seen[displayDate]].items.push(tx)
-  }
-
-  const isPrevMonthInstallment = (tx: TxWithPot) => {
-    if (tx.payment_method !== 'credit' || !tx.billing_date) return false
-    return tx.date < cycle.startISO
-  }
-
   const cycle = getCycle(user!.cycle_start ?? 1, 0)
+
+  const merchantGroups = groupTransactionsByMerchantAndDate(transactions)
+  const txByDate = groupByDate(merchantGroups)
+  const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -255,57 +226,23 @@ export default function PotDetailScreen() {
         {/* Transactions */}
         <Text style={styles.sectionTitle}>Lançamentos — {cycle.monthYear}</Text>
 
-        {groups.length === 0 ? (
+        {txDates.length === 0 ? (
           <View style={styles.emptyWrapper}>
             <Text style={styles.emptyIcon}>📋</Text>
             <Text style={styles.emptyText}>Nenhum lançamento neste pote ainda.</Text>
             <Text style={styles.emptyHint}>Toque em Gasto ou Receita para registrar.</Text>
           </View>
         ) : (
-          groups.map(group => (
-            <View key={group.date}>
-              <Text style={styles.dateHeader}>{group.label}</Text>
+          txDates.map(date => (
+            <View key={date}>
+              <Text style={styles.dateHeader}>{formatDateHeader(date)}</Text>
               <View style={styles.txCard}>
-                {group.items.map(tx => (
-                  <View key={tx.id} style={styles.txRow}>
-                    <View style={styles.txLeft}>
-                      <View style={[styles.txDot, { backgroundColor: pot.color }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.txDesc} numberOfLines={1}>
-                          {tx.description ?? tx.merchant ?? 'Sem descrição'}
-                        </Text>
-                        <Text style={styles.txMeta}>
-                          {METHOD_LABEL[tx.payment_method] ?? tx.payment_method?.toUpperCase()}
-                        </Text>
-                        {tx.payment_method === 'credit' && tx.billing_date && !isPrevMonthInstallment(tx) && (
-                          <Text style={[styles.txMeta, { color: '#BA7517' }]}>
-                            Vence {formatBillingDate(tx.billing_date)}
-                          </Text>
-                        )}
-                        {isPrevMonthInstallment(tx) && (
-                          <View style={styles.prevInstallBadge}>
-                            <Text style={{ fontSize: 10 }}>🛍️</Text>
-                            <Text style={styles.prevInstallText}>
-                              Compra em {formatPurchaseDate(tx.date)}
-                              {tx.installment_total && tx.installment_total > 1
-                                ? ` · Parcela ${tx.installment_number}/${tx.installment_total}`
-                                : ''}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                    <Text style={[styles.txAmount, { color: tx.type === 'income' ? Colors.success : Colors.danger }]}>
-                      {tx.type === 'income' ? '+' : '-'}{brl(tx.amount)}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.editBtn}
-                      onPress={() => setEditingTx(tx)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
-                    >
-                      <Text style={styles.editIcon}>✏️</Text>
-                    </TouchableOpacity>
-                  </View>
+                {txByDate[date].map(group => (
+                  <TransactionGroup
+                    key={group.key}
+                    transactions={group.transactions}
+                    onEdit={t => setEditingTx(t as any)}
+                  />
                 ))}
               </View>
             </View>
