@@ -209,7 +209,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }
             borderTopWidth: 0.5, borderTopColor: Colors.border,
           }}>
             <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }}>
-              {transactions.length} itens de {transactions[0].merchant}
+              {transactions.length}{' '}{transactions.length === 1 ? 'item' : 'itens'}
             </Text>
             {onDeleteGroup && (
               <TouchableOpacity

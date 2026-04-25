@@ -551,7 +551,7 @@ export default function OCRScreen() {
                     backgroundColor: globalPotId === pot.id ? Colors.lightBlue : Colors.white,
                   }}
                 >
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: pot.color }} />
+                  <Text style={{ fontSize: 14 }}>{getPotIcon(pot.name)}</Text>
                   <Text style={{
                     fontSize: 12,
                     fontWeight: globalPotId === pot.id ? '700' : '400',
