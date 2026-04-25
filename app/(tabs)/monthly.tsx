@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  TouchableOpacity, RefreshControl, Animated,
+  TouchableOpacity, RefreshControl, Animated, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -367,6 +367,25 @@ export default function MonthlyScreen() {
                           key={group.key}
                           transactions={group.transactions}
                           onEdit={t => setEditingTx(t as any)}
+                          onDeleteGroup={txs => {
+                            Alert.alert(
+                              'Excluir lançamentos',
+                              `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}`,
+                              [
+                                { text: 'Cancelar', style: 'cancel' },
+                                {
+                                  text: 'Excluir todos', style: 'destructive',
+                                  onPress: async () => {
+                                    const ids = txs.map(t => t.id)
+                                    const { error } = await supabase.from('transactions').delete().in('id', ids)
+                                    if (error) { Alert.alert('Erro', 'Não foi possível excluir.'); return }
+                                    setToast({ message: `${ids.length} lançamento${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}`, color: Colors.danger })
+                                    loadData()
+                                  },
+                                },
+                              ]
+                            )
+                          }}
                         />
                       ))}
                     </View>

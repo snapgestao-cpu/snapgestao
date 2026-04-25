@@ -77,6 +77,8 @@ export default function OCRScreen() {
   const [nfceState, setNfceState] = useState<NFCeState | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<string>('debit')
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+  const [globalPotId, setGlobalPotId] = useState<string | null>(null)
+  const [globalPotName, setGlobalPotName] = useState<string>('')
 
   const loadPots = async () => {
     if (!user) return
@@ -96,6 +98,13 @@ export default function OCRScreen() {
       else setStep('menu')
     })
   }, [step])
+
+  // Aplicar pote global em todos os itens quando selecionado
+  useEffect(() => {
+    if (globalPotId) {
+      setReviewItems(prev => prev.map(item => ({ ...item, potId: globalPotId })))
+    }
+  }, [globalPotId])
 
   // OCR path: photograph → Google Vision
   const handleOCRCapture = async (uri: string | null) => {
@@ -495,6 +504,78 @@ export default function OCRScreen() {
             </ScrollView>
           </View>
         ) : (
+          <>
+          {/* Seletor de pote global */}
+          <View style={{
+            backgroundColor: Colors.white, borderRadius: 14, padding: 16, marginBottom: 12,
+            borderWidth: 1.5, borderColor: Colors.primary,
+            shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Text style={{ fontSize: 16 }}>🫙</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark }}>
+                Aplicar pote para todos os itens
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: Colors.textMuted, marginBottom: 10 }}>
+              Selecione um pote para aplicar em todos os itens de uma vez. Você ainda pode alterar individualmente depois.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity
+                onPress={() => { setGlobalPotId(null); setGlobalPotName('') }}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginRight: 8,
+                  borderWidth: 1.5,
+                  borderColor: !globalPotId ? Colors.primary : Colors.border,
+                  backgroundColor: !globalPotId ? Colors.lightBlue : Colors.white,
+                }}
+              >
+                <Text style={{
+                  fontSize: 12, fontWeight: !globalPotId ? '700' : '400',
+                  color: !globalPotId ? Colors.primary : Colors.textMuted,
+                }}>Individual</Text>
+              </TouchableOpacity>
+              {pots.map(pot => (
+                <TouchableOpacity
+                  key={pot.id}
+                  onPress={() => {
+                    setGlobalPotId(pot.id)
+                    setGlobalPotName(pot.name)
+                    setReviewItems(prev => prev.map(item => ({ ...item, potId: pot.id })))
+                  }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginRight: 8,
+                    borderWidth: 1.5,
+                    borderColor: globalPotId === pot.id ? Colors.primary : Colors.border,
+                    backgroundColor: globalPotId === pot.id ? Colors.lightBlue : Colors.white,
+                  }}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: pot.color }} />
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: globalPotId === pot.id ? '700' : '400',
+                    color: globalPotId === pot.id ? Colors.primary : Colors.textDark,
+                  }}>{pot.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {globalPotId && (
+              <View style={{
+                marginTop: 10, backgroundColor: Colors.lightBlue,
+                borderRadius: 8, padding: 8,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+              }}>
+                <Text style={{ fontSize: 12 }}>✅</Text>
+                <Text style={{ fontSize: 12, color: Colors.primary, flex: 1 }}>
+                  Todos os itens serão lançados em{' '}
+                  <Text style={{ fontWeight: '700' }}>{globalPotName}</Text>
+                  . Altere individualmente se precisar.
+                </Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Itens detectados</Text>
             {reviewItems.map(item => (
@@ -552,6 +633,7 @@ export default function OCRScreen() {
               <Text style={styles.addItemBtnText}>+ Adicionar item</Text>
             </TouchableOpacity>
           </View>
+          </>
         )}
 
         <View style={{ height: 100 }} />

@@ -21,6 +21,7 @@ type TxItem = {
 type Props = {
   transactions: TxItem[]
   onEdit?: (t: TxItem) => void
+  onDeleteGroup?: (transactions: TxItem[]) => void
 }
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -126,7 +127,7 @@ function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
-export default function TransactionGroup({ transactions, onEdit }: Props) {
+export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }: Props) {
   const [expanded, setExpanded] = useState(false)
 
   const hasMerchant = !!transactions[0]?.merchant
@@ -199,7 +200,35 @@ export default function TransactionGroup({ transactions, onEdit }: Props) {
 
       {/* Itens expandidos */}
       {expanded && (
-        <View style={{ backgroundColor: Colors.background, paddingLeft: 36 }}>
+        <View>
+          {/* Barra de ações em lote */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 16, paddingVertical: 8,
+            backgroundColor: Colors.lightBlue,
+            borderTopWidth: 0.5, borderTopColor: Colors.border,
+          }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }}>
+              {transactions.length} itens de {transactions[0].merchant}
+            </Text>
+            {onDeleteGroup && (
+              <TouchableOpacity
+                onPress={() => onDeleteGroup(transactions)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  backgroundColor: '#FEF2F2', borderRadius: 8,
+                  paddingHorizontal: 10, paddingVertical: 5,
+                  borderWidth: 1, borderColor: '#FCA5A5',
+                }}
+              >
+                <Text style={{ fontSize: 12 }}>🗑️</Text>
+                <Text style={{ fontSize: 11, color: Colors.danger, fontWeight: '600' }}>Excluir todos</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Lista de itens */}
+          <View style={{ backgroundColor: Colors.background, paddingLeft: 36 }}>
           {transactions.map((t, index) => (
             <View key={t.id} style={{
               flexDirection: 'row', alignItems: 'center',
@@ -235,6 +264,7 @@ export default function TransactionGroup({ transactions, onEdit }: Props) {
               )}
             </View>
           ))}
+          </View>
         </View>
       )}
     </View>

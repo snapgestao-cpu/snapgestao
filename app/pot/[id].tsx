@@ -242,6 +242,24 @@ export default function PotDetailScreen() {
                     key={group.key}
                     transactions={group.transactions}
                     onEdit={t => setEditingTx(t as any)}
+                    onDeleteGroup={txs => {
+                      Alert.alert(
+                        'Excluir lançamentos',
+                        `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}`,
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          {
+                            text: 'Excluir todos', style: 'destructive',
+                            onPress: async () => {
+                              const ids = txs.map(t => t.id)
+                              const { error } = await supabase.from('transactions').delete().in('id', ids)
+                              if (error) { Alert.alert('Erro', 'Não foi possível excluir.'); return }
+                              handleSuccess(`${ids.length} lançamento${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}`)
+                            },
+                          },
+                        ]
+                      )
+                    }}
                   />
                 ))}
               </View>
