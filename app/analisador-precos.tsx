@@ -266,7 +266,7 @@ export default function AnalisadorPrecosScreen() {
 
       setLoadingMsg(`Analisando ${poteSelecionado ? `pote ${nomePote}` : 'todos os potes'}...`)
 
-      const transactions = await buscarDadosParaAnalise(userId, poteSelecionado)
+      const transactions = await buscarDadosParaAnalise(userId, poteSelecionado, user?.cycle_start ?? 1)
 
       if (transactions.length < 3) {
         Alert.alert(

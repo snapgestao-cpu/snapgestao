@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
+import { getMesesValidos } from './getMesesValidos'
 
 export type QuestionarioRespostas = {
   objetivo: string
@@ -19,6 +20,7 @@ export type ContextoFinanceiro = {
   topMerchants: { name: string; total: number }[]
   metasAtivas: number
   cicloStart: number
+  periodoAnalise: string
 }
 
 const MENTOR_SYSTEM_PROMPT = `Você é o Mentor Financeiro do SnapGestão, um assistente especializado em finanças pessoais com tom amigável, direto e motivador. Responda sempre em português brasileiro.
@@ -38,11 +40,14 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
   const cycleStartISO = cycle.start.toISOString().split('T')[0]
   const cycleEndISO = cycle.end.toISOString().split('T')[0]
 
+  // Apenas ciclos fechados + mês atual
+  const mesesValidos = await getMesesValidos(userId, cycleStart)
+  const periodoAnalise = mesesValidos.map(m => m.start.substring(0, 7)).join(', ')
+
   const [
     { data: pots },
     { data: incomeSources },
     { data: txsThisCycle },
-    { data: txs3Months },
     { data: goals },
   ] = await Promise.all([
     supabase.from('pots').select('id, name, limit_amount').eq('user_id', userId).is('deleted_at', null),
@@ -53,13 +58,21 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
       .in('type', ['expense', 'goal_deposit'])
       .gte('date', cycleStartISO)
       .lte('date', cycleEndISO),
-    supabase.from('transactions')
-      .select('type, amount, merchant, date')
-      .eq('user_id', userId)
-      .gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-      .order('date', { ascending: false }),
     supabase.from('goals').select('id').eq('user_id', userId),
   ])
+
+  // Buscar transactions dos meses válidos para merchants
+  const allTxsMerchant: any[] = []
+  for (const mes of mesesValidos) {
+    const { data } = await supabase
+      .from('transactions')
+      .select('type, amount, merchant')
+      .eq('user_id', userId)
+      .in('type', ['expense', 'goal_deposit'])
+      .gte('date', mes.start)
+      .lte('date', mes.end)
+    allTxsMerchant.push(...(data ?? []))
+  }
 
   const totalReceita = ((incomeSources ?? []) as any[]).reduce((s: number, r: any) => s + Number(r.amount), 0)
   const expenses = (txsThisCycle ?? []) as any[]
@@ -79,7 +92,7 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
   }))
 
   const merchantMap: Record<string, number> = {}
-  ;((txs3Months ?? []) as any[])
+  allTxsMerchant
     .filter((t: any) => t.type === 'expense' && t.merchant)
     .forEach((t: any) => {
       merchantMap[t.merchant] = (merchantMap[t.merchant] ?? 0) + Number(t.amount)
@@ -94,10 +107,11 @@ export async function coletarContextoFinanceiro(userId: string, cycleStart: numb
     totalReceita,
     totalGasto,
     totalPoupado: Math.max(totalReceita - totalGasto, 0),
-    mesesAnalisados: 3,
+    mesesAnalisados: mesesValidos.length,
     topMerchants,
     metasAtivas: (goals ?? []).length,
     cicloStart: cycleStart,
+    periodoAnalise,
   }
 }
 
@@ -143,7 +157,10 @@ function buildPrompt(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro):
     `  - ${m.name}: R$ ${m.total.toFixed(2)}`
   ).join('\n')
 
-  return `QUESTIONÁRIO DO USUÁRIO:
+  return `PERÍODO ANALISADO (ciclos fechados + mês atual): ${ctx.periodoAnalise}
+Considere APENAS estes meses na sua análise. Meses sem dados não foram incluídos por não terem ciclo encerrado.
+
+QUESTIONÁRIO DO USUÁRIO:
 - Objetivo principal: ${withComment(objetivoMap[respostas.objetivo] ?? respostas.objetivo, 'objetivo')}
 - Maior dificuldade: ${withComment(dificuldadeMap[respostas.dificuldade] ?? respostas.dificuldade, 'dificuldade')}
 - Meta principal: ${withComment(respostas.metaPrincipal || '(não informada)', 'metaPrincipal')}

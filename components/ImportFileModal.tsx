@@ -112,6 +112,13 @@ function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   return new Date(year, month0, card.due_day).toISOString().split('T')[0]
 }
 
+function calcBillingDateNoCard(purchaseDate: Date, offset: number): string {
+  let month0 = purchaseDate.getMonth() + 1 + offset  // +1 = próximo mês, 0-indexed
+  let year = purchaseDate.getFullYear()
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return `${year}-${String(month0 + 1).padStart(2, '0')}-01`
+}
+
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return ''
   const [year, month, day] = dateStr.split('-')
@@ -321,43 +328,55 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       const inserts: any[] = []
 
       for (const r of rows) {
-        const installments = r.installmentTotal
         const isCredit = r.paymentMethod === 'credit'
-        const installmentValue = Math.round((r.amount / installments) * 100) / 100
-        const groupId = installments > 1 ? genUUID() : null
 
-        for (let i = 0; i < installments; i++) {
-          let billingDate: string | null = null
-          if (isCredit) {
-            if (selectedCard) {
-              billingDate = calcBillingDate(r.date, selectedCard, i)
-            } else {
-              // No card selected: billing_date = 1st of next month + offset
-              // Use local date construction (no UTC offset issues)
-              const purchase = new Date(r.date + 'T12:00:00')
-              let month0 = purchase.getMonth() + 1 + i  // 0-indexed, +1 = next month
-              let year = purchase.getFullYear()
-              while (month0 > 11) { month0 -= 12; year += 1 }
-              billingDate = `${year}-${String(month0 + 1).padStart(2, '0')}-01`
-            }
+        if (isCredit) {
+          // Crédito: criar APENAS as parcelas — nunca inserir o valor total separado
+          const installmentCount = r.installmentTotal
+          const installmentValue = Math.round((r.amount / installmentCount) * 100) / 100
+          const groupId = installmentCount > 1 ? genUUID() : null
+
+          for (let i = 0; i < installmentCount; i++) {
+            const billingDate = selectedCard
+              ? calcBillingDate(r.date, selectedCard, i)
+              : calcBillingDateNoCard(new Date(r.date + 'T12:00:00'), i)
+
+            inserts.push({
+              user_id: resolvedUserId,
+              pot_id: r.potId,
+              card_id: selectedCard?.id ?? null,
+              type: r.type,
+              amount: installmentValue,
+              description: installmentCount > 1
+                ? `${r.description} (${i + 1}/${installmentCount})`
+                : r.description,
+              merchant: r.merchant || null,
+              date: r.date,
+              billing_date: billingDate,
+              payment_method: 'credit',
+              is_need: null,
+              installment_total: installmentCount > 1 ? installmentCount : null,
+              installment_number: installmentCount > 1 ? i + 1 : null,
+              installment_group_id: groupId,
+            })
           }
+        } else {
+          // Não crédito: uma transaction com valor total, sem billing_date
           inserts.push({
             user_id: resolvedUserId,
             pot_id: r.potId,
-            card_id: (isCredit && selectedCard) ? selectedCard.id : null,
+            card_id: null,
             type: r.type,
-            amount: installmentValue,
-            description: installments > 1
-              ? `${r.description} (${i + 1}/${installments})`
-              : r.description,
+            amount: r.amount,
+            description: r.description,
             merchant: r.merchant || null,
             date: r.date,
-            billing_date: billingDate,
+            billing_date: null,
             payment_method: r.paymentMethod,
             is_need: null,
-            installment_total: installments > 1 ? installments : null,
-            installment_number: installments > 1 ? i + 1 : null,
-            installment_group_id: groupId,
+            installment_total: null,
+            installment_number: null,
+            installment_group_id: null,
           })
         }
       }

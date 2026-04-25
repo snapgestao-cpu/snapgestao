@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getMesesValidos } from './getMesesValidos'
 
 export type ItemPreco = {
   descricao: string
@@ -25,28 +26,33 @@ export type AnalisePrecos = {
 
 export async function buscarDadosParaAnalise(
   userId: string,
-  potId: string | null
+  potId: string | null,
+  cycleStart: number
 ): Promise<any[]> {
-  const seisAtras = new Date()
-  seisAtras.setMonth(seisAtras.getMonth() - 6)
-  const startStr = seisAtras.toISOString().split('T')[0]
+  // Apenas ciclos fechados + mês atual
+  const mesesValidos = await getMesesValidos(userId, cycleStart)
+  const allTransactions: any[] = []
 
-  let query = supabase
-    .from('transactions')
-    .select('description, merchant, amount, date, pot_id, pots(name)')
-    .eq('user_id', userId)
-    .eq('type', 'expense')
-    .gte('date', startStr)
-    .not('description', 'is', null)
-    .not('merchant', 'is', null)
-    .order('date', { ascending: false })
+  for (const mes of mesesValidos) {
+    let query = supabase
+      .from('transactions')
+      .select('description, merchant, amount, date, pot_id, pots(name)')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .gte('date', mes.start)
+      .lte('date', mes.end)
+      .not('description', 'is', null)
+      .not('merchant', 'is', null)
 
-  if (potId) {
-    query = query.eq('pot_id', potId)
+    if (potId) {
+      query = query.eq('pot_id', potId)
+    }
+
+    const { data } = await query
+    allTransactions.push(...(data ?? []))
   }
 
-  const { data } = await query
-  return data || []
+  return allTransactions
 }
 
 export async function analisarPrecos(
@@ -84,8 +90,9 @@ export async function analisarPrecos(
   const prompt = `
 Você é um especialista em análise de preços e comportamento de consumo.
 Analise os dados de compras abaixo e gere uma análise comparativa de preços.
+Considere APENAS os dados fornecidos — são de ciclos encerrados e mês atual.
 
-DADOS DAS COMPRAS (últimos 6 meses):
+DADOS DAS COMPRAS (ciclos fechados + mês atual):
 ${JSON.stringify(itensRelevantes, null, 2)}
 
 PREFERÊNCIAS DO USUÁRIO:
