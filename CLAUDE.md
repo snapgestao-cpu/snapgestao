@@ -106,6 +106,8 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision. Also auto-triggered if QR fails (step `ocr_camera` opens camera via `useEffect`).
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
 
+**Review step — seletor de pote global**: no modo detalhado (não simplificado), há um card azul antes da lista de itens com chips horizontais de potes. Selecionar um pote aplica imediatamente em todos os itens (`setReviewItems` inline + `useEffect` no `globalPotId`). Estado: `globalPotId`, `globalPotName`. "Individual" desmarca o pote global (itens mantêm seus valores individuais). Cada item ainda pode ter seu pote alterado individualmente após aplicar o global.
+
 **Review step** — `ReviewItem` type: `{ id, name, valueCents: number, quantity, unit, potId }`. Value stored as integer cents; `formatCents(cents)` formats for display; `digitsOnly` strips non-numeric for the mask. Payment method selector (`paymentMethod` state, default `'debit'`) is pre-filled from `result.payment_method` (NFCe path) and editable via chip buttons (debit/credit/pix/cash/transfer). `handleSave` uses `paymentMethod` for all transactions (both simplified and per-item). `updateItem(id, changes)` is id-based (not index-based). `addItem` uses `Date.now()` as id.
 
 **NFCeWebView** (`components/NFCeWebView.tsx`) — accepts optional `state?: NFCeState` prop; uses `state.isRedirectUrl()` / `state.isFinalUrl()` when provided, falls back to generic functions for unknown states. Injection guard pattern:
@@ -251,7 +253,7 @@ Singleton `getDatabase()` — opens `snapgestao.db` via `expo-sqlite`, creates `
 | `textDark` | `#1A2030` | Body text |
 | `textMuted` | `#7A8499` | Secondary text, placeholders |
 
-**TransactionGroup** (`components/TransactionGroup.tsx`) — renderiza um grupo de transações do mesmo estabelecimento na mesma data. Regras: sem merchant ou 1 item → linha simples; 2+ itens com mesmo merchant + data → header colapsável com total + botão [+/−]. Props: `transactions: TxItem[]` (cada item tem `potName?`, `potColor?` como campos flat), `onEdit?: (t) => void`. Usado em `monthly.tsx` e `pot/[id].tsx`.
+**TransactionGroup** (`components/TransactionGroup.tsx`) — renderiza um grupo de transações do mesmo estabelecimento na mesma data. Regras: sem merchant ou 1 item → linha simples; 2+ itens com mesmo merchant + data → header colapsável com total + botão [+/−] à esquerda acima da bolinha. Quando expandido, mostra barra de ações em lote com botão "Excluir todos". Props: `transactions: TxItem[]` (campos flat `potName?`/`potColor?`), `onEdit?: (t) => void`, `onDeleteGroup?: (txs) => void`. `onDeleteGroup` é passado por `monthly.tsx` e `pot/[id].tsx` com Alert de confirmação + delete por `ids` via Supabase.
 
 **`lib/group-transactions.ts`** — helpers de agrupamento:
 - `groupTransactionsByMerchantAndDate(txs)` — usa display date (billing_date para crédito), agrupa por merchant + date; sem merchant = grupo individual
