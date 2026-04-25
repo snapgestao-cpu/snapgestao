@@ -92,6 +92,7 @@ export default function Step3() {
           currency: draft.currency,
           cycle_start: draft.cycleStart,
           initial_balance: draft.balance,
+          onboarding_completed: true,
         })
         .select()
         .single()

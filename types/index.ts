@@ -4,6 +4,7 @@ export type User = {
   currency: string
   cycle_start: number
   initial_balance: number
+  onboarding_completed: boolean
   created_at: string
 }
 

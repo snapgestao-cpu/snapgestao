@@ -67,8 +67,8 @@ export default function RootLayout() {
       return
     }
 
-    // Autenticado mas sem perfil de usuário = onboarding não concluído
-    if (!user || user.initial_balance === 0) {
+    // Autenticado mas onboarding não concluído
+    if (!user || !user.onboarding_completed) {
       if (!inOnboarding) router.replace('/onboarding/step1')
       return
     }

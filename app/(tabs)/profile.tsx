@@ -178,7 +178,7 @@ export default function ProfileScreen() {
               await supabase.from('user_badges').delete().eq('user_id', userId)
               await supabase.from('receipts').delete().eq('user_id', userId)
               await supabase.from('pot_limit_history').delete().eq('user_id', userId)
-              await supabase.from('users').update({ initial_balance: 0, cycle_start: 1 }).eq('id', userId)
+              await supabase.from('users').update({ initial_balance: 0, cycle_start: 1, onboarding_completed: false }).eq('id', userId)
               useAuthStore.getState().setUser({
                 ...useAuthStore.getState().user!,
                 initial_balance: 0,
