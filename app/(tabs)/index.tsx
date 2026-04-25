@@ -12,6 +12,7 @@ import { BadgeToast } from '../../components/BadgeToast'
 import { Badge } from '../../lib/badges'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useCycleStore } from '../../stores/useCycleStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { Pot } from '../../types'
@@ -28,6 +29,7 @@ type PotRow = {
 
 export default function PotsScreen() {
   const { user } = useAuthStore()
+  const { cycleOffset, setCycleOffset } = useCycleStore()
 
   const [potsData, setPotsData] = useState<PotRow[]>([])
   const [emergencyPot, setEmergencyPot] = useState<Pot | null>(null)
@@ -41,10 +43,12 @@ export default function PotsScreen() {
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
+  const cycle = user ? getCycle(user.cycle_start ?? 1, cycleOffset) : null
+
   const loadPots = useCallback(async () => {
     if (!user) return
     try {
-      const cycle = getCycle(user.cycle_start ?? 1, 0)
+      const c = getCycle(user.cycle_start ?? 1, cycleOffset)
 
       const [sourcesRes, potsRes, epRes] = await Promise.all([
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
@@ -52,7 +56,7 @@ export default function PotsScreen() {
           .eq('user_id', user.id)
           .eq('is_emergency', false)
           .is('deleted_at', null)
-          .lte('created_at', cycle.end.toISOString())
+          .lte('created_at', c.end.toISOString())
           .order('created_at', { ascending: true }),
         supabase.from('pots').select('*')
           .eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
@@ -66,14 +70,13 @@ export default function PotsScreen() {
       const ep = epRes.data as Pot | null
       setEmergencyPot(ep)
 
-      // Fetch all expenses for the cycle in two queries (credit by billing_date, others by date)
       const [{ data: creditTxs }, { data: otherTxs }] = await Promise.all([
         supabase.from('transactions').select('amount, pot_id')
           .eq('user_id', user.id).eq('type', 'expense').eq('payment_method', 'credit')
-          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
+          .gte('billing_date', c.startISO).lte('billing_date', c.endISO),
         supabase.from('transactions').select('amount, pot_id')
           .eq('user_id', user.id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
-          .gte('date', cycle.startISO).lte('date', cycle.endISO),
+          .gte('date', c.startISO).lte('date', c.endISO),
       ])
       const allCycleTxs = [
         ...((creditTxs ?? []) as any[]),
@@ -102,7 +105,7 @@ export default function PotsScreen() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [user?.id])
+  }, [user?.id, cycleOffset])
 
   useEffect(() => { setLoading(true); loadPots() }, [loadPots])
 
@@ -113,12 +116,13 @@ export default function PotsScreen() {
     setToast({ message: msg, color: Colors.primary })
   }
 
-  const cycle = user ? getCycle(user.cycle_start ?? 1, 0) : null
-
   const renderItem = ({ item }: { item: PotRow }) => (
     <TouchableOpacity
       style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8 }}
-      onPress={() => router.push(`/pot/${item.pot.id}`)}
+      onPress={() => router.push({
+        pathname: `/pot/${item.pot.id}`,
+        params: { cycleOffset: String(cycleOffset) },
+      })}
       activeOpacity={0.75}
     >
       <JarPot
@@ -137,6 +141,7 @@ export default function PotsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Top header: greeting + buttons */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
@@ -145,16 +150,41 @@ export default function PotsScreen() {
           </Text>
         </View>
         <View style={styles.headerRight}>
-          {cycle && (
-            <View style={styles.cycleBadge}>
-              <Text style={styles.cycleBadgeText}>{cycle.label}</Text>
-            </View>
-          )}
           <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
             <Text style={styles.newPotBtnText}>+ Pote</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Month navigation */}
+      <View style={styles.monthNav}>
+        <TouchableOpacity onPress={() => setCycleOffset(cycleOffset - 1)} style={styles.navArrowBtn}>
+          <Text style={styles.navArrow}>‹</Text>
+        </TouchableOpacity>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.navLabel}>{cycle?.label ?? ''}</Text>
+          {cycleOffset !== 0 && (
+            <TouchableOpacity onPress={() => setCycleOffset(0)}>
+              <Text style={styles.navBack}>Voltar ao atual</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          onPress={() => { if (cycleOffset < 0) setCycleOffset(cycleOffset + 1) }}
+          disabled={cycleOffset >= 0}
+          style={[styles.navArrowBtn, { opacity: cycleOffset >= 0 ? 0.3 : 1 }]}
+        >
+          <Text style={styles.navArrow}>›</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Mês anterior indicator */}
+      {cycleOffset < 0 && (
+        <View style={styles.prevMonthBanner}>
+          <Text style={{ fontSize: 12 }}>📅</Text>
+          <Text style={styles.prevMonthText}>Visualizando mês anterior</Text>
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
@@ -180,7 +210,10 @@ export default function PotsScreen() {
             emergencyPot ? (
               <TouchableOpacity
                 style={styles.emergencyCard}
-                onPress={() => router.push(`/pot/${emergencyPot.id}`)}
+                onPress={() => router.push({
+                  pathname: `/pot/${emergencyPot.id}`,
+                  params: { cycleOffset: String(cycleOffset) },
+                })}
                 activeOpacity={0.8}
               >
                 <Text style={styles.emergencyIcon}>🛡️</Text>
@@ -223,22 +256,33 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10,
     backgroundColor: Colors.background,
   },
   greeting: { fontSize: 22, fontWeight: '700', color: Colors.textDark },
   monthLabel: { fontSize: 14, color: Colors.textMuted, marginTop: 2 },
   headerRight: { alignItems: 'flex-end', gap: 6 },
-  cycleBadge: {
-    backgroundColor: Colors.lightBlue, borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  cycleBadgeText: { fontSize: 11, fontWeight: '600', color: Colors.primary },
   newPotBtn: {
     backgroundColor: Colors.primary, borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 7,
   },
   newPotBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  monthNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 10,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+  },
+  navArrowBtn: { padding: 8 },
+  navArrow: { fontSize: 22, color: Colors.primary, fontWeight: '400' },
+  navLabel: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  navBack: { fontSize: 11, color: Colors.primary, marginTop: 2 },
+  prevMonthBanner: {
+    backgroundColor: Colors.lightAmber,
+    paddingHorizontal: 16, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  prevMonthText: { fontSize: 12, color: Colors.warning, fontWeight: '600' },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
   potName: {

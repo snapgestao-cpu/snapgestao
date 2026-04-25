@@ -15,7 +15,6 @@ import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
@@ -24,8 +23,11 @@ import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } fro
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
 export default function PotDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, cycleOffset: offsetParam } = useLocalSearchParams<{ id: string; cycleOffset: string }>()
   const { user } = useAuthStore()
+
+  const cycleOffset = parseInt(offsetParam || '0', 10)
+  const cycle = getCycle(user?.cycle_start ?? 1, cycleOffset)
 
   const [pot, setPot] = useState<Pot | null>(null)
   const [spent, setSpent] = useState(0)
@@ -43,30 +45,26 @@ export default function PotDetailScreen() {
   const loadData = useCallback(async () => {
     if (!user || !id) return
     try {
-      const cycle = getCycle(user.cycle_start ?? 1, 0)
+      const c = getCycle(user.cycle_start ?? 1, cycleOffset)
 
       const [potRes, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes] = await Promise.all([
         supabase.from('pots').select('*').eq('id', id).single(),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
-        // Transaction list (non-credit): by date
         supabase.from('transactions').select('*')
           .eq('pot_id', id).neq('payment_method', 'credit')
-          .gte('date', cycle.startISO).lte('date', cycle.endISO)
+          .gte('date', c.startISO).lte('date', c.endISO)
           .order('date', { ascending: false }),
-        // Transaction list (credit): by billing_date — captures installments from prior months
         supabase.from('transactions').select('*')
           .eq('pot_id', id).eq('payment_method', 'credit')
           .not('billing_date', 'is', null)
-          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
+          .gte('billing_date', c.startISO).lte('billing_date', c.endISO)
           .order('billing_date', { ascending: false }),
-        // Spent: credit by billing_date
         supabase.from('transactions').select('amount')
           .eq('pot_id', id).eq('type', 'expense').eq('payment_method', 'credit')
-          .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
-        // Spent: non-credit (expense + goal_deposit) by date
+          .gte('billing_date', c.startISO).lte('billing_date', c.endISO),
         supabase.from('transactions').select('amount')
           .eq('pot_id', id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
-          .gte('date', cycle.startISO).lte('date', cycle.endISO),
+          .gte('date', c.startISO).lte('date', c.endISO),
       ])
 
       const p = potRes.data as Pot | null
@@ -98,7 +96,7 @@ export default function PotDetailScreen() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [user?.id, id])
+  }, [user?.id, id, cycleOffset])
 
   useEffect(() => { setLoading(true); loadData() }, [loadData])
 
@@ -106,7 +104,7 @@ export default function PotDetailScreen() {
 
   const handleDelete = () => {
     if (!pot || !user) return
-    const cycle = getCycle(user.cycle_start ?? 1, 0)
+    const currentCycle = getCycle(user.cycle_start ?? 1, 0)
     Alert.alert(
       'Excluir pote',
       `Excluir "${pot.name}" vai remover este pote do mês atual e dos seguintes.\n\nOs lançamentos de meses anteriores serão preservados.`,
@@ -116,13 +114,11 @@ export default function PotDetailScreen() {
           text: 'Excluir', style: 'destructive',
           onPress: async () => {
             try {
-              // Deletar gastos do ciclo atual em diante vinculados ao pote
               await supabase.from('transactions').delete()
                 .eq('pot_id', pot.id).eq('type', 'expense')
-                .gte('date', cycle.startISO)
-              // Soft delete — marca deleted_at como início do ciclo atual
+                .gte('date', currentCycle.startISO)
               const { error } = await supabase.from('pots')
-                .update({ deleted_at: cycle.start.toISOString() })
+                .update({ deleted_at: currentCycle.start.toISOString() })
                 .eq('id', pot.id).eq('user_id', user.id)
               if (error) throw error
               router.back()
@@ -176,8 +172,6 @@ export default function PotDetailScreen() {
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]
 
-  const cycle = getCycle(user!.cycle_start ?? 1, 0)
-
   const merchantGroups = groupTransactionsByMerchantAndDate(transactions)
   const txByDate = groupByDate(merchantGroups)
   const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
@@ -194,7 +188,12 @@ export default function PotDetailScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={styles.backArrow}>‹</Text>
           </TouchableOpacity>
-          <Text style={styles.topTitle} numberOfLines={1}>{pot.name}</Text>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.topTitle} numberOfLines={1}>{pot.name}</Text>
+            {cycleOffset < 0 && (
+              <Text style={styles.cycleBadge}>📅 {cycle.label}</Text>
+            )}
+          </View>
           <View style={{ width: 36 }} />
         </View>
 
@@ -309,7 +308,8 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, justifyContent: 'center' },
   backArrow: { fontSize: 32, color: Colors.primary, fontWeight: '300', lineHeight: 36 },
-  topTitle: { fontSize: 18, fontWeight: '800', color: Colors.textDark, flex: 1, textAlign: 'center' },
+  topTitle: { fontSize: 18, fontWeight: '800', color: Colors.textDark },
+  cycleBadge: { fontSize: 12, color: Colors.warning, marginTop: 2 },
   errorText: { textAlign: 'center', color: Colors.danger, marginTop: 40, fontSize: 16 },
   jarWrapper: { alignItems: 'center', marginBottom: 24 },
   spentLabel: { fontSize: 14, color: Colors.textMuted, marginTop: 10 },

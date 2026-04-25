@@ -15,6 +15,7 @@ import { Toast } from '../../components/Toast'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../../lib/badges'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useCycleStore } from '../../stores/useCycleStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo } from '../../lib/cycle'
 import { calculateCycleSummary, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
@@ -31,7 +32,7 @@ const FAB_SIZE = 52
 
 export default function MonthlyScreen() {
   const { user } = useAuthStore()
-  const [offset, setOffset] = useState(0)
+  const { cycleOffset: offset, setCycleOffset: setOffset } = useCycleStore()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -232,7 +233,7 @@ export default function MonthlyScreen() {
       >
         {/* Cycle navigation */}
         <View style={styles.cycleNav}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => setOffset(o => o - 1)}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => setOffset(offset - 1)}>
             <Text style={styles.navBtnText}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
@@ -244,7 +245,7 @@ export default function MonthlyScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.navBtn, offset >= 0 && styles.navBtnDisabled]}
-            onPress={() => offset < 0 && setOffset(o => o + 1)}
+            onPress={() => offset < 0 && setOffset(offset + 1)}
             disabled={offset >= 0}
           >
             <Text style={[styles.navBtnText, offset >= 0 && { color: Colors.border }]}>›</Text>
@@ -322,17 +323,26 @@ export default function MonthlyScreen() {
                         <Text style={[styles.tableHCell, { width: 100 }]}>Saldo</Text>
                       </View>
                       {summary.potSummaries.map(pot => (
-                        <View key={pot.id} style={styles.tableRow}>
-                          <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <TouchableOpacity
+                          key={pot.id}
+                          activeOpacity={0.7}
+                          onPress={() => router.push({
+                            pathname: `/pot/${pot.id}`,
+                            params: { cycleOffset: String(offset) },
+                          })}
+                          style={styles.tableRow}
+                        >
+                          <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 4 }}>
                             <Text style={{ fontSize: 13 }}>{getPotIcon(pot.name)}</Text>
-                            <Text style={styles.tableCellText} numberOfLines={1}>{pot.name}</Text>
+                            <Text style={[styles.tableCellText, { color: Colors.primary, textDecorationLine: 'underline' }]} numberOfLines={1}>{pot.name}</Text>
+                            <Text style={{ fontSize: 10, color: Colors.textMuted }}>›</Text>
                           </View>
                           <Text style={[styles.tableCell, { width: 100 }]}>{pot.limit_amount ? brl(pot.limit_amount) : '—'}</Text>
                           <Text style={[styles.tableCell, { width: 100, color: Colors.danger }]}>{brl(pot.spent)}</Text>
                           <Text style={[styles.tableCell, { width: 100, color: pot.isOverBudget ? Colors.danger : Colors.success, fontWeight: '700' }]}>
                             {brl(pot.remaining)}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                       <View style={[styles.tableRow, styles.tableTotalRow]}>
                         <Text style={[styles.tableCell, styles.tableTotalText, { width: 130 }]}>Total</Text>
