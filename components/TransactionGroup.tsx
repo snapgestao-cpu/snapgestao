@@ -152,16 +152,26 @@ export default function TransactionGroup({ transactions, onEdit }: Props) {
         onPress={() => setExpanded(!expanded)}
         activeOpacity={0.7}
         style={{
-          flexDirection: 'row', alignItems: 'center',
+          flexDirection: 'row', alignItems: 'flex-start',
           paddingVertical: 12, paddingHorizontal: 16,
           backgroundColor: expanded ? Colors.background : Colors.white,
         }}
       >
-        <View style={{
-          width: 10, height: 10, borderRadius: 5,
-          backgroundColor: potColor, marginRight: 10,
-        }} />
+        {/* Coluna esquerda: botão [+] acima da bolinha */}
+        <View style={{ alignItems: 'center', marginRight: 10, gap: 4 }}>
+          <View style={{
+            width: 20, height: 20, borderRadius: 10,
+            backgroundColor: Colors.lightBlue,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: '700', lineHeight: 18 }}>
+              {expanded ? '−' : '+'}
+            </Text>
+          </View>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: potColor }} />
+        </View>
 
+        {/* Conteúdo central */}
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 2 }}>
             {transactions[0].merchant}
@@ -181,23 +191,10 @@ export default function TransactionGroup({ transactions, onEdit }: Props) {
           </View>
         </View>
 
-        <Text style={{
-          fontSize: 14, fontWeight: '700',
-          color: total >= 0 ? Colors.success : Colors.danger,
-          marginRight: 8,
-        }}>
+        {/* Valor total */}
+        <Text style={{ fontSize: 14, fontWeight: '700', color: total >= 0 ? Colors.success : Colors.danger }}>
           {total >= 0 ? '+' : ''}{brl(Math.abs(total))}
         </Text>
-
-        <View style={{
-          width: 24, height: 24, borderRadius: 12,
-          backgroundColor: Colors.lightBlue,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: '700' }}>
-            {expanded ? '−' : '+'}
-          </Text>
-        </View>
       </TouchableOpacity>
 
       {/* Itens expandidos */}
