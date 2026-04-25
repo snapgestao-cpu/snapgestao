@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   TouchableOpacity, RefreshControl, Animated, Alert,
@@ -60,6 +61,18 @@ export default function MonthlyScreen() {
   const [showIncome, setShowIncome] = useState(false)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+  const [viewMode, setViewMode] = useState<'tabela' | 'potes'>('tabela')
+
+  useEffect(() => {
+    AsyncStorage.getItem('monthly_view_mode').then(v => {
+      if (v === 'tabela' || v === 'potes') setViewMode(v)
+    })
+  }, [])
+
+  function toggleViewMode(mode: 'tabela' | 'potes') {
+    setViewMode(mode)
+    AsyncStorage.setItem('monthly_view_mode', mode)
+  }
 
   const cycle: CycleInfo = getCycle(user?.cycle_start ?? 1, offset)
 
@@ -309,81 +322,156 @@ export default function MonthlyScreen() {
               </View>
             )}
 
-            {/* Pot cards */}
+            {/* Pot section with view toggle */}
             {summary && summary.potSummaries.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Potes</Text>
-                {summary.potSummaries.map(pot => {
-                  const pct = pot.limit_amount && pot.limit_amount > 0
-                    ? Math.min((pot.spent / pot.limit_amount) * 100, 100)
-                    : 0
-                  const barColor = pot.remaining < 0 ? Colors.danger
-                    : pot.limit_amount && pot.spent / pot.limit_amount > 0.8 ? Colors.warning
-                    : Colors.success
-                  return (
-                    <TouchableOpacity
-                      key={pot.id}
-                      activeOpacity={0.7}
-                      onPress={() => router.push({
-                        pathname: `/pot/${pot.id}`,
-                        params: { cycleOffset: String(offset) },
-                      })}
-                      style={[styles.potCard, { borderLeftColor: pot.color || Colors.primary }]}
-                    >
-                      <View style={styles.potCardHeader}>
-                        <Text style={{ fontSize: 16, marginRight: 6 }}>{getPotIcon(pot.name)}</Text>
-                        <Text style={styles.potCardName} numberOfLines={1}>{pot.name}</Text>
-                        <Text style={{ fontSize: 12, color: Colors.textMuted }}>›</Text>
+
+                {/* Toggle tabela / potes */}
+                <View style={styles.viewToggle}>
+                  <TouchableOpacity
+                    onPress={() => toggleViewMode('tabela')}
+                    style={[styles.viewToggleBtn, viewMode === 'tabela' && styles.viewToggleBtnActive]}
+                  >
+                    <Text style={[styles.viewToggleBtnText, viewMode === 'tabela' && styles.viewToggleBtnTextActive]}>
+                      📊 Tabela
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => toggleViewMode('potes')}
+                    style={[styles.viewToggleBtn, viewMode === 'potes' && styles.viewToggleBtnActive]}
+                  >
+                    <Text style={[styles.viewToggleBtnText, viewMode === 'potes' && styles.viewToggleBtnTextActive]}>
+                      🫙 Potes
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {viewMode === 'tabela' ? (
+                  /* ── TABELA ── */
+                  (() => {
+                    const totalOrcado = summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0)
+                    const totalGasto = summary.totalExpense
+                    const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
+                    return (
+                      <View style={styles.tableCard}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                          <View style={{ minWidth: 420 }}>
+                            <View style={styles.tableHeaderRow}>
+                              <Text style={[styles.tableHCell, { width: 140, paddingLeft: 8 }]}>Pote</Text>
+                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.primary }]}>Orçado</Text>
+                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.danger }]}>Gasto</Text>
+                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.success, paddingRight: 8 }]}>Saldo</Text>
+                            </View>
+                            {summary.potSummaries.map((pot, index) => (
+                              <TouchableOpacity
+                                key={pot.id}
+                                onPress={() => router.push({
+                                  pathname: `/pot/${pot.id}`,
+                                  params: { cycleOffset: String(offset) },
+                                })}
+                                activeOpacity={0.7}
+                                style={[styles.tableDataRow, { backgroundColor: index % 2 === 0 ? Colors.white : Colors.background }]}
+                              >
+                                <View style={{ width: 140, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 4 }}>
+                                  <Text style={{ fontSize: 14 }}>{getPotIcon(pot.name)}</Text>
+                                  <Text style={styles.tableNameCell} numberOfLines={1}>{pot.name}</Text>
+                                  <Text style={{ fontSize: 10, color: Colors.textMuted }}>›</Text>
+                                </View>
+                                <Text style={[styles.tableValueCell, { width: 100 }]}>{brl(pot.limit_amount || 0)}</Text>
+                                <Text style={[styles.tableValueCell, { width: 100, color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>{brl(pot.spent)}</Text>
+                                <Text style={[styles.tableValueCell, { width: 100, paddingRight: 8, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
+                                  {brl(pot.remaining)}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                            <View style={styles.tableTotalRow}>
+                              <Text style={[styles.tableTotalCell, { width: 140, paddingLeft: 8 }]}>TOTAL</Text>
+                              <Text style={[styles.tableTotalCell, { width: 100 }]}>{brl(totalOrcado)}</Text>
+                              <Text style={[styles.tableTotalCell, { width: 100, color: Colors.danger }]}>{brl(totalGasto)}</Text>
+                              <Text style={[styles.tableTotalCell, { width: 100, paddingRight: 8, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
+                            </View>
+                          </View>
+                        </ScrollView>
                       </View>
-                      <View style={styles.potCardValues}>
-                        <View style={{ flex: 1, alignItems: 'flex-start' }}>
-                          <Text style={styles.potCardValueLabel}>Orçado</Text>
-                          <Text style={styles.potCardValue}>{brl(pot.limit_amount || 0)}</Text>
+                    )
+                  })()
+                ) : (
+                  /* ── CARDS ── */
+                  <>
+                    {summary.potSummaries.map(pot => {
+                      const pct = pot.limit_amount && pot.limit_amount > 0
+                        ? Math.min((pot.spent / pot.limit_amount) * 100, 100)
+                        : 0
+                      const barColor = pot.remaining < 0 ? Colors.danger
+                        : pot.limit_amount && pot.spent / pot.limit_amount > 0.8 ? Colors.warning
+                        : Colors.success
+                      return (
+                        <TouchableOpacity
+                          key={pot.id}
+                          activeOpacity={0.7}
+                          onPress={() => router.push({
+                            pathname: `/pot/${pot.id}`,
+                            params: { cycleOffset: String(offset) },
+                          })}
+                          style={[styles.potCard, { borderLeftColor: pot.color || Colors.primary }]}
+                        >
+                          <View style={styles.potCardHeader}>
+                            <Text style={{ fontSize: 16, marginRight: 6 }}>{getPotIcon(pot.name)}</Text>
+                            <Text style={styles.potCardName} numberOfLines={1}>{pot.name}</Text>
+                            <Text style={{ fontSize: 12, color: Colors.textMuted }}>›</Text>
+                          </View>
+                          <View style={styles.potCardValues}>
+                            <View style={{ flex: 1, alignItems: 'flex-start' }}>
+                              <Text style={styles.potCardValueLabel}>Orçado</Text>
+                              <Text style={styles.potCardValue}>{brl(pot.limit_amount || 0)}</Text>
+                            </View>
+                            <View style={{ flex: 1, alignItems: 'center' }}>
+                              <Text style={styles.potCardValueLabel}>Gasto</Text>
+                              <Text style={[styles.potCardValue, { color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>
+                                {brl(pot.spent)}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                              <Text style={styles.potCardValueLabel}>Saldo</Text>
+                              <Text style={[styles.potCardValue, styles.potCardValueBold, { color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
+                                {brl(pot.remaining)}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.potProgressBg}>
+                            <View style={[styles.potProgressFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })}
+                    {/* Total card */}
+                    {(() => {
+                      const totalOrcado = summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0)
+                      const totalGasto = summary.totalExpense
+                      const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
+                      return (
+                        <View style={styles.potTotalCard}>
+                          <Text style={styles.potTotalTitle}>Total</Text>
+                          <View style={styles.potCardValues}>
+                            <View style={{ flex: 1, alignItems: 'flex-start' }}>
+                              <Text style={styles.potCardValueLabel}>Orçado</Text>
+                              <Text style={[styles.potCardValue, styles.potCardValueBold]}>{brl(totalOrcado)}</Text>
+                            </View>
+                            <View style={{ flex: 1, alignItems: 'center' }}>
+                              <Text style={styles.potCardValueLabel}>Gasto</Text>
+                              <Text style={[styles.potCardValue, styles.potCardValueBold, { color: Colors.danger }]}>{brl(totalGasto)}</Text>
+                            </View>
+                            <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                              <Text style={styles.potCardValueLabel}>Saldo</Text>
+                              <Text style={[styles.potCardValue, styles.potCardValueBold, { color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
+                            </View>
+                          </View>
                         </View>
-                        <View style={{ flex: 1, alignItems: 'center' }}>
-                          <Text style={styles.potCardValueLabel}>Gasto</Text>
-                          <Text style={[styles.potCardValue, { color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>
-                            {brl(pot.spent)}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text style={styles.potCardValueLabel}>Saldo</Text>
-                          <Text style={[styles.potCardValue, styles.potCardValueBold, { color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
-                            {brl(pot.remaining)}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.potProgressBg}>
-                        <View style={[styles.potProgressFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
-                      </View>
-                    </TouchableOpacity>
-                  )
-                })}
-                {/* Total card */}
-                {(() => {
-                  const totalOrcado = summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0)
-                  const totalGasto = summary.totalExpense
-                  const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
-                  return (
-                    <View style={styles.potTotalCard}>
-                      <Text style={styles.potTotalTitle}>Total</Text>
-                      <View style={styles.potCardValues}>
-                        <View style={{ flex: 1, alignItems: 'flex-start' }}>
-                          <Text style={styles.potCardValueLabel}>Orçado</Text>
-                          <Text style={[styles.potCardValue, styles.potCardValueBold]}>{brl(totalOrcado)}</Text>
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'center' }}>
-                          <Text style={styles.potCardValueLabel}>Gasto</Text>
-                          <Text style={[styles.potCardValue, styles.potCardValueBold, { color: Colors.danger }]}>{brl(totalGasto)}</Text>
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text style={styles.potCardValueLabel}>Saldo</Text>
-                          <Text style={[styles.potCardValue, styles.potCardValueBold, { color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  )
-                })()}
+                      )
+                    })()}
+                  </>
+                )}
               </View>
             )}
 
@@ -667,6 +755,36 @@ const styles = StyleSheet.create({
   alertSuggestion: { fontSize: 12, color: Colors.danger, marginTop: 3 },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 10 },
+  viewToggle: {
+    flexDirection: 'row', backgroundColor: Colors.background, borderRadius: 20,
+    padding: 3, alignSelf: 'flex-start', marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  viewToggleBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16 },
+  viewToggleBtnActive: { backgroundColor: Colors.primary },
+  viewToggleBtnText: { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
+  viewToggleBtnTextActive: { color: '#fff' },
+  tableCard: {
+    backgroundColor: Colors.white, borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row', backgroundColor: Colors.lightBlue,
+    paddingVertical: 8, borderRadius: 8, marginBottom: 2,
+  },
+  tableHCell: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  tableDataRow: {
+    flexDirection: 'row', paddingVertical: 10, alignItems: 'center',
+    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+  },
+  tableNameCell: { fontSize: 11, color: Colors.textDark, flex: 1 },
+  tableValueCell: { fontSize: 11, color: Colors.textDark, textAlign: 'right' },
+  tableTotalRow: {
+    flexDirection: 'row', paddingVertical: 10,
+    backgroundColor: Colors.lightBlue,
+    borderTopWidth: 1.5, borderTopColor: Colors.primary,
+  },
+  tableTotalCell: { fontSize: 12, fontWeight: '700', color: Colors.textDark, textAlign: 'right' },
   potCard: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 14, marginBottom: 8,
     borderLeftWidth: 3,

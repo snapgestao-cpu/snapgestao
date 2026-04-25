@@ -20,6 +20,11 @@ import { brl } from '../../lib/finance'
 
 const CELL_WIDTH = (Dimensions.get('window').width - 32) / 2
 
+const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+function formatMonthShort(date: Date): string {
+  return MONTHS_SHORT[date.getMonth()] + '/' + String(date.getFullYear()).slice(2)
+}
+
 type PotRow = {
   pot: Pot
   spent: number
@@ -141,43 +146,44 @@ export default function PotsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Compact header card */}
-      <View style={styles.headerCard}>
+      {/* Header: nome + nav mês na mesma linha */}
+      <View style={styles.header}>
         <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
-        <View style={styles.headerRow}>
+        <View style={styles.monthNav}>
           <TouchableOpacity onPress={() => setCycleOffset(cycleOffset - 1)} style={styles.navArrowBtn}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
-          <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text style={styles.navLabel}>{cycle?.label ?? ''}</Text>
-            {cycleOffset !== 0 && (
-              <TouchableOpacity onPress={() => setCycleOffset(0)}>
-                <Text style={styles.navBack}>Voltar ao atual</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <TouchableOpacity
+            onPress={() => { if (cycleOffset !== 0) setCycleOffset(0) }}
+          >
+            <Text style={[styles.navLabel, { color: cycleOffset === 0 ? Colors.textDark : Colors.primary }]}>
+              {cycle ? formatMonthShort(cycle.start) : ''}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { if (cycleOffset < 0) setCycleOffset(cycleOffset + 1) }}
             disabled={cycleOffset >= 0}
-            style={[styles.navArrowBtn, { opacity: cycleOffset >= 0 ? 0.3 : 1 }]}
+            style={{ padding: 4, opacity: cycleOffset >= 0 ? 0.3 : 1 }}
           >
             <Text style={styles.navArrow}>›</Text>
-          </TouchableOpacity>
-          <View style={styles.headerDivider} />
-          <TouchableOpacity onPress={() => setShowNewPot(true)} style={styles.newPotBtn}>
-            <Text style={styles.newPotBtnPlus}>+</Text>
-            <Text style={styles.newPotBtnText}>Pote</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Mês anterior indicator */}
-      {cycleOffset < 0 && (
-        <View style={styles.prevMonthBanner}>
-          <Text style={{ fontSize: 12 }}>📅</Text>
-          <Text style={styles.prevMonthText}>Visualizando mês anterior</Text>
-        </View>
-      )}
+      {/* Botão + Pote */}
+      <View style={styles.subHeader}>
+        {cycleOffset < 0 && (
+          <View style={styles.prevMonthBanner}>
+            <Text style={{ fontSize: 12 }}>📅</Text>
+            <Text style={styles.prevMonthText}>Mês anterior</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={() => setShowNewPot(true)} style={styles.newPotBtn}>
+          <Text style={styles.newPotBtnPlus}>+</Text>
+          <Text style={styles.newPotBtnText}>Pote</Text>
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
@@ -247,15 +253,30 @@ export default function PotsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  headerCard: {
-    backgroundColor: Colors.white,
-    marginHorizontal: 16, marginTop: 8, marginBottom: 12,
-    borderRadius: 16, padding: 12,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
   },
-  greeting: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerDivider: { width: 1, height: 24, backgroundColor: Colors.border, marginHorizontal: 8 },
+  greeting: { fontSize: 18, fontWeight: '700', color: Colors.textDark },
+  monthNav: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.white, borderRadius: 20,
+    paddingHorizontal: 4, paddingVertical: 2,
+    borderWidth: 1, borderColor: Colors.border, gap: 2,
+  },
+  navArrowBtn: { padding: 4 },
+  navArrow: { fontSize: 16, color: Colors.primary },
+  navLabel: { fontSize: 12, fontWeight: '700', paddingHorizontal: 4 },
+  subHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingBottom: 8, gap: 8,
+  },
+  prevMonthBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.lightAmber,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+  },
+  prevMonthText: { fontSize: 11, color: Colors.warning, fontWeight: '600' },
   newPotBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: Colors.lightBlue,
@@ -263,16 +284,6 @@ const styles = StyleSheet.create({
   },
   newPotBtnPlus: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
   newPotBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
-  navArrowBtn: { padding: 6 },
-  navArrow: { fontSize: 18, color: Colors.primary },
-  navLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
-  navBack: { fontSize: 10, color: Colors.primary, marginTop: 2 },
-  prevMonthBanner: {
-    backgroundColor: Colors.lightAmber,
-    paddingHorizontal: 16, paddingVertical: 6,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-  },
-  prevMonthText: { fontSize: 12, color: Colors.warning, fontWeight: '600' },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
   potName: {
