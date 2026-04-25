@@ -183,7 +183,9 @@ Never call `supabase` directly from a component. Exceptions:
 - `onboarding/step3.tsx` — 3-step wizard save sequence
 - `app/(tabs)/index.tsx` — direct `useEffect` calls for reliability after onboarding
 
-**Dashboard data loading** — `app/(tabs)/index.tsx` uses `useEffect` + `useState`. Income total from `income_sources.amount` (NOT transactions). Expenses from `transactions` filtered by pot + cycle dates. Refetches on `user?.id` change.
+**Dashboard data loading** — `app/(tabs)/index.tsx` uses `useEffect` + `useState`. Income total from `income_sources.amount` (NOT transactions). Expenses from `transactions` filtered by pot + cycle dates. Refetches on `user?.id` or `cycleOffset` change.
+
+**Cycle sync across tabs** — `stores/useCycleStore.ts` (`useCycleStore`) holds a single `cycleOffset: number` shared by Potes and Mensal tabs. Both screens read/write this store instead of local `useState`. This means changing the month in either tab updates the other automatically. `pot/[id].tsx` receives `cycleOffset` as a route param (passed by both tabs when navigating to a pot) and uses `getCycle(cycleStart, cycleOffset)` for all queries. Potes screen shows a month-nav bar (‹/›) + amber "Visualizando mês anterior" banner when offset < 0. Monthly pot-table rows are touchable (blue + underline + ›) and navigate to the pot's detail in the same cycle.
 
 ### Cycle logic (`lib/cycle.ts`)
 
