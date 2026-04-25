@@ -251,6 +251,13 @@ Singleton `getDatabase()` — opens `snapgestao.db` via `expo-sqlite`, creates `
 | `textDark` | `#1A2030` | Body text |
 | `textMuted` | `#7A8499` | Secondary text, placeholders |
 
+**TransactionGroup** (`components/TransactionGroup.tsx`) — renderiza um grupo de transações do mesmo estabelecimento na mesma data. Regras: sem merchant ou 1 item → linha simples; 2+ itens com mesmo merchant + data → header colapsável com total + botão [+/−]. Props: `transactions: TxItem[]` (cada item tem `potName?`, `potColor?` como campos flat), `onEdit?: (t) => void`. Usado em `monthly.tsx` e `pot/[id].tsx`.
+
+**`lib/group-transactions.ts`** — helpers de agrupamento:
+- `groupTransactionsByMerchantAndDate(txs)` — usa display date (billing_date para crédito), agrupa por merchant + date; sem merchant = grupo individual
+- `groupByDate(groups)` — indexa por data para headers
+- `formatDateHeader(dateStr)` — "Hoje" / "Ontem" / "DD Mmm"
+
 **PotCard** (`components/PotCard.tsx`) — flat props: `name, color, limit_amount?, spent, remaining, onPress?, onLongPress?`. Parent calculates `spent`/`remaining` — never pass a `Pot` object. Progress bar: pot color < 50%, amber 50–80%, red > 80%. `onLongPress` opens parent action sheet (edit / filter / delete). Safe to render without handlers (`disabled={!onPress}`).
 
 **JarPot preview pattern** — render `PotCard` with `spent=0, remaining=centsToFloat(limitDigits)` for real-time preview as user types. Used in `onboarding/step3.tsx` and `NewPotModal`.
