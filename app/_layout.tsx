@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
-import { Stack, router, useSegments } from 'expo-router'
+import { Stack, router } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -22,60 +22,94 @@ const queryClient = new QueryClient({
 })
 
 export default function RootLayout() {
-  const { isLoading, isAuthenticated, user, init } = useAuthStore()
-  const segments = useSegments()
+  const { user, setUser } = useAuthStore()
+  const [isLoading, setIsLoading] = useState(true)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   useEffect(() => {
     getDatabase()
-    const unsubscribe = init()
-
-    // Safety belt: if stored token is invalid (e.g. user deleted from Supabase),
-    // getSession returns an error — sign out to clear the stale token.
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error || !data.session) {
-        supabase.auth.signOut()
-      }
-    })
-
-    return unsubscribe
   }, [])
 
+  // Verificar sessão na inicialização
+  useEffect(() => {
+    async function checkAuth() {
+      setIsLoading(true)
+      try {
+        // 1. Verificar sessão atual
+        const { data: { session } } = await supabase.auth.getSession()
+
+        // 2. Sem sessão → login
+        if (!session) {
+          router.replace('/(auth)/login')
+          return
+        }
+
+        // 3. Com sessão → verificar onboarding
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        // 4. Sem perfil ou onboarding incompleto
+        if (!userData || !userData.onboarding_completed) {
+          router.replace('/onboarding/step1')
+          return
+        }
+
+        // 5. Tudo OK → tabs
+        setUser(userData)
+        router.replace('/(tabs)/')
+      } catch {
+        router.replace('/(auth)/login')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
+
+  // Listener de mudança de sessão
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // INITIAL_SESSION já tratado por checkAuth acima
+        if (event === 'INITIAL_SESSION') return
+
+        if (event === 'SIGNED_OUT' || !session) {
+          router.replace('/(auth)/login')
+          return
+        }
+
+        if (event === 'SIGNED_IN' && session) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle()
+
+          if (!userData?.onboarding_completed) {
+            router.replace('/onboarding/step1')
+          } else {
+            setUser(userData)
+            router.replace('/(tabs)/')
+          }
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Notificações e badges após usuário carregado
   useEffect(() => {
     if (!user) return
-
     registerForPushNotifications()
     checkCriticalPots(user.id, user.cycle_start ?? 1)
     scheduleCycleEndReminder()
     checkAndGrantBadges(user.id, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
   }, [user?.id])
-
-  useEffect(() => {
-    if (isLoading) return
-
-    const inAuth = segments[0] === '(auth)'
-    const inOnboarding = segments[0] === 'onboarding'
-    const inTabs = segments[0] === '(tabs)'
-    const inPot = segments[0] === 'pot'
-    const inOCR = segments[0] === 'ocr'
-    const inAchievements = segments[0] === 'achievements'
-    const inMentor = segments[0] === 'mentor'
-    const inAnalisador = segments[0] === 'analisador-precos'
-
-    if (!isAuthenticated) {
-      if (!inAuth) router.replace('/(auth)/login')
-      return
-    }
-
-    // Autenticado mas onboarding não concluído
-    if (!user || !user.onboarding_completed) {
-      if (!inOnboarding) router.replace('/onboarding/step1')
-      return
-    }
-
-    // Autenticado com perfil completo
-    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador) router.replace('/(tabs)/')
-  }, [isLoading, isAuthenticated, user, segments])
 
   return (
     <QueryClientProvider client={queryClient}>
