@@ -142,8 +142,9 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }
   const total = transactions.reduce((s, t) =>
     t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0)
 
-  const potColor = transactions[0].potColor ?? Colors.primary
-  const potName = transactions[0].potName ?? ''
+  const todosDoMesmoPote = transactions.every(t => t.pot_id === transactions[0].pot_id)
+  const potColor = todosDoMesmoPote ? (transactions[0].potColor ?? Colors.border) : Colors.border
+  const potName = todosDoMesmoPote ? (transactions[0].potName ?? '') : ''
   const payMethod = transactions[0].payment_method
 
   return (
@@ -178,11 +179,13 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }
             {transactions[0].merchant}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {potName ? (
+            {todosDoMesmoPote && potName ? (
               <Text style={{ fontSize: 11, color: Colors.textMuted }}>
                 {getPotIcon(potName)} {potName}
               </Text>
-            ) : null}
+            ) : (
+              <Text style={{ fontSize: 11, color: Colors.textMuted }}>🫙 Múltiplos potes</Text>
+            )}
             <Text style={{ fontSize: 11, color: Colors.textMuted }}>
               · {PAYMENT_LABEL[payMethod] ?? payMethod}
             </Text>
@@ -229,41 +232,54 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }
 
           {/* Lista de itens */}
           <View style={{ backgroundColor: Colors.background, paddingLeft: 36 }}>
-          {transactions.map((t, index) => (
-            <View key={t.id} style={{
-              flexDirection: 'row', alignItems: 'center',
-              paddingVertical: 10, paddingHorizontal: 16,
-              borderTopWidth: index === 0 ? 0 : 0.5,
-              borderTopColor: Colors.border,
-            }}>
-              <Text style={{ fontSize: 10, color: Colors.textMuted, marginRight: 8 }}>•</Text>
+            {transactions.map((t, index) => {
+              const itemPoteName = t.potName ?? ''
+              const itemPoteColor = t.potColor ?? Colors.border
 
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, color: Colors.textDark }}>
-                  {t.description ?? 'Sem descrição'}
-                </Text>
-                {(t.installment_total ?? 0) > 1 ? (
-                  <Text style={{ fontSize: 10, color: Colors.warning, marginTop: 2 }}>
-                    Parcela {t.installment_number}/{t.installment_total}
+              return (
+                <View key={t.id} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingVertical: 10, paddingHorizontal: 16,
+                  borderTopWidth: index === 0 ? 0 : 0.5,
+                  borderTopColor: Colors.border,
+                }}>
+                  <Text style={{ fontSize: 10, color: Colors.textMuted, marginRight: 8 }}>•</Text>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: Colors.textDark }}>
+                      {t.description ?? 'Sem descrição'}
+                    </Text>
+                    {itemPoteName ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: itemPoteColor }} />
+                        <Text style={{ fontSize: 10, color: Colors.textMuted }}>
+                          {getPotIcon(itemPoteName)} {itemPoteName}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {(t.installment_total ?? 0) > 1 ? (
+                      <Text style={{ fontSize: 10, color: Colors.warning, marginTop: 2 }}>
+                        Parcela {t.installment_number}/{t.installment_total}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <Text style={{
+                    fontSize: 13, fontWeight: '600',
+                    color: t.type === 'income' ? Colors.success : Colors.danger,
+                    marginRight: 8,
+                  }}>
+                    {t.type === 'income' ? '+' : '-'}{brl(Number(t.amount))}
                   </Text>
-                ) : null}
-              </View>
 
-              <Text style={{
-                fontSize: 13, fontWeight: '600',
-                color: t.type === 'income' ? Colors.success : Colors.danger,
-                marginRight: 8,
-              }}>
-                {t.type === 'income' ? '+' : '-'}{brl(Number(t.amount))}
-              </Text>
-
-              {onEdit && (
-                <TouchableOpacity onPress={() => onEdit(t)} style={{ padding: 4 }}>
-                  <Text style={{ fontSize: 14 }}>✏️</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
+                  {onEdit && (
+                    <TouchableOpacity onPress={() => onEdit(t)} style={{ padding: 4 }}>
+                      <Text style={{ fontSize: 14 }}>✏️</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )
+            })}
           </View>
         </View>
       )}
