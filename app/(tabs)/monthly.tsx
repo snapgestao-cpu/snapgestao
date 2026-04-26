@@ -550,8 +550,28 @@ export default function MonthlyScreen() {
               )}
             </View>
 
+            {/* Mês futuro — não pode encerrar */}
+            {offset > 0 && (
+              <View style={{
+                backgroundColor: '#EEF2FF',
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 16,
+                borderWidth: 1,
+                borderColor: '#818CF8',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <Text style={{ fontSize: 16 }}>🔮</Text>
+                <Text style={{ fontSize: 13, color: '#4F46E5', flex: 1, lineHeight: 20 }}>
+                  Ciclos futuros não podem ser encerrados. Navegue até o mês quando ele chegar.
+                </Text>
+              </View>
+            )}
+
             {/* Encerrar ciclo — qualquer ciclo ainda não encerrado */}
-            {summary && !cycleClosed && (
+            {summary && !cycleClosed && offset <= 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Encerrar ciclo</Text>
                 {summary.cycleSaldo >= 0 ? (
