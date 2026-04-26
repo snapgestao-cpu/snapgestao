@@ -29,7 +29,6 @@ export async function buscarDadosParaAnalise(
   potId: string | null,
   cycleStart: number
 ): Promise<any[]> {
-  // Apenas ciclos fechados + mês atual
   const mesesValidos = await getMesesValidos(userId, cycleStart)
   const allTransactions: any[] = []
 
@@ -81,11 +80,19 @@ export async function analisarPrecos(
         valor: Number(t.amount),
         estabelecimento: t.merchant,
         data: t.date,
-        pote: (t.pots as any)?.name || 'Sem pote',
       })),
     }))
     .sort((a, b) => b.ocorrencias - a.ocorrencias)
-    .slice(0, 30)
+    .slice(0, 20)
+
+  console.log('[Analisador] Total transactions:', transactions.length)
+  console.log('[Analisador] Itens para análise:', itensRelevantes.length)
+
+  if (itensRelevantes.length === 0) {
+    throw new Error(
+      'Não encontrei itens comprados 3 ou mais vezes para comparar. Continue registrando seus gastos e tente novamente!'
+    )
+  }
 
   const prompt = `
 Você é um especialista em análise de preços e comportamento de consumo.
@@ -152,7 +159,7 @@ Retorne APENAS o JSON, sem texto adicional.`
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16000,
           responseMimeType: 'application/json',
         },
       }),
@@ -164,5 +171,46 @@ Retorne APENAS o JSON, sem texto adicional.`
   }
 
   const data = await response.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  console.log('[Analisador] Raw response length:', rawText.length)
+  console.log('[Analisador] Raw preview:', rawText.substring(0, 200))
+
+  if (!rawText || rawText.trim().length === 0) {
+    throw new Error(
+      'Gemini retornou resposta vazia. Verifique sua API key e tente novamente.'
+    )
+  }
+
+  // Limpar markdown se vier com ```json
+  let cleanText = rawText.trim()
+  if (cleanText.startsWith('```json')) {
+    cleanText = cleanText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
+  } else if (cleanText.startsWith('```')) {
+    cleanText = cleanText.replace(/^```\s*/, '').replace(/```\s*$/, '').trim()
+  }
+
+  let parsed: any
+  try {
+    parsed = JSON.parse(cleanText)
+  } catch (parseErr) {
+    console.error('[Analisador] Parse error:', parseErr)
+    console.error('[Analisador] Text que falhou:', cleanText.substring(0, 500))
+
+    // Tentar extrair JSON parcial se foi cortado — procurar último } válido
+    const lastBrace = cleanText.lastIndexOf('}')
+    if (lastBrace > 0) {
+      try {
+        parsed = JSON.parse(cleanText.substring(0, lastBrace + 1) + '}')
+      } catch {
+        throw new Error(
+          'Não foi possível processar a resposta da IA. Tente novamente com menos dados ou selecione um pote específico.'
+        )
+      }
+    } else {
+      throw new Error('Resposta da IA em formato inválido. Tente novamente.')
+    }
+  }
+
+  return JSON.stringify(parsed)
 }

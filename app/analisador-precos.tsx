@@ -296,7 +296,12 @@ export default function AnalisadorPrecosScreen() {
       setLoading(false)
     } catch (err: any) {
       setLoading(false)
-      Alert.alert('Erro', String(err))
+      const msg = String(err).replace('Error: ', '')
+      Alert.alert(
+        'Não foi possível analisar',
+        msg || 'Erro desconhecido. Tente novamente.',
+        [{ text: 'OK' }]
+      )
     }
   }
 
