@@ -54,6 +54,41 @@ export async function buscarDadosParaAnalise(
   return allTransactions
 }
 
+function expandirResposta(compacto: any): any {
+  if (!compacto || !compacto.itens) return compacto
+
+  return {
+    itens: (compacto.itens || []).map((item: any) => ({
+      descricao: item.d || item.descricao || '',
+      categoria: item.cat || item.categoria || '',
+      estabelecimentos: (item.est || item.estabelecimentos || []).map((e: any) => ({
+        nome: e.n || e.nome || '',
+        preco_minimo: e.min ?? e.preco_minimo ?? 0,
+        preco_medio: e.med ?? e.preco_medio ?? 0,
+        preco_maximo: e.max ?? e.preco_maximo ?? 0,
+        vezes: e.v ?? e.vezes ?? 0,
+        tendencia: e.t || e.tendencia || 'estavel',
+      })),
+      melhor_opcao: item.melhor || item.melhor_opcao || '',
+      pior_opcao: item.pior || item.pior_opcao || '',
+      economia_mensal_potencial: item.eco ?? item.economia_mensal_potencial ?? 0,
+      insight: item.ins || item.insight || '',
+    })),
+    resumo: {
+      total_itens_analisados:
+        compacto.res?.total ?? compacto.resumo?.total_itens_analisados ?? compacto.itens?.length ?? 0,
+      economia_total_potencial:
+        compacto.res?.eco_total ?? compacto.resumo?.economia_total_potencial ?? 0,
+      estabelecimento_mais_barato:
+        compacto.res?.mais_barato || compacto.resumo?.estabelecimento_mais_barato || '',
+      estabelecimento_mais_caro:
+        compacto.res?.mais_caro || compacto.resumo?.estabelecimento_mais_caro || '',
+      recomendacao_principal:
+        compacto.res?.rec || compacto.resumo?.recomendacao_principal || '',
+    },
+  }
+}
+
 export async function analisarPrecos(
   transactions: any[],
   questionario: {
@@ -63,7 +98,6 @@ export async function analisarPrecos(
   },
   apiKey: string
 ): Promise<string> {
-  // Agrupar por descrição — só itens com 3+ ocorrências
   const grupos: Record<string, any[]> = {}
   transactions.forEach(t => {
     const chave = t.description.toLowerCase().trim()
@@ -77,13 +111,13 @@ export async function analisarPrecos(
       descricao: desc,
       ocorrencias: items.length,
       transacoes: items.map(t => ({
-        valor: Number(t.amount),
-        estabelecimento: t.merchant,
-        data: t.date,
+        v: Number(t.amount),
+        e: t.merchant,
+        d: t.date.substring(0, 7),
       })),
     }))
     .sort((a, b) => b.ocorrencias - a.ocorrencias)
-    .slice(0, 20)
+    .slice(0, 10)
 
   console.log('[Analisador] Total transactions:', transactions.length)
   console.log('[Analisador] Itens para análise:', itensRelevantes.length)
@@ -94,61 +128,22 @@ export async function analisarPrecos(
     )
   }
 
-  const prompt = `
-Você é um especialista em análise de preços e comportamento de consumo.
-Analise os dados de compras abaixo e gere uma análise comparativa de preços.
-Considere APENAS os dados fornecidos — são de ciclos encerrados e mês atual.
+  const prompt = `Analise preços de compras e retorne JSON compacto.
 
-DADOS DAS COMPRAS (ciclos fechados + mês atual):
-${JSON.stringify(itensRelevantes, null, 2)}
+DADOS:
+${JSON.stringify(itensRelevantes, null, 1)}
 
-PREFERÊNCIAS DO USUÁRIO:
-Pote analisado: ${questionario.pote || 'Todos'}
-Principal preocupação: ${questionario.preocupacao.opcao || 'não informado'}
-${questionario.preocupacao.comentario ? `Detalhe: ${questionario.preocupacao.comentario}` : ''}
-Foco da análise: ${questionario.foco.opcao || 'não informado'}
-${questionario.foco.comentario ? `Detalhe: ${questionario.foco.comentario}` : ''}
+PREFERÊNCIAS:
+Pote: ${questionario.pote || 'Todos'}
+Preocupação: ${questionario.preocupacao.opcao || 'não informado'}${questionario.preocupacao.comentario ? ` — ${questionario.preocupacao.comentario}` : ''}
+Foco: ${questionario.foco.opcao || 'não informado'}${questionario.foco.comentario ? ` — ${questionario.foco.comentario}` : ''}
 
-INSTRUÇÕES:
-1. Agrupe itens similares mesmo com nomes diferentes (ex: "COCA COLA 2L" e "REFRI COCA 2L" são o mesmo)
-2. Para cada grupo, calcule min/média/max por estabelecimento
-3. Considere apenas itens comprados 3+ vezes
-4. Identifique padrões de variação de preço
-5. Calcule economia potencial mensal
+IMPORTANTE: Retorne JSON COMPACTO e COMPLETO. Máximo 5 itens no array "itens". Priorize itens com maior variação de preço. Máximo 3 estabelecimentos por item. O JSON DEVE estar 100% completo e fechado. NÃO corte a resposta.
 
-RETORNE UM JSON com esta estrutura EXATA:
-{
-  "itens": [
-    {
-      "descricao": "Nome do produto normalizado",
-      "categoria": "categoria do produto",
-      "estabelecimentos": [
-        {
-          "nome": "Nome do estabelecimento",
-          "preco_minimo": 0.00,
-          "preco_medio": 0.00,
-          "preco_maximo": 0.00,
-          "vezes": 0,
-          "tendencia": "estavel|subindo|descendo"
-        }
-      ],
-      "melhor_opcao": "Nome do estabelecimento mais barato",
-      "pior_opcao": "Nome do estabelecimento mais caro",
-      "economia_mensal_potencial": 0.00,
-      "insight": "Observação específica sobre este item"
-    }
-  ],
-  "resumo": {
-    "total_itens_analisados": 0,
-    "economia_total_potencial": 0.00,
-    "estabelecimento_mais_barato": "nome",
-    "estabelecimento_mais_caro": "nome",
-    "item_maior_variacao": "nome do item",
-    "recomendacao_principal": "texto da recomendação"
-  }
-}
+Retorne EXATAMENTE este JSON (sem campos extras):
+{"itens":[{"d":"nome produto","cat":"categoria","est":[{"n":"estabelecimento","min":0.00,"med":0.00,"max":0.00,"v":0,"t":"estavel"}],"melhor":"mais barato","pior":"mais caro","eco":0.00,"ins":"insight curto"}],"res":{"total":0,"eco_total":0.00,"mais_barato":"nome","mais_caro":"nome","rec":"recomendação curta"}}
 
-Retorne APENAS o JSON, sem texto adicional.`
+REGRA CRÍTICA: O JSON deve estar 100% completo com todas as chaves fechadas. Se não couber todos os itens, retorne menos itens mas o JSON DEVE estar completo e válido.`
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -159,7 +154,7 @@ Retorne APENAS o JSON, sem texto adicional.`
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 16000,
+          maxOutputTokens: 4096,
           responseMimeType: 'application/json',
         },
       }),
@@ -177,12 +172,9 @@ Retorne APENAS o JSON, sem texto adicional.`
   console.log('[Analisador] Raw preview:', rawText.substring(0, 200))
 
   if (!rawText || rawText.trim().length === 0) {
-    throw new Error(
-      'Gemini retornou resposta vazia. Verifique sua API key e tente novamente.'
-    )
+    throw new Error('Gemini retornou resposta vazia. Verifique sua API key e tente novamente.')
   }
 
-  // Limpar markdown se vier com ```json
   let cleanText = rawText.trim()
   if (cleanText.startsWith('```json')) {
     cleanText = cleanText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
@@ -197,7 +189,6 @@ Retorne APENAS o JSON, sem texto adicional.`
     console.error('[Analisador] Parse error:', parseErr)
     console.error('[Analisador] Text que falhou:', cleanText.substring(0, 500))
 
-    // Tentar extrair JSON parcial se foi cortado — procurar último } válido
     const lastBrace = cleanText.lastIndexOf('}')
     if (lastBrace > 0) {
       try {
@@ -212,5 +203,6 @@ Retorne APENAS o JSON, sem texto adicional.`
     }
   }
 
-  return JSON.stringify(parsed)
+  const expandido = expandirResposta(parsed)
+  return JSON.stringify(expandido)
 }
