@@ -103,7 +103,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 **NFC-e states** (`lib/nfce-states.ts`) — multi-state support: RJ (33), SP (35), MG (31). `extractStateCode(qrData)` reads the first 2 digits of the 44-digit access key embedded in the QR Code URL (`?p=KEY|...`), with domain-based and raw-key fallbacks. `getStateByCode` / `isStateSupported` / `STATE_NAMES` (all 27 states). Each `NFCeState` entry has `isFinalUrl()` and `isRedirectUrl()` functions used by `NFCeWebView` for URL-aware injection. To add a new state: add an entry to `NFCE_STATES` with its code, portal URL, and URL detection functions.
 
 **OCR / NFC-e** (`app/ocr.tsx`) — menu-first flow with two paths:
-1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → `extractStateCode()` detects state from access key → unsupported states show Alert with OCR fallback → `sanitizeNFCeUrl()` fixes double-protocol and encodes `|` → `nfceUrl` + `nfceState` stored in state → `NFCeWebView` renders with state-aware URL detection. Menu shows "Suporta cupons de RJ, SP e MG".
+1. **QR Code → SEFAZ** (recommended): `QRCameraScanner` reads QR Code → `extractStateCode()` detects state → `extractChaveAcesso()` extracts the 44-digit access key from `?p=KEY|...` → unsupported states show Alert with OCR fallback → `sanitizeNFCeUrl()` encodes `|` as `%7C` in the query string → `nfceUrl` + `nfceState` + `nfceChave` + `nfceStateCode` stored in state → `NFCeWebView` renders with state-aware URL detection. Menu shows "Suporta cupons de RJ, SP e MG".
 2. **OCR** (fallback): photograph via `expo-image-picker` → base64 → Edge Function `process-receipt` → Google Vision. Also auto-triggered if QR fails (step `ocr_camera` opens camera via `useEffect`).
 Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), pot detail (`defaultPotId`, `defaultPotName`, `cycleDate`). `imageToBase64` uses `expo-file-system/legacy`.
 
@@ -111,11 +111,14 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 
 **Review step** — `ReviewItem` type: `{ id, name, valueCents: number, quantity, unit, potId }`. Value stored as integer cents; `formatCents(cents)` formats for display; `digitsOnly` strips non-numeric for the mask. Payment method selector (`paymentMethod` state, default `'debit'`) is pre-filled from `result.payment_method` (NFCe path) and editable via chip buttons (debit/credit/pix/cash/transfer). `handleSave` uses `paymentMethod` for all transactions (both simplified and per-item). `updateItem(id, changes)` is id-based (not index-based). `addItem` uses `Date.now()` as id.
 
-**NFCeWebView** (`components/NFCeWebView.tsx`) — accepts optional `state?: NFCeState` prop; uses `state.isRedirectUrl()` / `state.isFinalUrl()` when provided, falls back to generic functions for unknown states. Injection guard pattern:
+**NFCeWebView** (`components/NFCeWebView.tsx`) — accepts `state?: NFCeState`, `chaveAcesso?: string | null`, `stateCode?: string` props. Uses `state.isRedirectUrl()` / `state.isFinalUrl()` when provided, falls back to generic functions. Injection guard pattern:
 - `scriptInjectedRef` — prevents duplicate injections; reset when `onNavigationStateChange` detects transition from redirect → result URL
 - `loadEndTimerRef` — 1s delay after `onLoadEnd` to let jQuery Mobile start rendering before polling begins
 - `finalUrlRef` — tracks current URL after redirects via `onNavigationStateChange`
 - `sawRedirectRef` — records whether the redirect URL was seen, so the result-page transition can be detected and `scriptInjectedRef` reset correctly
+- `tentativaAlternativa` state — on `timeout` error: if `chaveAcesso` is set and hasn't tried alternative yet, navigates to `buildChaveAcessoUrl(chave, stateCode)` via `window.location.href`; resets injection flags; only shows error after both attempts fail
+- `buildChaveAcessoUrl(chave, stateCode)` — returns SEFAZ direct-access URL by state: RJ (`consultaChaveAcesso.faces`), SP (`ConsultaChaveDeAcesso.aspx`), MG (`consultaChaveAcesso.xhtml`)
+- `checkIsFinal` also recognizes `consultaChaveAcesso`/`ConsultaChaveDeAcesso` URLs as final result pages
 - `onLoadEnd` skips injection if still on redirect URL; only injects on the final result page
 - Loading overlay shows `Consultando SEFAZ-{UF}...` when state is known
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure

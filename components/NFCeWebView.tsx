@@ -8,6 +8,8 @@ import type { NFCeState } from '../lib/nfce-states'
 type Props = {
   url: string
   state?: NFCeState | null
+  chaveAcesso?: string | null
+  stateCode?: string
   onSuccess: (result: NFCeResult) => void
   onError: (message: string) => void
   onCancel: () => void
@@ -23,8 +25,12 @@ export function sanitizeNFCeUrl(raw: string): string {
   }
   const idx = url.indexOf('?')
   if (idx > -1) {
-    url = url.substring(0, idx + 1) + url.substring(idx + 1).replace(/\|/g, '%7C')
+    const base = url.substring(0, idx)
+    const query = url.substring(idx + 1)
+    url = base + '?' + query.replace(/\|/g, '%7C')
   }
+  console.log('[URL] Original:', raw)
+  console.log('[URL] Sanitizada:', url)
   return url
 }
 
@@ -38,9 +44,24 @@ function genericIsFinalResultUrl(url: string): boolean {
     url.includes('resultadoQRCode') ||
     url.includes('resultadoNfce') ||
     url.includes('consultaChaveAcesso') ||
+    url.includes('ConsultaChaveDeAcesso') ||
+    url.includes('consultaChaveAcesso.xhtml') ||
     url.includes('consultaDFe') ||
     (!genericIsRedirectUrl(url) && url !== 'about:blank' && url.length > 10)
   )
+}
+
+function buildChaveAcessoUrl(chave: string, stateCode: string): string {
+  if (stateCode === '33') {
+    return 'https://consultadfe.fazenda.rj.gov.br/consultaDFe/paginas/consultaChaveAcesso.faces'
+  }
+  if (stateCode === '35') {
+    return 'https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica/Paginas/ConsultaChaveDeAcesso.aspx'
+  }
+  if (stateCode === '31') {
+    return 'https://portalsped.fazenda.mg.gov.br/portalnfce/system/pages/consultaNFCe/consultaChaveAcesso.xhtml'
+  }
+  return 'https://consultadfe.fazenda.rj.gov.br/consultaDFe/paginas/consultaChaveAcesso.faces'
 }
 
 // Internal polling script — waits up to 15s for jQuery Mobile to render the body
@@ -187,11 +208,12 @@ const EXTRACT_SCRIPT = `
 })()
 `
 
-export default function NFCeWebView({ url, state, onSuccess, onError, onCancel }: Props) {
+export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSuccess, onError, onCancel }: Props) {
   const webViewRef = useRef<WebView>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('Conectando à SEFAZ...')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [tentativaAlternativa, setTentativaAlternativa] = useState(false)
 
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -201,7 +223,22 @@ export default function NFCeWebView({ url, state, onSuccess, onError, onCancel }
   )
 
   const checkIsRedirect = (u: string) => state ? state.isRedirectUrl(u) : genericIsRedirectUrl(u)
-  const checkIsFinal = (u: string) => state ? state.isFinalUrl(u) : genericIsFinalResultUrl(u)
+  const checkIsFinal = (u: string) => {
+    if (state) {
+      return state.isFinalUrl(u) ||
+        u.includes('consultaChaveAcesso') ||
+        u.includes('ConsultaChaveDeAcesso') ||
+        u.includes('consultaChaveAcesso.xhtml')
+    }
+    return genericIsFinalResultUrl(u)
+  }
+
+  // Resetar tentativaAlternativa e flags quando URL muda
+  useEffect(() => {
+    setTentativaAlternativa(false)
+    scriptInjectedRef.current = false
+    finalUrlRef.current = sanitizeNFCeUrl(url)
+  }, [url])
 
   // Elapsed-seconds counter
   useEffect(() => {
@@ -354,24 +391,49 @@ export default function NFCeWebView({ url, state, onSuccess, onError, onCancel }
             const data = JSON.parse(nativeEvent.data) as any
             console.log('[WebView] Mensagem | success:', data.success, '| items:', data.items?.length ?? 0, '| error:', data.error)
 
-            setLoading(false)
-
             if (data.error === 'blocked') {
+              setLoading(false)
               onError('Acesso bloqueado pela SEFAZ.\n\nTente em uma rede Wi-Fi diferente\nou use a opção OCR.')
               return
             }
 
             if (data.error === 'timeout') {
-              onError('A página da SEFAZ demorou para carregar.\nVerifique sua conexão e tente novamente.')
+              console.log('[WebView] Timeout detectado')
+
+              if (chaveAcesso && !tentativaAlternativa) {
+                console.log('[WebView] Tentando URL alternativa com chave:', chaveAcesso.substring(0, 10))
+                const altUrl = buildChaveAcessoUrl(chaveAcesso, stateCode || '33')
+                console.log('[WebView] URL alternativa:', altUrl)
+
+                setTentativaAlternativa(true)
+                setLoadingMessage('Tentando consulta por chave de acesso...')
+                scriptInjectedRef.current = false
+                sawRedirectRef.current = false
+                finalUrlRef.current = altUrl
+
+                webViewRef.current?.injectJavaScript(
+                  `window.location.href = '${altUrl}'; true;`
+                )
+                return
+              }
+
+              setLoading(false)
+              onError(
+                'Não foi possível carregar o cupom.\n\n' +
+                'O portal da SEFAZ demorou para responder.\n' +
+                'Verifique sua conexão e tente novamente.'
+              )
               return
             }
 
             if (!data.success || !data.items?.length) {
+              setLoading(false)
               onError(data.error || 'Não foi possível extrair os itens.\nTente a opção OCR como alternativa.')
               return
             }
 
             console.log('[WebView] Extração bem-sucedida! Items:', data.items.length, '| merchant:', data.merchant)
+            setLoading(false)
             onSuccess(data as NFCeResult)
           } catch (e) {
             console.log('[WebView] Erro parse:', String(e))

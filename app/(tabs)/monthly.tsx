@@ -266,7 +266,7 @@ export default function MonthlyScreen() {
         )}
 
         {/* Banner: mês futuro */}
-        {cycleOffset > 0 && (
+        {offset > 0 && (
           <View style={{
             backgroundColor: '#EEF2FF', borderRadius: 10, padding: 8, marginBottom: 10,
             flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -551,7 +551,7 @@ export default function MonthlyScreen() {
             </View>
 
             {/* Mês futuro — não pode encerrar */}
-            {cycleOffset > 0 && (
+            {offset > 0 && (
               <View style={{
                 backgroundColor: '#EEF2FF', borderRadius: 10, padding: 8, marginBottom: 12,
                 flexDirection: 'row', alignItems: 'center', gap: 6,

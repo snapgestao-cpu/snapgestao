@@ -24,6 +24,21 @@ import {
 } from '../lib/nfce-states'
 import type { NFCeState } from '../lib/nfce-states'
 
+function extractChaveAcesso(url: string): string | null {
+  try {
+    const match = url.match(/[?&]p=([^&]+)/)
+    if (!match) return null
+    const decoded = decodeURIComponent(match[1])
+    const chave = decoded.split('|')[0].replace(/\D/g, '')
+    console.log('[Chave] Extraída:', chave)
+    console.log('[Chave] Tamanho:', chave.length)
+    if (chave.length >= 43) return chave
+    return null
+  } catch {
+    return null
+  }
+}
+
 type OCRStep = 'menu' | 'qr_camera' | 'ocr_camera' | 'processing' | 'review' | 'saving'
 
 type ReviewItem = {
@@ -75,6 +90,8 @@ export default function OCRScreen() {
   const [processingMessage, setProcessingMessage] = useState('Lendo o cupom...')
   const [nfceUrl, setNfceUrl] = useState<string | null>(null)
   const [nfceState, setNfceState] = useState<NFCeState | null>(null)
+  const [nfceChave, setNfceChave] = useState<string | null>(null)
+  const [nfceStateCode, setNfceStateCode] = useState<string>('33')
   const [paymentMethod, setPaymentMethod] = useState<string>('debit')
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [globalPotId, setGlobalPotId] = useState<string | null>(null)
@@ -173,15 +190,21 @@ export default function OCRScreen() {
       return
     }
 
+    const chave = extractChaveAcesso(rawUrl)
+    console.log('[QR] Chave extraída:', chave)
+
     await loadPots()
     setNfceUrl(sanitizeNFCeUrl(rawUrl))
     setNfceState(state)
+    setNfceChave(chave)
+    setNfceStateCode(stateCode || '33')
     setStep('processing')
   }
 
   const handleNFCeSuccess = (result: NFCeResult) => {
     setNfceUrl(null)
     setNfceState(null)
+    setNfceChave(null)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
@@ -202,6 +225,7 @@ export default function OCRScreen() {
   const handleNFCeError = (msg: string) => {
     setNfceUrl(null)
     setNfceState(null)
+    setNfceChave(null)
     Alert.alert(
       'Não foi possível ler o cupom',
       msg,
@@ -372,9 +396,11 @@ export default function OCRScreen() {
         <NFCeWebView
           url={nfceUrl}
           state={nfceState}
+          chaveAcesso={nfceChave}
+          stateCode={nfceStateCode}
           onSuccess={handleNFCeSuccess}
           onError={handleNFCeError}
-          onCancel={() => { setNfceUrl(null); setNfceState(null); setStep('menu') }}
+          onCancel={() => { setNfceUrl(null); setNfceState(null); setNfceChave(null); setStep('menu') }}
         />
       )
     }
