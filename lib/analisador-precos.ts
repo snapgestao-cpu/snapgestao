@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getMesesValidos } from './getMesesValidos'
+import { AIProvider, callAI } from './ai-provider'
 
 export type ItemPreco = {
   descricao: string
@@ -60,10 +61,9 @@ export async function analisarPrecos(
     pote: string | null
     preocupacao: { opcao: string | null; comentario: string }
     foco: { opcao: string | null; comentario: string }
-  }
+  },
+  provider: AIProvider = 'claude'
 ): Promise<string> {
-  const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || ''
-  if (!apiKey) throw new Error('Configure EXPO_PUBLIC_ANTHROPIC_API_KEY no .env')
 
   const grupos: Record<string, any[]> = {}
   transactions.forEach(t => {
@@ -138,34 +138,11 @@ Uma ação específica e imediata que o usuário deve tomar baseada nos dados an
 Use linguagem amigável e motivadora.
 Cite sempre valores reais dos dados.`
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    console.error('[Analisador] API error:', err)
-    throw new Error('Erro na API de análise. Tente novamente.')
-  }
-
-  const data = await response.json()
-  const relatorio = data.content?.[0]?.text || ''
+  const relatorio = await callAI(provider, prompt)
 
   console.log('[Analisador] Relatório gerado:', relatorio.length, 'chars')
 
-  if (!relatorio.trim()) {
-    throw new Error('Resposta vazia. Tente novamente.')
-  }
+  if (!relatorio.trim()) throw new Error('Resposta vazia. Tente novamente.')
 
   return relatorio
 }

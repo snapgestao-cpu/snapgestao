@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 import { getMesesValidos } from './getMesesValidos'
+import { AIProvider, callAI } from './ai-provider'
 
 export type QuestionarioRespostas = {
   objetivo: string
@@ -185,36 +186,11 @@ Gere o relatório completo do Mentor Financeiro.`
 
 export async function gerarRelatorioMentor(
   respostas: QuestionarioRespostas,
-  ctx: ContextoFinanceiro
+  ctx: ContextoFinanceiro,
+  provider: AIProvider = 'gemini'
 ): Promise<string> {
-  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
-  if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada')
-
   const prompt = buildPrompt(respostas, ctx)
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: MENTOR_SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 8192,
-        },
-      }),
-    }
-  )
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Gemini API error ${response.status}: ${err.slice(0, 200)}`)
-  }
-
-  const data = await response.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('Resposta vazia da IA')
+  const text = await callAI(provider, prompt, MENTOR_SYSTEM_PROMPT)
+  if (!text.trim()) throw new Error('Resposta vazia da IA')
   return text
 }

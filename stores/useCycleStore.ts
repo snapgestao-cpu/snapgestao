@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { AIProvider } from '../lib/ai-provider'
 
 type CycleStore = {
   cycleOffset: number
@@ -7,6 +8,8 @@ type CycleStore = {
   setViewMode: (mode: 'tabela' | 'potes') => void
   alertsExpanded: boolean
   setAlertsExpanded: (v: boolean) => void
+  aiProvider: AIProvider
+  setAiProvider: (p: AIProvider) => void
 }
 
 export const useCycleStore = create<CycleStore>((set) => ({
@@ -16,4 +19,6 @@ export const useCycleStore = create<CycleStore>((set) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   alertsExpanded: true,
   setAlertsExpanded: (v) => set({ alertsExpanded: v }),
+  aiProvider: 'claude',
+  setAiProvider: (p) => set({ aiProvider: p }),
 }))

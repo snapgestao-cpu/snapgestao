@@ -9,6 +9,8 @@ import { Colors } from '../constants/colors'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { buscarDadosParaAnalise, analisarPrecos } from '../lib/analisador-precos'
+import { useCycleStore } from '../stores/useCycleStore'
+import AIProviderSelector from '../components/AIProviderSelector'
 
 // ── Perguntas ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ type Resposta = { opcao: string | null; comentario: string }
 export default function AnalisadorPrecosScreen() {
   const insets = useSafeAreaInsets()
   const user = useAuthStore(s => s.user)
+  const { aiProvider, setAiProvider } = useCycleStore()
 
   const [perguntaAtual, setPerguntaAtual] = useState(0)
   const [respostas, setRespostas] = useState<Record<string, Resposta>>({})
@@ -165,7 +168,8 @@ export default function AnalisadorPrecosScreen() {
           pote: nomePote,
           preocupacao: respostas['preocupacao'] || { opcao: null, comentario: '' },
           foco: respostas['foco'] || { opcao: null, comentario: '' },
-        }
+        },
+        aiProvider
       )
 
       setRelatorio(textoRelatorio)
@@ -284,6 +288,15 @@ export default function AnalisadorPrecosScreen() {
         contentContainerStyle={{ padding: 24, paddingBottom: insets.bottom + 100 }}
         keyboardShouldPersistTaps="handled"
       >
+        {perguntaAtual === 0 && (
+          <View style={{
+            backgroundColor: Colors.white, borderRadius: 16,
+            padding: 16, marginHorizontal: 0, marginBottom: 16,
+          }}>
+            <AIProviderSelector selected={aiProvider} onSelect={setAiProvider} />
+          </View>
+        )}
+
         <Animated.View style={{ opacity: opacityAnim, transform: [{ translateY: slideAnim }] }}>
           <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 16 }}>
             {pergunta.emoji}

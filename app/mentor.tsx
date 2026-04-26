@@ -17,6 +17,8 @@ import {
   gerarRelatorioMentor,
 } from '../lib/mentor-financeiro'
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
+import { useCycleStore } from '../stores/useCycleStore'
+import AIProviderSelector from '../components/AIProviderSelector'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +101,7 @@ type Step = 'intro' | 'quiz' | 'generating' | 'result' | 'error'
 export default function MentorScreen() {
   const insets = useSafeAreaInsets()
   const { user } = useAuthStore()
+  const { aiProvider, setAiProvider } = useCycleStore()
 
   const [step, setStep] = useState<Step>('intro')
   const [currentQ, setCurrentQ] = useState(0)
@@ -165,7 +168,7 @@ export default function MentorScreen() {
     setStep('generating')
     try {
       const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1)
-      const texto = await gerarRelatorioMentor(r, ctx)
+      const texto = await gerarRelatorioMentor(r, ctx, aiProvider)
       setRelatorio(texto)
 
       try {
@@ -273,6 +276,14 @@ export default function MentorScreen() {
             <Text style={styles.disclaimerText}>
               Responda 5 perguntas rápidas e a IA vai gerar seu relatório personalizado em segundos.
             </Text>
+          </View>
+
+          <View style={{
+            backgroundColor: Colors.white, borderRadius: 16,
+            padding: 16, marginBottom: 16,
+            borderWidth: 1, borderColor: Colors.border,
+          }}>
+            <AIProviderSelector selected={aiProvider} onSelect={setAiProvider} />
           </View>
         </ScrollView>
 
