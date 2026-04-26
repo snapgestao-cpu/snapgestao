@@ -278,17 +278,15 @@ export default function AnalisadorPrecosScreen() {
         return
       }
 
-      setLoadingMsg(`Gemini está analisando ${transactions.length} compras...`)
+      setLoadingMsg('Analisando preços em lotes...')
 
-      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || ''
       const jsonResultado = await analisarPrecos(
         transactions,
         {
           pote: nomePote,
           preocupacao: respostas['preocupacao'] || { opcao: null, comentario: '' },
           foco: respostas['foco'] || { opcao: null, comentario: '' },
-        },
-        apiKey
+        }
       )
 
       const parsed = JSON.parse(jsonResultado)
