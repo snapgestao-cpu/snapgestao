@@ -347,12 +347,12 @@ export default function MonthlyScreen() {
                     return (
                       <View style={styles.tableCard}>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          <View style={{ minWidth: 420 }}>
+                          <View style={{ minWidth: 365 }}>
                             <View style={styles.tableHeaderRow}>
-                              <Text style={[styles.tableHCell, { width: 140, paddingLeft: 8 }]}>Pote</Text>
-                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.primary }]}>Orçado</Text>
-                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.danger }]}>Gasto</Text>
-                              <Text style={[styles.tableHCell, { width: 100, textAlign: 'right', color: Colors.success, paddingRight: 8 }]}>Saldo</Text>
+                              <Text style={[styles.tableHCell, { width: 110, paddingLeft: 8 }]}>Pote</Text>
+                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.primary }]}>Orçado</Text>
+                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.danger }]}>Gasto</Text>
+                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.success, paddingRight: 8 }]}>Saldo</Text>
                             </View>
                             {summary.potSummaries.map((pot, index) => (
                               <TouchableOpacity
@@ -364,23 +364,23 @@ export default function MonthlyScreen() {
                                 activeOpacity={0.7}
                                 style={[styles.tableDataRow, { backgroundColor: index % 2 === 0 ? Colors.white : Colors.background }]}
                               >
-                                <View style={{ width: 140, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 4 }}>
+                                <View style={{ width: 110, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 4 }}>
                                   <Text style={{ fontSize: 14 }}>{getPotIcon(pot.name)}</Text>
                                   <Text style={styles.tableNameCell} numberOfLines={1}>{pot.name}</Text>
                                   <Text style={{ fontSize: 10, color: Colors.textMuted }}>›</Text>
                                 </View>
-                                <Text style={[styles.tableValueCell, { width: 100 }]}>{brl(pot.limit_amount || 0)}</Text>
-                                <Text style={[styles.tableValueCell, { width: 100, color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>{brl(pot.spent)}</Text>
-                                <Text style={[styles.tableValueCell, { width: 100, paddingRight: 8, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
+                                <Text style={[styles.tableValueCell, { width: 85 }]}>{brl(pot.limit_amount || 0)}</Text>
+                                <Text style={[styles.tableValueCell, { width: 85, color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>{brl(pot.spent)}</Text>
+                                <Text style={[styles.tableValueCell, { width: 85, paddingRight: 8, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
                                   {brl(pot.remaining)}
                                 </Text>
                               </TouchableOpacity>
                             ))}
                             <View style={styles.tableTotalRow}>
-                              <Text style={[styles.tableTotalCell, { width: 140, paddingLeft: 8 }]}>TOTAL</Text>
-                              <Text style={[styles.tableTotalCell, { width: 100 }]}>{brl(totalOrcado)}</Text>
-                              <Text style={[styles.tableTotalCell, { width: 100, color: Colors.danger }]}>{brl(totalGasto)}</Text>
-                              <Text style={[styles.tableTotalCell, { width: 100, paddingRight: 8, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
+                              <Text style={[styles.tableTotalCell, { width: 110, paddingLeft: 8 }]}>TOTAL</Text>
+                              <Text style={[styles.tableTotalCell, { width: 85 }]}>{brl(totalOrcado)}</Text>
+                              <Text style={[styles.tableTotalCell, { width: 85, color: Colors.danger }]}>{brl(totalGasto)}</Text>
+                              <Text style={[styles.tableTotalCell, { width: 85, paddingRight: 8, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
                             </View>
                           </View>
                         </ScrollView>

@@ -146,11 +146,15 @@ export default function PotsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header: nome + nav mês na mesma linha */}
+      {/* Header: tudo em uma linha */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋</Text>
+        <Text style={styles.greeting} numberOfLines={1}>
+          Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋
+        </Text>
         <View style={styles.monthNav}>
-          <TouchableOpacity onPress={() => setCycleOffset(cycleOffset - 1)} style={styles.navArrowBtn}>
+          <TouchableOpacity
+            onPress={() => setCycleOffset(cycleOffset - 1)}
+            style={styles.navArrowBtn}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => { if (cycleOffset !== 0) setCycleOffset(0) }}>
@@ -166,21 +170,18 @@ export default function PotsScreen() {
             <Text style={styles.navArrow}>›</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={() => setShowNewPot(true)} style={styles.newPotBtn}>
+          <Text style={styles.newPotBtnPlus}>+</Text>
+          <Text style={styles.newPotBtnText}>Pote</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Subheader: banner mês anterior + botão novo pote */}
-      <View style={styles.subHeader}>
-        {cycleOffset < 0 && (
-          <View style={styles.prevMonthBanner}>
-            <Text style={{ fontSize: 12 }}>📅</Text>
-            <Text style={styles.prevMonthText}>Mês anterior</Text>
-          </View>
-        )}
-      </View>
-      <TouchableOpacity onPress={() => setShowNewPot(true)} style={styles.newPotBtn}>
-        <Text style={styles.newPotBtnPlus}>+</Text>
-        <Text style={styles.newPotBtnText}>Novo Pote</Text>
-      </TouchableOpacity>
+      {cycleOffset < 0 && (
+        <View style={styles.prevMonthBanner}>
+          <Text style={{ fontSize: 12 }}>📅</Text>
+          <Text style={styles.prevMonthText}>Mês anterior</Text>
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
@@ -252,36 +253,31 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: 16, paddingVertical: 12, gap: 8,
   },
-  greeting: { fontSize: 22, fontWeight: '800', color: Colors.textDark },
+  greeting: { fontSize: 20, fontWeight: '800', color: Colors.textDark, flex: 1 },
   monthNav: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.white, borderRadius: 24,
-    paddingHorizontal: 6, paddingVertical: 4,
-    borderWidth: 1, borderColor: Colors.border, gap: 4,
+    backgroundColor: Colors.white, borderRadius: 20,
+    paddingHorizontal: 4, paddingVertical: 4,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  navArrowBtn: { padding: 4 },
-  navArrow: { fontSize: 24, color: Colors.primary },
-  navLabel: { fontSize: 15, fontWeight: '700', paddingHorizontal: 6 },
-  subHeader: {
-    paddingHorizontal: 16, paddingBottom: 4,
-  },
+  navArrowBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  navArrow: { fontSize: 20, color: Colors.primary, fontWeight: '600' },
+  navLabel: { fontSize: 13, fontWeight: '700', paddingHorizontal: 4 },
   prevMonthBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: Colors.lightAmber,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 16, paddingVertical: 5,
   },
   prevMonthText: { fontSize: 11, color: Colors.warning, fontWeight: '600' },
   newPotBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.lightBlue,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 24,
-    marginTop: 8, alignSelf: 'flex-start', marginLeft: 16, marginBottom: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
   },
-  newPotBtnPlus: { fontSize: 18, color: Colors.primary, fontWeight: '700' },
-  newPotBtnText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+  newPotBtnPlus: { fontSize: 16, color: '#fff', fontWeight: '700' },
+  newPotBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
   potName: {
