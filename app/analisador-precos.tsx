@@ -50,127 +50,6 @@ const PERGUNTAS = [
 
 type Resposta = { opcao: string | null; comentario: string }
 
-// ── Componente de tabela por item ─────────────────────────────────────────────
-
-function TabelaItem({ item }: { item: any }) {
-  const estabs: any[] = item.estabelecimentos || []
-  const ordenados = [...estabs].sort((a, b) => a.preco_medio - b.preco_medio)
-
-  function corEstab(index: number): string {
-    if (index === 0) return '#1D9E75'
-    if (index === ordenados.length - 1) return '#E24B4A'
-    return '#BA7517'
-  }
-
-  function emojiTendencia(t: string): string {
-    if (t === 'subindo') return '📈'
-    if (t === 'descendo') return '📉'
-    return '➡️'
-  }
-
-  const brl = (v: number) =>
-    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-  const emojiCategoria = (cat: string) => {
-    if (cat === 'bebida') return '🥤'
-    if (cat === 'alimento') return '🛒'
-    if (cat === 'limpeza') return '🧹'
-    return '📦'
-  }
-
-  return (
-    <View style={{
-      backgroundColor: Colors.white, borderRadius: 16,
-      padding: 16, marginBottom: 16,
-      shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
-    }}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Text style={{ fontSize: 20 }}>{emojiCategoria(item.categoria)}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.textDark, textTransform: 'capitalize' }}>
-            {item.descricao}
-          </Text>
-          <Text style={{ fontSize: 11, color: Colors.textMuted }}>
-            {estabs.reduce((s: number, e: any) => s + e.vezes, 0)} compras analisadas
-          </Text>
-        </View>
-        {item.economia_mensal_potencial > 0 && (
-          <View style={{ backgroundColor: '#EAF3DE', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
-            <Text style={{ fontSize: 11, color: '#1D9E75', fontWeight: '700' }}>
-              💰 {brl(item.economia_mensal_potencial)}/mês
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Tabela horizontal */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View>
-          {/* Cabeçalho */}
-          <View style={{
-            flexDirection: 'row', backgroundColor: Colors.background,
-            borderRadius: 8, paddingVertical: 6, marginBottom: 2,
-          }}>
-            <Text style={{ width: 140, fontSize: 11, fontWeight: '700', color: Colors.textMuted, paddingLeft: 8 }}>
-              Estabelecimento
-            </Text>
-            <Text style={{ width: 72, fontSize: 11, fontWeight: '700', color: '#1D9E75', textAlign: 'center' }}>Mínimo</Text>
-            <Text style={{ width: 72, fontSize: 11, fontWeight: '700', color: Colors.primary, textAlign: 'center' }}>Médio</Text>
-            <Text style={{ width: 72, fontSize: 11, fontWeight: '700', color: '#E24B4A', textAlign: 'center' }}>Máximo</Text>
-            <Text style={{ width: 48, fontSize: 11, fontWeight: '700', color: Colors.textMuted, textAlign: 'center' }}>Vezes</Text>
-            <Text style={{ width: 36, fontSize: 11, fontWeight: '700', color: Colors.textMuted, textAlign: 'center' }}>📊</Text>
-          </View>
-
-          {/* Linhas */}
-          {ordenados.map((estab: any, index: number) => (
-            <View key={estab.nome} style={{
-              flexDirection: 'row', paddingVertical: 8, alignItems: 'center',
-              backgroundColor: index % 2 === 0 ? Colors.white : Colors.background,
-              borderRadius: 6,
-            }}>
-              <View style={{ width: 140, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 6 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: corEstab(index) }} />
-                <Text style={{ fontSize: 12, color: Colors.textDark, flex: 1 }} numberOfLines={1}>
-                  {estab.nome}
-                </Text>
-              </View>
-              <Text style={{ width: 72, fontSize: 12, textAlign: 'center', color: '#1D9E75', fontWeight: '600' }}>
-                {brl(estab.preco_minimo)}
-              </Text>
-              <Text style={{ width: 72, fontSize: 12, textAlign: 'center', color: Colors.primary, fontWeight: '700' }}>
-                {brl(estab.preco_medio)}
-              </Text>
-              <Text style={{ width: 72, fontSize: 12, textAlign: 'center', color: '#E24B4A', fontWeight: '600' }}>
-                {brl(estab.preco_maximo)}
-              </Text>
-              <Text style={{ width: 48, fontSize: 12, textAlign: 'center', color: Colors.textMuted }}>
-                {estab.vezes}x
-              </Text>
-              <Text style={{ width: 36, fontSize: 14, textAlign: 'center' }}>
-                {emojiTendencia(estab.tendencia)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-
-      {/* Insight */}
-      {item.insight && (
-        <View style={{
-          backgroundColor: Colors.lightBlue, borderRadius: 10,
-          padding: 10, marginTop: 12, flexDirection: 'row', gap: 6,
-        }}>
-          <Text style={{ fontSize: 14 }}>💡</Text>
-          <Text style={{ fontSize: 12, color: Colors.primary, flex: 1, lineHeight: 18 }}>
-            {item.insight}
-          </Text>
-        </View>
-      )}
-    </View>
-  )
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function AnalisadorPrecosScreen() {
@@ -182,7 +61,7 @@ export default function AnalisadorPrecosScreen() {
   const [potes, setPotes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
-  const [resultado, setResultado] = useState<any>(null)
+  const [relatorio, setRelatorio] = useState<string | null>(null)
 
   const slideAnim = useRef(new Animated.Value(0)).current
   const opacityAnim = useRef(new Animated.Value(1)).current
@@ -280,7 +159,7 @@ export default function AnalisadorPrecosScreen() {
 
       setLoadingMsg('Analisando preços com IA...')
 
-      const jsonResultado = await analisarPrecos(
+      const textoRelatorio = await analisarPrecos(
         transactions,
         {
           pote: nomePote,
@@ -289,8 +168,7 @@ export default function AnalisadorPrecosScreen() {
         }
       )
 
-      const parsed = JSON.parse(jsonResultado)
-      setResultado(parsed)
+      setRelatorio(textoRelatorio)
       setLoading(false)
     } catch (err: any) {
       setLoading(false)
@@ -302,9 +180,6 @@ export default function AnalisadorPrecosScreen() {
       )
     }
   }
-
-  const brl = (v: number) =>
-    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   // ── LOADING ───────────────────────────────────────────────────────────────
 
@@ -328,107 +203,43 @@ export default function AnalisadorPrecosScreen() {
 
   // ── RESULTADO ─────────────────────────────────────────────────────────────
 
-  if (resultado) {
-    const resumo = resultado.resumo || {}
-    const itens: any[] = resultado.itens || []
-
+  if (relatorio) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.background }}>
         <View style={{
           backgroundColor: Colors.primary,
           paddingTop: insets.top + 8, paddingBottom: 16, paddingHorizontal: 20,
+          flexDirection: 'row', alignItems: 'center', gap: 12,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={() => router.back()}>
-              <Text style={{ color: '#fff', fontSize: 16 }}>‹ Voltar</Text>
-            </TouchableOpacity>
-            <Text style={{ flex: 1, color: '#fff', fontSize: 18, fontWeight: '700' }}>
-              🔍 Analisador de Preços
-            </Text>
-          </View>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={{ color: '#fff', fontSize: 16 }}>‹ Voltar</Text>
+          </TouchableOpacity>
+          <Text style={{ flex: 1, color: '#fff', fontSize: 18, fontWeight: '700' }}>
+            🔍 Análise de Preços
+          </Text>
         </View>
 
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
-
-          {/* Card de resumo */}
           <View style={{
-            backgroundColor: Colors.primary, borderRadius: 20,
-            padding: 20, marginBottom: 20,
+            backgroundColor: Colors.white, borderRadius: 20,
+            padding: 20, marginBottom: 16,
+            shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
           }}>
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 16 }}>
-              📊 Resumo da Análise
+            <Text style={{ fontSize: 14, color: Colors.textDark, lineHeight: 24 }}>
+              {relatorio}
             </Text>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-              <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 12 }}>
-                <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, marginBottom: 4 }}>
-                  💰 Economia potencial/mês
-                </Text>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
-                  {brl(resumo.economia_total_potencial || 0)}
-                </Text>
-              </View>
-              <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 12 }}>
-                <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, marginBottom: 4 }}>
-                  📦 Itens analisados
-                </Text>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
-                  {resumo.total_itens_analisados || itens.length}
-                </Text>
-              </View>
-            </View>
-
-            {resumo.estabelecimento_mais_barato && (
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                <Text style={{ color: '#fff', fontSize: 12 }}>
-                  🟢 Mais barato: <Text style={{ fontWeight: '700' }}>{resumo.estabelecimento_mais_barato}</Text>
-                </Text>
-              </View>
-            )}
-            {resumo.estabelecimento_mais_caro && (
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                <Text style={{ color: '#fff', fontSize: 12 }}>
-                  🔴 Mais caro: <Text style={{ fontWeight: '700' }}>{resumo.estabelecimento_mais_caro}</Text>
-                </Text>
-              </View>
-            )}
-            {resumo.recomendacao_principal && (
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10 }}>
-                <Text style={{ color: '#fff', fontSize: 12, lineHeight: 18 }}>
-                  💡 {resumo.recomendacao_principal}
-                </Text>
-              </View>
-            )}
           </View>
 
-          {/* Tabelas por item */}
-          <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.textDark, marginBottom: 12 }}>
-            Comparativo por item:
-          </Text>
-
-          {itens.length === 0 ? (
-            <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 24, alignItems: 'center' }}>
-              <Text style={{ fontSize: 32, marginBottom: 12 }}>🔍</Text>
-              <Text style={{ fontSize: 14, color: Colors.textMuted, textAlign: 'center' }}>
-                Não encontrei itens com 3 ou mais ocorrências para comparar.
-                Continue registrando seus gastos!
-              </Text>
-            </View>
-          ) : (
-            itens.map((item: any, index: number) => (
-              <TabelaItem key={index} item={item} />
-            ))
-          )}
-
-          {/* Nova análise */}
           <TouchableOpacity
-            onPress={() => { setResultado(null); setPerguntaAtual(0); setRespostas({}) }}
+            onPress={() => { setRelatorio(null); setPerguntaAtual(0); setRespostas({}) }}
             style={{
               backgroundColor: Colors.white, borderRadius: 16, padding: 16,
-              alignItems: 'center', borderWidth: 1.5, borderColor: Colors.primary, marginTop: 8,
+              alignItems: 'center', borderWidth: 1.5, borderColor: Colors.primary,
             }}
           >
-            <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: '700' }}>🔄 Nova análise</Text>
+            <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: '700' }}>
+              🔄 Nova análise
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </View>

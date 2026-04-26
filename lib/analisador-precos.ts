@@ -97,57 +97,46 @@ export async function analisarPrecos(
   }
 
   const prompt = `Você é um especialista em análise de preços e comportamento de consumo brasileiro.
+Analise os dados de compras abaixo e gere um relatório detalhado em português.
 
-Analise estes dados de compras dos últimos meses e retorne APENAS um JSON válido e completo.
-Não escreva nada antes ou depois do JSON.
-
-DADOS DE COMPRAS:
+DADOS DE COMPRAS (últimos meses):
 ${JSON.stringify(itensRelevantes, null, 2)}
 
 PREFERÊNCIAS DO USUÁRIO:
 - Pote analisado: ${questionario.pote || 'Todos'}
-- Preocupação: ${questionario.preocupacao.opcao || 'geral'}${questionario.preocupacao.comentario ? ' — ' + questionario.preocupacao.comentario : ''}
-- Foco: ${questionario.foco.opcao || 'análise completa'}${questionario.foco.comentario ? ' — ' + questionario.foco.comentario : ''}
+- Principal preocupação: ${questionario.preocupacao.opcao || 'geral'}${questionario.preocupacao.comentario ? ' — ' + questionario.preocupacao.comentario : ''}
+- Foco da análise: ${questionario.foco.opcao || 'análise completa'}${questionario.foco.comentario ? ' — ' + questionario.foco.comentario : ''}
 
-INSTRUÇÕES:
-1. Agrupe itens similares com nomes diferentes (ex: "almoço", "almoco", "ALMOCO" = mesmo item)
-2. Para cada estabelecimento calcule min, média e max dos preços reais
-3. Identifique tendência de preço: "subindo", "descendo" ou "estavel"
-4. Calcule economia mensal potencial (diferença entre mais caro e mais barato multiplicado pela frequência mensal)
-5. Máximo 10 itens no resultado
-6. Máximo 4 estabelecimentos por item
-7. Priorize itens com maior variação de preço
+Gere um relatório com estas seções usando emojis.
+Seja específico com valores reais em R$.
+Máximo 3 estabelecimentos por item analisado.
 
-RETORNE EXATAMENTE este JSON completo:
-{
-  "itens": [
-    {
-      "descricao": "nome normalizado",
-      "categoria": "categoria do produto",
-      "estabelecimentos": [
-        {
-          "nome": "nome do estabelecimento",
-          "preco_minimo": 0.00,
-          "preco_medio": 0.00,
-          "preco_maximo": 0.00,
-          "vezes": 0,
-          "tendencia": "estavel"
-        }
-      ],
-      "melhor_opcao": "estabelecimento mais barato",
-      "pior_opcao": "estabelecimento mais caro",
-      "economia_mensal_potencial": 0.00,
-      "insight": "observação específica e útil"
-    }
-  ],
-  "resumo": {
-    "total_itens_analisados": 0,
-    "economia_total_potencial": 0.00,
-    "estabelecimento_mais_barato": "nome",
-    "estabelecimento_mais_caro": "nome",
-    "recomendacao_principal": "recomendação prática"
-  }
-}`
+## 🔍 Resumo Geral
+Visão geral dos padrões de compra identificados.
+Quantos itens foram analisados e o potencial total de economia mensal.
+
+## 📊 Análise por Item
+Para cada item com variação significativa de preço:
+
+**[emoji] [Nome do Item]**
+Onde você compra e quanto paga em cada lugar.
+Qual o mais barato e o mais caro.
+Quanto economizaria por mês comprando sempre no mais barato.
+Tendência de preço (subindo/descendo/estável).
+
+## 🏪 Estabelecimentos
+Quais estabelecimentos têm os melhores e piores preços no geral.
+Onde você vai com mais frequência e se está fazendo boas escolhas.
+
+## 💡 Oportunidades de Economia
+Top 3 mudanças de comportamento que gerariam maior economia mensal.
+Seja específico: "Trocando X por Y você economizaria R$ Z por mês".
+
+## 🎯 Recomendação Principal
+Uma ação específica e imediata que o usuário deve tomar baseada nos dados analisados.
+
+Use linguagem amigável e motivadora.
+Cite sempre valores reais dos dados.`
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -170,28 +159,13 @@ RETORNE EXATAMENTE este JSON completo:
   }
 
   const data = await response.json()
-  const rawText = data.content?.[0]?.text || ''
+  const relatorio = data.content?.[0]?.text || ''
 
-  console.log('[Analisador] Response length:', rawText.length)
+  console.log('[Analisador] Relatório gerado:', relatorio.length, 'chars')
 
-  if (!rawText.trim()) {
+  if (!relatorio.trim()) {
     throw new Error('Resposta vazia. Tente novamente.')
   }
 
-  let clean = rawText.trim()
-  if (clean.startsWith('```json')) {
-    clean = clean.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim()
-  } else if (clean.startsWith('```')) {
-    clean = clean.replace(/^```\s*/, '').replace(/```\s*$/, '').trim()
-  }
-
-  try {
-    const parsed = JSON.parse(clean)
-    console.log('[Analisador] Itens analisados:', parsed.itens?.length || 0)
-    return JSON.stringify(parsed)
-  } catch (err) {
-    console.error('[Analisador] Parse error:', err)
-    console.error('[Analisador] Text:', clean.substring(0, 300))
-    throw new Error('Erro ao processar análise. Tente novamente.')
-  }
+  return relatorio
 }
