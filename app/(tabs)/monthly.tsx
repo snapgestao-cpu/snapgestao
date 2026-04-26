@@ -345,45 +345,39 @@ export default function MonthlyScreen() {
                     const totalGasto = summary.totalExpense
                     const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
                     return (
-                      <View style={styles.tableCard}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          <View style={{ minWidth: 365 }}>
-                            <View style={styles.tableHeaderRow}>
-                              <Text style={[styles.tableHCell, { width: 110, paddingLeft: 8 }]}>Pote</Text>
-                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.primary }]}>Orçado</Text>
-                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.danger }]}>Gasto</Text>
-                              <Text style={[styles.tableHCell, { width: 85, textAlign: 'right', color: Colors.success, paddingRight: 8 }]}>Saldo</Text>
+                      <View style={{ backgroundColor: Colors.white, borderRadius: 12, overflow: 'hidden', marginBottom: 8 }}>
+                        <View style={{ flexDirection: 'row', backgroundColor: Colors.lightBlue, paddingVertical: 8, paddingHorizontal: 8 }}>
+                          <Text style={{ flex: 2, fontSize: 11, fontWeight: '700', color: Colors.primary }}>Pote</Text>
+                          <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: Colors.primary, textAlign: 'right' }}>Orçado</Text>
+                          <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: Colors.danger, textAlign: 'right' }}>Gasto</Text>
+                          <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: Colors.success, textAlign: 'right' }}>Saldo</Text>
+                        </View>
+                        {summary.potSummaries.map((pot, index) => (
+                          <TouchableOpacity
+                            key={pot.id}
+                            onPress={() => router.push({
+                              pathname: `/pot/${pot.id}`,
+                              params: { cycleOffset: String(offset) },
+                            })}
+                            activeOpacity={0.7}
+                            style={{ flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: index % 2 === 0 ? Colors.white : Colors.background, borderTopWidth: 0.5, borderTopColor: Colors.border, alignItems: 'center' }}
+                          >
+                            <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                              <Text style={{ fontSize: 13 }}>{getPotIcon(pot.name)}</Text>
+                              <Text style={{ fontSize: 11, color: Colors.textDark, flex: 1 }} numberOfLines={1}>{pot.name}</Text>
+                              <Text style={{ fontSize: 10, color: Colors.textMuted }}>›</Text>
                             </View>
-                            {summary.potSummaries.map((pot, index) => (
-                              <TouchableOpacity
-                                key={pot.id}
-                                onPress={() => router.push({
-                                  pathname: `/pot/${pot.id}`,
-                                  params: { cycleOffset: String(offset) },
-                                })}
-                                activeOpacity={0.7}
-                                style={[styles.tableDataRow, { backgroundColor: index % 2 === 0 ? Colors.white : Colors.background }]}
-                              >
-                                <View style={{ width: 110, flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 4 }}>
-                                  <Text style={{ fontSize: 14 }}>{getPotIcon(pot.name)}</Text>
-                                  <Text style={styles.tableNameCell} numberOfLines={1}>{pot.name}</Text>
-                                  <Text style={{ fontSize: 10, color: Colors.textMuted }}>›</Text>
-                                </View>
-                                <Text style={[styles.tableValueCell, { width: 85 }]}>{brl(pot.limit_amount || 0)}</Text>
-                                <Text style={[styles.tableValueCell, { width: 85, color: pot.spent > 0 ? Colors.danger : Colors.textMuted }]}>{brl(pot.spent)}</Text>
-                                <Text style={[styles.tableValueCell, { width: 85, paddingRight: 8, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger }]}>
-                                  {brl(pot.remaining)}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                            <View style={styles.tableTotalRow}>
-                              <Text style={[styles.tableTotalCell, { width: 110, paddingLeft: 8 }]}>TOTAL</Text>
-                              <Text style={[styles.tableTotalCell, { width: 85 }]}>{brl(totalOrcado)}</Text>
-                              <Text style={[styles.tableTotalCell, { width: 85, color: Colors.danger }]}>{brl(totalGasto)}</Text>
-                              <Text style={[styles.tableTotalCell, { width: 85, paddingRight: 8, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>{brl(totalSaldo)}</Text>
-                            </View>
-                          </View>
-                        </ScrollView>
+                            <Text style={{ flex: 1.2, fontSize: 11, color: Colors.textDark, textAlign: 'right' }} numberOfLines={1}>{brl(pot.limit_amount || 0)}</Text>
+                            <Text style={{ flex: 1.2, fontSize: 11, color: pot.spent > 0 ? Colors.danger : Colors.textMuted, textAlign: 'right' }} numberOfLines={1}>{brl(pot.spent)}</Text>
+                            <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(pot.remaining)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        <View style={{ flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: Colors.lightBlue, borderTopWidth: 1.5, borderTopColor: Colors.primary, alignItems: 'center' }}>
+                          <Text style={{ flex: 2, fontSize: 12, fontWeight: '700', color: Colors.primary }}>TOTAL</Text>
+                          <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: Colors.textDark, textAlign: 'right' }} numberOfLines={1}>{brl(totalOrcado)}</Text>
+                          <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(totalGasto)}</Text>
+                          <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totalSaldo >= 0 ? Colors.success : Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(totalSaldo)}</Text>
+                        </View>
                       </View>
                     )
                   })()
