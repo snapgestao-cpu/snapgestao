@@ -165,9 +165,9 @@ export default function PotsScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => { if (cycleOffset < 0) setCycleOffset(cycleOffset + 1) }}
-            disabled={cycleOffset >= 0}
-            style={[styles.navArrowBtn, { opacity: cycleOffset >= 0 ? 0.3 : 1 }]}
+            onPress={() => { if (cycleOffset < 12) setCycleOffset(cycleOffset + 1) }}
+            disabled={cycleOffset >= 12}
+            style={[styles.navArrowBtn, { opacity: cycleOffset >= 12 ? 0.3 : 1 }]}
           >
             <Text style={styles.navArrow}>›</Text>
           </TouchableOpacity>

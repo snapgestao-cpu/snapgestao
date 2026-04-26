@@ -104,11 +104,11 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
 
     if (transaction.installment_group_id) {
       Alert.alert(
-        'Excluir parcela',
-        'Deseja excluir apenas esta parcela ou todas as parcelas restantes?',
+        '⚠️ Excluir parcela',
+        `Esta é a parcela ${transaction.installment_number}/${transaction.installment_total} de "${transaction.description}".\n\nAo excluir apenas esta parcela, as demais permanecem e devem ser modificadas manualmente mês a mês.\n\nO que deseja excluir?`,
         [
           {
-            text: 'Só esta',
+            text: 'Só esta parcela',
             onPress: async () => {
               const { error: err } = await supabase.from('transactions').delete().eq('id', transaction.id)
               if (err) { setError('Erro ao excluir: ' + err.message); return }
@@ -117,7 +117,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
             },
           },
           {
-            text: 'Todas as restantes',
+            text: 'Esta e as seguintes',
             style: 'destructive',
             onPress: async () => {
               const { error: err } = await supabase.from('transactions')

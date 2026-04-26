@@ -250,11 +250,11 @@ export default function MonthlyScreen() {
             <Text style={styles.newPotBtnText}>+ Pote</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.navBtn, offset >= 0 && styles.navBtnDisabled]}
-            onPress={() => offset < 0 && setOffset(offset + 1)}
-            disabled={offset >= 0}
+            style={[styles.navBtn, offset >= 12 && styles.navBtnDisabled]}
+            onPress={() => offset < 12 && setOffset(offset + 1)}
+            disabled={offset >= 12}
           >
-            <Text style={[styles.navBtnText, offset >= 0 && { color: Colors.border }]}>›</Text>
+            <Text style={[styles.navBtnText, offset >= 12 && { color: Colors.border }]}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -262,6 +262,20 @@ export default function MonthlyScreen() {
         {rolloverExists && !cycleClosed && offset < 0 && (
           <View style={styles.reopenedBanner}>
             <Text style={styles.reopenedBannerText}>✏️ Ciclo reaberto para edição</Text>
+          </View>
+        )}
+
+        {/* Banner: mês futuro */}
+        {offset > 0 && (
+          <View style={{
+            backgroundColor: '#EEF2FF', borderRadius: 12, padding: 10, marginBottom: 12,
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            borderWidth: 1, borderColor: '#818CF8',
+          }}>
+            <Text style={{ fontSize: 14 }}>🔮</Text>
+            <Text style={{ fontSize: 12, color: '#4F46E5', fontWeight: '600' }}>
+              Visualizando mês futuro — valores baseados no orçamento
+            </Text>
           </View>
         )}
 
@@ -506,9 +520,13 @@ export default function MonthlyScreen() {
                           transactions={group.transactions}
                           onEdit={t => setEditingTx(t as any)}
                           onDeleteGroup={txs => {
+                            const hasParcelas = txs.some(t => t.payment_method === 'credit' && (t.installment_total ?? 0) > 1)
+                            const aviso = hasParcelas
+                              ? '\n\n⚠️ Atenção: este grupo contém parcelas de cartão. Apenas estas parcelas serão excluídas — as demais parcelas de outros meses permanecem.'
+                              : ''
                             Alert.alert(
                               'Excluir lançamentos',
-                              `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}`,
+                              `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}${aviso}`,
                               [
                                 { text: 'Cancelar', style: 'cancel' },
                                 {

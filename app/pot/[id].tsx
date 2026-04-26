@@ -28,6 +28,9 @@ export default function PotDetailScreen() {
 
   const cycleOffset = parseInt(offsetParam || '0', 10)
   const cycle = getCycle(user?.cycle_start ?? 1, cycleOffset)
+  const defaultDate = cycleOffset === 0
+    ? new Date().toISOString().split('T')[0]
+    : cycle.startISO
 
   const [pot, setPot] = useState<Pot | null>(null)
   const [spent, setSpent] = useState(0)
@@ -190,8 +193,10 @@ export default function PotDetailScreen() {
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={styles.topTitle} numberOfLines={1}>{pot.name}</Text>
-            {cycleOffset < 0 && (
-              <Text style={styles.cycleBadge}>📅 {cycle.label}</Text>
+            {cycleOffset !== 0 && (
+              <Text style={[styles.cycleBadge, cycleOffset > 0 && { color: '#4F46E5' }]}>
+                {cycleOffset > 0 ? '🔮' : '📅'} {cycle.label}
+              </Text>
             )}
           </View>
           <View style={{ width: 36 }} />
@@ -242,9 +247,13 @@ export default function PotDetailScreen() {
                     transactions={group.transactions}
                     onEdit={t => setEditingTx(t as any)}
                     onDeleteGroup={txs => {
+                      const hasParcelas = txs.some(t => t.payment_method === 'credit' && (t.installment_total ?? 0) > 1)
+                      const aviso = hasParcelas
+                        ? '\n\n⚠️ Atenção: este grupo contém parcelas de cartão. Apenas estas parcelas serão excluídas — as demais parcelas de outros meses permanecem.'
+                        : ''
                       Alert.alert(
                         'Excluir lançamentos',
-                        `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}`,
+                        `Deseja excluir todos os ${txs.length} lançamentos de "${txs[0].merchant}"?\n\nTotal: ${brl(txs.reduce((s, t) => s + Number(t.amount), 0))}${aviso}`,
                         [
                           { text: 'Cancelar', style: 'cancel' },
                           {
@@ -274,11 +283,13 @@ export default function PotDetailScreen() {
         onClose={() => setShowExpense(false)}
         onSuccess={() => handleSuccess('Gasto registrado!')}
         pots={[pot]}
+        initialDate={defaultDate}
       />
       <NewIncomeModal
         visible={showIncome}
         onClose={() => setShowIncome(false)}
         onSuccess={() => handleSuccess('Receita registrada!')}
+        initialDate={defaultDate}
       />
       <NewPotModal
         visible={showEdit}

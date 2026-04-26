@@ -9,12 +9,10 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import ProjectionEntryModal, { ProjectionEntry } from '../../components/ProjectionEntryModal'
 import { getPotIcon } from '../../lib/potIcons'
 
 const COL = { month: 52, value: 108 }
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const FAB_SIZE = 52
 
 function brl(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -43,7 +41,6 @@ type MonthRow = {
   offset: number
   cycleStartISO: string
   cycleEndISO: string
-  entries: ProjectionEntry[]
   installmentsTotal: number
   isCurrent: boolean
 }
@@ -55,11 +52,6 @@ export default function ProjectionScreen() {
   const [avgExpense, setAvgExpense] = useState(0)
   const [creditInstallments, setCreditInstallments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [fabOpen, setFabOpen] = useState(false)
-  const [showEntryModal, setShowEntryModal] = useState(false)
-  const [entryType, setEntryType] = useState<'income' | 'expense'>('income')
-  const [editEntry, setEditEntry] = useState<ProjectionEntry | null>(null)
-  const [selectedMonthRow, setSelectedMonthRow] = useState<MonthRow | null>(null)
   const [selectedCreditMonth, setSelectedCreditMonth] = useState<MonthRow | null>(null)
 
   useFocusEffect(
@@ -110,11 +102,6 @@ export default function ProjectionScreen() {
       }))
       setCreditInstallments(allCredit)
 
-      // Projection entries
-      const { data: allEntries } = await supabase
-        .from('projection_entries').select('*').eq('user_id', userId)
-      const projEntries = ((allEntries ?? []) as ProjectionEntry[])
-
       // ── Detectar meses anteriores com lançamentos reais ──
       const pastOffsets: number[] = []
       for (let offset = -1; offset >= -6; offset--) {
@@ -155,8 +142,6 @@ export default function ProjectionScreen() {
 
         if (isFuture) {
           // Futuro: orçado dos potes + excedente de parcelas de crédito agendadas
-          // Parcelas com pote que cabem no orçamento já estão em totalBudgeted → não somar
-          // Parcelas sem pote ou que excedem o limite do pote → somar excedente
           const creditInMonth = allCredit
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
 
@@ -202,11 +187,6 @@ export default function ProjectionScreen() {
           expense = expenseActual
         }
 
-        // Lançamentos futuros avulsos (projection_entries)
-        const monthEntries = projEntries.filter(e => e.cycle_start_date === cycle.startISO)
-        income += monthEntries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0)
-        expense += monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0)
-
         // Parcelas de crédito neste mês (para indicador e modal)
         const installmentsTotal = allCredit
           .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
@@ -221,7 +201,6 @@ export default function ProjectionScreen() {
           offset,
           cycleStartISO: cycle.startISO,
           cycleEndISO: cycle.endISO,
-          entries: monthEntries,
           installmentsTotal,
           isCurrent,
         })
@@ -240,16 +219,6 @@ export default function ProjectionScreen() {
       setLoading(false)
     }
   }
-
-  async function handleDeleteEntry(entryId: string) {
-    await supabase.from('projection_entries').delete().eq('id', entryId)
-    setSelectedMonthRow(null)
-    loadProjectionData()
-  }
-
-  const selectedEntries = selectedMonthRow
-    ? (rows.find(r => r.cycleStartISO === selectedMonthRow.cycleStartISO)?.entries ?? selectedMonthRow.entries)
-    : []
 
   const selectedCreditTxs = selectedCreditMonth
     ? creditInstallments.filter(t =>
@@ -301,7 +270,6 @@ export default function ProjectionScreen() {
 
                   {rows.map((row, i) => {
                     const isFuture = row.offset > 0
-                    const hasEntries = row.entries.length > 0
                     const hasCredit = row.installmentsTotal > 0
                     return (
                       <TouchableOpacity
@@ -336,14 +304,6 @@ export default function ProjectionScreen() {
                             <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
                               {brl(row.saldo)}
                             </Text>
-                            {hasEntries && (
-                              <TouchableOpacity
-                                onPress={() => setSelectedMonthRow(row)}
-                                style={styles.entriesBadge}
-                              >
-                                <Text style={styles.entriesBadgeText}>+{row.entries.length}</Text>
-                              </TouchableOpacity>
-                            )}
                           </View>
                         </View>
                       </TouchableOpacity>
@@ -370,88 +330,50 @@ export default function ProjectionScreen() {
               </ScrollView>
             </View>
 
-            <Text style={styles.hint}>* Meses futuros usam orçamento dos potes + parcelas agendadas.</Text>
+            {/* Card informativo */}
+            <View style={{
+              backgroundColor: Colors.lightBlue, borderRadius: 14, padding: 14, marginBottom: 16,
+              borderWidth: 1, borderColor: Colors.primary,
+            }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.primary, marginBottom: 8 }}>
+                📊 Como a projeção é calculada
+              </Text>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Text style={{ fontSize: 12 }}>✅</Text>
+                  <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
+                    <Text style={{ fontWeight: '600', color: Colors.textDark }}>Meses passados: </Text>
+                    gastos reais registrados
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Text style={{ fontSize: 12 }}>📍</Text>
+                  <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
+                    <Text style={{ fontWeight: '600', color: Colors.textDark }}>Mês atual: </Text>
+                    gastos reais lançados até hoje
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Text style={{ fontSize: 12 }}>🔮</Text>
+                  <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
+                    <Text style={{ fontWeight: '600', color: Colors.textDark }}>Meses futuros: </Text>
+                    orçamento dos potes + parcelas de cartão que excedem o valor orçado
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Text style={{ fontSize: 12 }}>💡</Text>
+                  <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
+                    Para adicionar gastos ou receitas em meses futuros, navegue até o mês desejado nas telas{' '}
+                    <Text style={{ fontWeight: '600', color: Colors.primary }}>Mensal</Text>
+                    {' '}ou{' '}
+                    <Text style={{ fontWeight: '600', color: Colors.primary }}>Potes</Text>
+                  </Text>
+                </View>
+              </View>
+            </View>
           </>
         )}
       </ScrollView>
-
-      {/* FAB menu */}
-      {fabOpen && (
-        <View style={styles.fabMenu}>
-          <TouchableOpacity
-            onPress={() => { setEntryType('income'); setEditEntry(null); setShowEntryModal(true); setFabOpen(false) }}
-            style={styles.fabMenuItem}
-          >
-            <Text style={[styles.fabMenuLabel, { color: Colors.success }]}>💰 Receita futura</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setEntryType('expense'); setEditEntry(null); setShowEntryModal(true); setFabOpen(false) }}
-            style={styles.fabMenuItem}
-          >
-            <Text style={[styles.fabMenuLabel, { color: Colors.danger }]}>📋 Despesa futura</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <TouchableOpacity style={styles.fab} onPress={() => setFabOpen(!fabOpen)} activeOpacity={0.85}>
-        <Text style={styles.fabIcon}>{fabOpen ? '✕' : '+'}</Text>
-      </TouchableOpacity>
-
-      {fabOpen && (
-        <TouchableOpacity
-          style={[StyleSheet.absoluteFillObject as any, { zIndex: 8 }]}
-          activeOpacity={1}
-          onPress={() => setFabOpen(false)}
-        />
-      )}
-
-      {/* Entries list modal */}
-      <Modal
-        visible={!!selectedMonthRow}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSelectedMonthRow(null)}
-      >
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject as any}
-          activeOpacity={1}
-          onPress={() => setSelectedMonthRow(null)}
-        />
-        <View style={styles.bottomSheet}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>
-            Lançamentos — {selectedMonthRow?.label?.replace(' *', '')}
-          </Text>
-          <ScrollView>
-            {selectedEntries.map(entry => (
-              <View key={entry.id} style={styles.entryRow}>
-                <Text style={{ fontSize: 18, marginRight: 8 }}>
-                  {entry.type === 'income' ? '💰' : '📋'}
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.entryDesc}>{entry.description}</Text>
-                  <Text style={styles.entryMeta}>{entry.is_recurring ? '🔄 Recorrente' : 'Único'}</Text>
-                </View>
-                <Text style={[styles.entryAmount, { color: entry.type === 'income' ? Colors.success : Colors.danger }]}>
-                  {entry.type === 'income' ? '+' : '-'}{brl(Number(entry.amount))}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => { setEditEntry(entry); setShowEntryModal(true); setSelectedMonthRow(null) }}
-                  style={{ padding: 6 }}
-                >
-                  <Text>✏️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteEntry(entry.id)} style={{ padding: 6 }}>
-                  <Text>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-          <TouchableOpacity onPress={() => setSelectedMonthRow(null)} style={styles.closeBtn}>
-            <Text style={styles.closeBtnText}>Fechar</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
 
       {/* Credit installments modal */}
       <Modal
@@ -477,7 +399,6 @@ export default function ProjectionScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               {selectedCreditTxs.map((t, i) => (
                 <View key={t.id ?? i} style={{ paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
-                  {/* Descrição + valor */}
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <Text style={[styles.entryDesc, { flex: 1, marginRight: 8 }]}>
                       {t.description ?? t.merchant ?? 'Sem descrição'}
@@ -486,18 +407,14 @@ export default function ProjectionScreen() {
                       -{brl(Number(t.amount))}
                     </Text>
                   </View>
-                  {/* Parcela + estabelecimento */}
                   {(t.installment_total ?? 0) > 1 && (
                     <Text style={styles.entryMeta}>
                       Parcela {t.installment_number}/{t.installment_total}
                       {t.merchant ? ' · ' + t.merchant : ''}
                     </Text>
                   )}
-                  {/* Data da compra */}
                   <Text style={styles.entryMeta}>🛍️ Comprado em {formatPurchaseDate(t.date)}</Text>
-                  {/* Vencimento */}
                   <Text style={[styles.entryMeta, { color: Colors.warning }]}>📅 Vence {formatBillingDate(t.billing_date)}</Text>
-                  {/* Pote de origem */}
                   {t.pots ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
                       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.pots.color ?? Colors.primary }} />
@@ -524,21 +441,13 @@ export default function ProjectionScreen() {
           </View>
         </View>
       </Modal>
-
-      <ProjectionEntryModal
-        visible={showEntryModal}
-        initialType={entryType}
-        entry={editEntry ?? undefined}
-        onClose={() => { setShowEntryModal(false); setEditEntry(null) }}
-        onSuccess={loadProjectionData}
-      />
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  container: { padding: 20, paddingBottom: 100 },
+  container: { padding: 20, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 20 },
   summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   stat: {
@@ -553,7 +462,7 @@ const styles = StyleSheet.create({
   table: {
     backgroundColor: Colors.white, borderRadius: 12, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, marginBottom: 12,
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2, marginBottom: 16,
   },
   tableHeader: {
     flexDirection: 'row', backgroundColor: Colors.lightBlue,
@@ -574,31 +483,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1.5, borderTopColor: Colors.border,
   },
   totalCell: { fontSize: 11, fontWeight: '700', color: Colors.textDark },
-  entriesBadge: {
-    backgroundColor: Colors.lightBlue, borderRadius: 8,
-    paddingHorizontal: 5, paddingVertical: 2, marginLeft: 4,
-  },
-  entriesBadgeText: { fontSize: 9, color: Colors.primary, fontWeight: '700' },
-  hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 4 },
-  fab: {
-    position: 'absolute', bottom: 28, right: 20,
-    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6, zIndex: 10,
-  },
-  fabIcon: { fontSize: 24, color: '#fff', lineHeight: 28, fontWeight: '300' },
-  fabMenu: {
-    position: 'absolute', bottom: 92, right: 20,
-    gap: 8, zIndex: 9,
-  },
-  fabMenuItem: {
-    backgroundColor: Colors.white, borderRadius: 24,
-    paddingHorizontal: 16, paddingVertical: 10,
-    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
-  },
-  fabMenuLabel: { fontSize: 13, fontWeight: '600' },
   bottomSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: Colors.white,
@@ -612,13 +496,8 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { fontSize: 16, fontWeight: '700', color: Colors.textDark },
   sheetSubtitle: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  entryRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
-  },
   entryDesc: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   entryMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
-  entryAmount: { fontSize: 13, fontWeight: '700', marginRight: 4 },
   closeBtn: { padding: 16, alignItems: 'center' },
   closeBtnText: { color: Colors.textMuted, fontSize: 14 },
 })

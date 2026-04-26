@@ -40,10 +40,10 @@ EXPO_PUBLIC_ANTHROPIC_API_KEY=...
 
 ## Supabase Schema
 
-Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `projection_entries`.  
+Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`.  
 RLS enabled on all tables. Trigger `on_auth_user_created` active.
 
-**`projection_entries`** — lançamentos avulsos em meses futuros. Fields: `id`, `user_id`, `type` (`'income'|'expense'`), `description`, `amount`, `entry_date`, `cycle_start_date` (ISO, used to match the cycle), `is_recurring`, `created_at`. Must be created manually in Supabase SQL Editor (see `projection_entries` migration in Tarefa 3a). Policy: `auth.uid() = user_id`.
+**`projection_entries` — REMOVED**. The feature (future one-off entries via FAB in Projeção) was removed. If the table exists in Supabase, drop it: `DROP TABLE IF EXISTS public.projection_entries;`. Do not add it back — future-month entries are handled by navigating to Mensal or Potes screens for that month.
 
 **Migrations that must be run manually in Supabase** (in order):
 1. `supabase/migrations/20240418_cycle_rollovers.sql`
@@ -88,7 +88,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
 
-**Transactions** — `NewExpenseModal`: pote is mandatory (inline error if missing, "Criar pote →" button if list empty); credit payment shows installment toggle (2–24x), creates N rows with shared `installment_group_id` and per-month `billing_date`. `EditTransactionModal`: for installments, asks "Só esta" vs "Todas as restantes" (batch delete with `.gte('installment_number', current)`).
+**Transactions** — `NewExpenseModal`: pote is mandatory (inline error if missing, "Criar pote →" button if list empty); credit payment shows installment toggle (2–24x), creates N rows with shared `installment_group_id` and per-month `billing_date`. `EditTransactionModal`: for installments, shows a 3-option Alert — "Só esta parcela", "Esta e as seguintes" (batch delete with `.gte('installment_number', current)`), "Cancelar". `onDeleteGroup` in `monthly.tsx` and `pot/[id].tsx` shows an extra warning when the group contains credit installments (`hasParcelas` check).
 
 **Cycle filtering for transactions** — credit uses `billing_date`, all others (including `goal_deposit`) use `date`. Non-credit queries use `.in('type', ['expense', 'goal_deposit'])` everywhere: `calculateCycleSummary`, `index.tsx` pot spent, `pot/[id].tsx` pot spent. The pot detail transaction LIST is fetched by `date` (so user sees when they registered), but the `spent` calculation uses two parallel queries (credit by `billing_date`, others by `date`). `TransactionItem` and transaction rows in `monthly.tsx` show "Vence DD Mon YYYY" (amber) for credit transactions that have `billing_date`.
 
@@ -186,9 +186,9 @@ Never call `supabase` directly from a component. Exceptions:
 
 **Dashboard data loading** — `app/(tabs)/index.tsx` uses `useEffect` + `useState`. Income total from `income_sources.amount` (NOT transactions). Expenses from `transactions` filtered by pot + cycle dates. Refetches on `user?.id` or `cycleOffset` change.
 
-**Cycle sync across tabs** — `stores/useCycleStore.ts` (`useCycleStore`) holds `cycleOffset: number`, `viewMode`, and `alertsExpanded: boolean` shared globally. Both Potes and Mensal tabs read/write `cycleOffset` so changing the month in either tab updates the other automatically. Clicking the month label (▾) in both tabs opens `MonthPickerModal` for direct month selection (up to 24 months back); the ‹/› arrows still work for sequential navigation. `pot/[id].tsx` receives `cycleOffset` as a route param. `alertsExpanded` controls whether the collapsible warning card in Mensal is open (persists across tab switches). Monthly pot-table rows are touchable and navigate to the pot's detail in the same cycle.
+**Cycle sync across tabs** — `stores/useCycleStore.ts` (`useCycleStore`) holds `cycleOffset: number`, `viewMode`, and `alertsExpanded: boolean` shared globally. Both Potes and Mensal tabs read/write `cycleOffset` so changing the month in either tab updates the other automatically. Clicking the month label (▾) opens `MonthPickerModal` for direct month selection; ‹/› arrows for sequential navigation. Range: **−24 to +12 months** (24 past, 12 future). `pot/[id].tsx` receives `cycleOffset` as a route param and passes `initialDate` to `NewExpenseModal`/`NewIncomeModal` — for future months defaults to cycle start, for current month defaults to today. `alertsExpanded` controls whether the collapsible warning card in Mensal is open (persists across tab switches). Monthly pot-table rows are touchable and navigate to the pot's detail in the same cycle.
 
-**MonthPickerModal** (`components/MonthPickerModal.tsx`) — Modal overlay with months grouped by year (up to 24 months back). Selected month highlighted in primary color. Props: `visible`, `currentOffset`, `cycleStart`, `onSelect(offset)`, `onClose`.
+**MonthPickerModal** (`components/MonthPickerModal.tsx`) — Modal overlay with three sections: "🔮 Próximos meses" (offsets 1–12), "📍 Mês atual" (offset 0), "📅 Meses anteriores" (offsets −1 to −24, grouped by year). Selected month highlighted in primary color. Props: `visible`, `currentOffset`, `cycleStart`, `onSelect(offset)`, `onClose`.
 
 ### Cycle logic (`lib/cycle.ts`)
 
