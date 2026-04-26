@@ -266,15 +266,15 @@ export default function MonthlyScreen() {
         )}
 
         {/* Banner: mês futuro */}
-        {offset > 0 && (
+        {cycleOffset > 0 && (
           <View style={{
-            backgroundColor: '#EEF2FF', borderRadius: 12, padding: 10, marginBottom: 12,
+            backgroundColor: '#EEF2FF', borderRadius: 10, padding: 8, marginBottom: 10,
             flexDirection: 'row', alignItems: 'center', gap: 6,
             borderWidth: 1, borderColor: '#818CF8',
           }}>
-            <Text style={{ fontSize: 14 }}>🔮</Text>
+            <Text style={{ fontSize: 12 }}>🔮</Text>
             <Text style={{ fontSize: 12, color: '#4F46E5', fontWeight: '600' }}>
-              Visualizando mês futuro — valores baseados no orçamento
+              Visualizando mês futuro
             </Text>
           </View>
         )}
@@ -551,21 +551,15 @@ export default function MonthlyScreen() {
             </View>
 
             {/* Mês futuro — não pode encerrar */}
-            {offset > 0 && (
+            {cycleOffset > 0 && (
               <View style={{
-                backgroundColor: '#EEF2FF',
-                borderRadius: 14,
-                padding: 14,
-                marginBottom: 16,
-                borderWidth: 1,
-                borderColor: '#818CF8',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
+                backgroundColor: '#EEF2FF', borderRadius: 10, padding: 8, marginBottom: 12,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                borderWidth: 1, borderColor: '#818CF8',
               }}>
-                <Text style={{ fontSize: 16 }}>🔮</Text>
-                <Text style={{ fontSize: 13, color: '#4F46E5', flex: 1, lineHeight: 20 }}>
-                  Ciclos futuros não podem ser encerrados. Navegue até o mês quando ele chegar.
+                <Text style={{ fontSize: 12 }}>🔮</Text>
+                <Text style={{ fontSize: 12, color: '#4F46E5' }}>
+                  Ciclos futuros não podem ser encerrados.
                 </Text>
               </View>
             )}
