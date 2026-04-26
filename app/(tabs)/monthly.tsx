@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   TouchableOpacity, RefreshControl, Animated, Alert,
@@ -33,7 +32,7 @@ const FAB_SIZE = 52
 
 export default function MonthlyScreen() {
   const { user } = useAuthStore()
-  const { cycleOffset: offset, setCycleOffset: setOffset } = useCycleStore()
+  const { cycleOffset: offset, setCycleOffset: setOffset, viewMode, setViewMode } = useCycleStore()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -61,17 +60,9 @@ export default function MonthlyScreen() {
   const [showIncome, setShowIncome] = useState(false)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
-  const [viewMode, setViewMode] = useState<'tabela' | 'potes'>('tabela')
-
-  useEffect(() => {
-    AsyncStorage.getItem('monthly_view_mode').then(v => {
-      if (v === 'tabela' || v === 'potes') setViewMode(v)
-    })
-  }, [])
 
   function toggleViewMode(mode: 'tabela' | 'potes') {
     setViewMode(mode)
-    AsyncStorage.setItem('monthly_view_mode', mode)
   }
 
   const cycle: CycleInfo = getCycle(user?.cycle_start ?? 1, offset)
