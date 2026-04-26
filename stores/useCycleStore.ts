@@ -5,6 +5,8 @@ type CycleStore = {
   setCycleOffset: (offset: number) => void
   viewMode: 'tabela' | 'potes'
   setViewMode: (mode: 'tabela' | 'potes') => void
+  alertsExpanded: boolean
+  setAlertsExpanded: (v: boolean) => void
 }
 
 export const useCycleStore = create<CycleStore>((set) => ({
@@ -12,4 +14,6 @@ export const useCycleStore = create<CycleStore>((set) => ({
   setCycleOffset: (offset) => set({ cycleOffset: offset }),
   viewMode: 'tabela',
   setViewMode: (mode) => set({ viewMode: mode }),
+  alertsExpanded: true,
+  setAlertsExpanded: (v) => set({ alertsExpanded: v }),
 }))

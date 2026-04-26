@@ -17,6 +17,7 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { Pot } from '../../types'
 import { brl } from '../../lib/finance'
+import MonthPickerModal from '../../components/MonthPickerModal'
 
 const CELL_WIDTH = (Dimensions.get('window').width - 32) / 2
 
@@ -43,6 +44,7 @@ export default function PotsScreen() {
   const [refreshing, setRefreshing] = useState(false)
 
   const [showNewPot, setShowNewPot] = useState(false)
+  const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [editingPot, setEditingPot] = useState<Pot | null>(null)
   const [totalIncome, setTotalIncome] = useState(0)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
@@ -157,9 +159,9 @@ export default function PotsScreen() {
             style={styles.navArrowBtn}>
             <Text style={styles.navArrow}>‹</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { if (cycleOffset !== 0) setCycleOffset(0) }}>
+          <TouchableOpacity onPress={() => setShowMonthPicker(true)}>
             <Text style={[styles.navLabel, { color: cycleOffset === 0 ? Colors.textDark : Colors.primary }]}>
-              {cycle ? formatMonthShort(cycle.start) : ''}
+              {cycle ? formatMonthShort(cycle.start) : ''} ▾
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -225,6 +227,13 @@ export default function PotsScreen() {
         />
       )}
 
+      <MonthPickerModal
+        visible={showMonthPicker}
+        currentOffset={cycleOffset}
+        cycleStart={user?.cycle_start ?? 1}
+        onSelect={(o) => setCycleOffset(o)}
+        onClose={() => setShowMonthPicker(false)}
+      />
       <NewPotModal
         visible={showNewPot}
         onClose={() => setShowNewPot(false)}

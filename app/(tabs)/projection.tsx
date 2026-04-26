@@ -83,10 +83,10 @@ export default function ProjectionScreen() {
 
       // Total orçado dos potes ativos
       const { data: activePots } = await supabase
-        .from('pots').select('limit_amount')
-        .eq('user_id', userId).eq('is_emergency', false)
-      const totalBudgeted = ((activePots ?? []) as any[])
-        .reduce((s, p) => s + Number(p.limit_amount || 0), 0)
+        .from('pots').select('id, limit_amount')
+        .eq('user_id', userId).eq('is_emergency', false).is('deleted_at', null)
+      const activePotsList = (activePots ?? []) as any[]
+      const totalBudgeted = activePotsList.reduce((s, p) => s + Number(p.limit_amount || 0), 0)
 
       // Todos os lançamentos de crédito (para modal e indicador)
       const { data: creditData } = await supabase
@@ -154,12 +154,35 @@ export default function ProjectionScreen() {
         let expense: number
 
         if (isFuture) {
-          // Futuro: orçado dos potes + parcelas de crédito já agendadas
+          // Futuro: orçado dos potes + excedente de parcelas de crédito agendadas
+          // Parcelas com pote que cabem no orçamento já estão em totalBudgeted → não somar
+          // Parcelas sem pote ou que excedem o limite do pote → somar excedente
           const creditInMonth = allCredit
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
-            .reduce((s, t) => s + Number(t.amount), 0)
+
+          const parcelasPorPote: Record<string, number> = {}
+          let excedenteParcelas = 0
+
+          for (const t of creditInMonth) {
+            if (!t.pot_id) {
+              excedenteParcelas += Number(t.amount)
+            } else {
+              parcelasPorPote[t.pot_id] = (parcelasPorPote[t.pot_id] ?? 0) + Number(t.amount)
+            }
+          }
+
+          for (const [potId, totalParcelas] of Object.entries(parcelasPorPote)) {
+            const pot = activePotsList.find((p: any) => p.id === potId)
+            const limite = Number(pot?.limit_amount || 0)
+            if (limite <= 0) {
+              excedenteParcelas += totalParcelas
+            } else if (totalParcelas > limite) {
+              excedenteParcelas += totalParcelas - limite
+            }
+          }
+
           income = base
-          expense = totalBudgeted + creditInMonth
+          expense = totalBudgeted + excedenteParcelas
         } else {
           // Passado e atual: dados reais (crédito por billing_date, restante por date)
           const { data: txs } = await supabase

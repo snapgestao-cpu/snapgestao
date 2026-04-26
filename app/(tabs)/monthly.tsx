@@ -25,6 +25,7 @@ import { brl } from '../../lib/finance'
 import { Pot, Transaction, Goal } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
 import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
+import MonthPickerModal from '../../components/MonthPickerModal'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
@@ -32,7 +33,7 @@ const FAB_SIZE = 52
 
 export default function MonthlyScreen() {
   const { user } = useAuthStore()
-  const { cycleOffset: offset, setCycleOffset: setOffset, viewMode, setViewMode } = useCycleStore()
+  const { cycleOffset: offset, setCycleOffset: setOffset, viewMode, setViewMode, alertsExpanded, setAlertsExpanded } = useCycleStore()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -52,6 +53,7 @@ export default function MonthlyScreen() {
   const [reopening, setReopening] = useState(false)
 
   const [totalIncome, setTotalIncome] = useState(0)
+  const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showNewPot, setShowNewPot] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
@@ -240,10 +242,10 @@ export default function MonthlyScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => setOffset(offset - 1)}>
             <Text style={styles.navBtnText}>‹</Text>
           </TouchableOpacity>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={styles.cycleLabel}>{cycle.label}</Text>
+          <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => setShowMonthPicker(true)}>
+            <Text style={styles.cycleLabel}>{cycle.label} ▾</Text>
             <Text style={styles.cycleMonthYear}>{cycle.monthYear}</Text>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.newPotBtn} onPress={() => setShowNewPot(true)}>
             <Text style={styles.newPotBtnText}>+ Pote</Text>
           </TouchableOpacity>
@@ -293,25 +295,53 @@ export default function MonthlyScreen() {
               </View>
             )}
 
-            {/* Saldo negativo do ciclo */}
-            {summary && summary.cycleSaldo < 0 && (
-              <View style={styles.alertCard}>
-                <Text style={styles.alertTitle}>⚠️ Atenção: saldo negativo</Text>
-                <Text style={styles.alertText}>
-                  O saldo deste ciclo está negativo em {brl(Math.abs(summary.cycleSaldo))}. Ao encerrar o ciclo, este valor será descontado do próximo mês.
-                </Text>
-              </View>
-            )}
-            {/* Pote individual ultrapassado (saldo geral ainda positivo) */}
-            {summary && summary.cycleSaldo >= 0 && summary.potSummaries.some(p => p.isOverBudget) && (
-              <View style={[styles.alertCard, { backgroundColor: Colors.lightAmber, borderLeftColor: Colors.warning }]}>
-                {summary.potSummaries.filter(p => p.isOverBudget).map(p => (
-                  <Text key={p.id} style={[styles.alertSuggestion, { color: Colors.warning }]}>
-                    ⚠️ O pote {p.name} ultrapassou o limite em {brl(Math.abs(p.remaining))}. Considere revisar seu orçamento.
-                  </Text>
-                ))}
-              </View>
-            )}
+            {/* Card de avisos colapsável */}
+            {summary && (() => {
+              const avisos: { key: string; text: string; isRed: boolean }[] = []
+              if (summary.cycleSaldo < 0) {
+                avisos.push({
+                  key: 'saldo',
+                  text: `Saldo negativo em ${brl(Math.abs(summary.cycleSaldo))}. Ao encerrar, será descontado do próximo mês.`,
+                  isRed: true,
+                })
+              }
+              summary.potSummaries.filter(p => p.isOverBudget).forEach(p => {
+                avisos.push({
+                  key: p.id,
+                  text: `O pote ${p.name} ultrapassou o limite em ${brl(Math.abs(p.remaining))}.`,
+                  isRed: false,
+                })
+              })
+              if (avisos.length === 0) return null
+              const hasRed = avisos.some(a => a.isRed)
+              return (
+                <View style={[styles.alertCard, !hasRed && { backgroundColor: Colors.lightAmber, borderLeftColor: Colors.warning }]}>
+                  <TouchableOpacity
+                    onPress={() => setAlertsExpanded(!alertsExpanded)}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 16 }}>⚠️</Text>
+                      <Text style={[styles.alertTitle, { marginBottom: 0, color: hasRed ? Colors.danger : Colors.warning }]}>
+                        {alertsExpanded ? 'Avisos do ciclo' : `Avisos (${avisos.length})`}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 16, color: hasRed ? Colors.danger : Colors.warning }}>
+                      {alertsExpanded ? '▲' : '▼'}
+                    </Text>
+                  </TouchableOpacity>
+                  {alertsExpanded && (
+                    <View style={{ marginTop: 10 }}>
+                      {avisos.map(a => (
+                        <Text key={a.key} style={[styles.alertText, { color: a.isRed ? Colors.danger : Colors.warning, marginBottom: 4 }]}>
+                          • {a.text}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )
+            })()}
 
             {/* Pot section with view toggle */}
             {summary && summary.potSummaries.length > 0 && (
@@ -642,6 +672,14 @@ export default function MonthlyScreen() {
       {fabOpen && (
         <TouchableOpacity style={StyleSheet.absoluteFillObject as any} activeOpacity={1} onPress={closeFab} />
       )}
+
+      <MonthPickerModal
+        visible={showMonthPicker}
+        currentOffset={offset}
+        cycleStart={user?.cycle_start ?? 1}
+        onSelect={(o) => setOffset(o)}
+        onClose={() => setShowMonthPicker(false)}
+      />
 
       <NewExpenseModal
         visible={showExpense}
