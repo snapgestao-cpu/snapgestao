@@ -33,6 +33,7 @@ No test suite or linter configured yet.
 EXPO_PUBLIC_SUPABASE_URL=https://cvyissbkfwphtmvvcvop.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 EXPO_PUBLIC_GEMINI_API_KEY=...
+EXPO_PUBLIC_ANTHROPIC_API_KEY=...
 ```
 
 `EXPO_PUBLIC_*` vars are inlined at Metro build time. Backend secrets must never use this prefix.
@@ -120,9 +121,9 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - Global 35s timeout uses `setLoading(prev => ...)` functional form to avoid stale closure
 - EXTRACT_SCRIPT uses **internal polling** (`tryExtract(attempt)`, up to 15 attempts × 1s) — necessary because SEFAZ-RJ page uses jQuery Mobile which renders the body *after* the native `onload` event. Checks `blocked` (IP block keywords) before polling; reports `timeout` if body stays empty after 15s. Items extracted from `tabResult` table rows (fallback: first `table` on page). Payment detection uses `payText.includes()` (lowercase) covering full phrases like "cartão de débito"; also detects `transfer`/`transferência`.
 
-**Analisador de Preços** (`app/analisador-precos.tsx`) — compara preços de produtos por estabelecimento usando Gemini 2.5 Flash:
+**Analisador de Preços** (`app/analisador-precos.tsx`) — compara preços de produtos por estabelecimento usando Claude Haiku:
 - Quiz 3 perguntas (pote dinâmico carregado do Supabase, preocupação, foco) com animação slide+fade e campo de texto livre complementar. Opção "Todos os potes" disponível na primeira pergunta.
-- `lib/analisador-precos.ts`: `buscarDadosParaAnalise(userId, potId, cycleStart)` — busca transactions apenas de ciclos fechados + mês atual (via `getMesesValidos`) com `merchant` não-nulo. `analisarPrecos(transactions, questionario)` — agrupa por descrição (só itens com 3+ ocorrências, máx 12), divide em **batches de 3 itens**, chama `analisarBatch()` sequencialmente (500ms entre chamadas) com `maxOutputTokens: 2048` e `temperature: 0.1` por batch — evita corte de JSON; `gerarResumo()` calculado localmente sem chamada extra. `apiKey` lida de `process.env.EXPO_PUBLIC_GEMINI_API_KEY` internamente (não passada como parâmetro). JSON retornado: `{ itens: [{ descricao, categoria, estabelecimentos: [{ nome, preco_minimo, preco_medio, preco_maximo, vezes, tendencia }], melhor_opcao, pior_opcao, economia_mensal_potencial, insight }], resumo: { total_itens_analisados, economia_total_potencial, estabelecimento_mais_barato, estabelecimento_mais_caro, recomendacao_principal } }`.
+- `lib/analisador-precos.ts`: `buscarDadosParaAnalise(userId, potId, cycleStart)` — busca transactions apenas de ciclos fechados + mês atual (via `getMesesValidos`) com `merchant` não-nulo. `analisarPrecos(transactions, questionario)` — agrupa por descrição (só itens com 3+ ocorrências, máx 15), faz **uma única chamada** ao `claude-haiku-4-5-20251001` via `https://api.anthropic.com/v1/messages` com `max_tokens: 4096`; headers: `x-api-key`, `anthropic-version: 2023-06-01`. `apiKey` lida de `process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY` internamente. JSON retornado: `{ itens: [{ descricao, categoria, estabelecimentos: [{ nome, preco_minimo, preco_medio, preco_maximo, vezes, tendencia }], melhor_opcao, pior_opcao, economia_mensal_potencial, insight }], resumo: { total_itens_analisados, economia_total_potencial, estabelecimento_mais_barato, estabelecimento_mais_caro, recomendacao_principal } }`.
 - Tela de resultado: card de resumo com economia potencial/mês + destaques + recomendação principal; `TabelaItem` com `ScrollView horizontal` mostrando min/médio/máximo por estabelecimento, vezes, tendência (📈📉➡️), e insight por item. Ordenado por preço médio crescente (verde = mais barato, vermelho = mais caro).
 - Rota `analisador-precos` no Stack e guard em `_layout.tsx`. Entrada: card verde "Analisador de Preços IA" no perfil, abaixo do Mentor Financeiro.
 

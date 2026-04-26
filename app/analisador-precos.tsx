@@ -278,7 +278,7 @@ export default function AnalisadorPrecosScreen() {
         return
       }
 
-      setLoadingMsg('Analisando preços em lotes...')
+      setLoadingMsg('Analisando preços com IA...')
 
       const jsonResultado = await analisarPrecos(
         transactions,
