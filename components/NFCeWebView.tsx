@@ -15,21 +15,31 @@ type Props = {
   onCancel: () => void
 }
 
-// Exported so ocr.tsx can call it before passing the URL
+// Exported so ocr.tsx can call it before passing the URL — called ONCE per QR scan
 export function sanitizeNFCeUrl(raw: string): string {
   let url = raw.trim()
+
+  // Strip any prefix before "http" — e.g. "<qrcode>https://..."
+  const httpIdx = url.indexOf('http')
+  if (httpIdx > 0) {
+    url = url.substring(httpIdx)
+  }
+
+  // Fix double-protocol http://https://
   url = url.replace(/^https?:\/\/https?:\/\//i, 'https://')
-  url = url.replace(/^http:\/\/(https:\/\/)/i, '$1')
+
   if (!url.startsWith('https://') && !url.startsWith('http://')) {
     url = 'https://' + url
   }
+
+  // Encode pipes in query string only
   const idx = url.indexOf('?')
   if (idx > -1) {
     const base = url.substring(0, idx)
     const query = url.substring(idx + 1)
     url = base + '?' + query.replace(/\|/g, '%7C')
   }
-  console.log('[URL] Original:', raw)
+
   console.log('[URL] Sanitizada:', url)
   return url
 }
@@ -43,6 +53,7 @@ function genericIsFinalResultUrl(url: string): boolean {
   return (
     url.includes('resultadoQRCode') ||
     url.includes('resultadoNfce') ||
+    url.includes('resultadoDFe') ||
     url.includes('consultaChaveAcesso') ||
     url.includes('ConsultaChaveDeAcesso') ||
     url.includes('consultaChaveAcesso.xhtml') ||
@@ -62,6 +73,13 @@ function buildChaveAcessoUrl(chave: string, stateCode: string): string {
     return 'https://portalsped.fazenda.mg.gov.br/portalnfce/system/pages/consultaNFCe/consultaChaveAcesso.xhtml'
   }
   return 'https://consultadfe.fazenda.rj.gov.br/consultaDFe/paginas/consultaChaveAcesso.faces'
+}
+
+function isChaveAcessoUrl(url: string): boolean {
+  return (
+    url.includes('consultaChaveAcesso') ||
+    url.includes('ConsultaChaveDeAcesso')
+  )
 }
 
 // Internal polling script — waits up to 15s for jQuery Mobile to render the body
@@ -217,27 +235,28 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
 
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const finalUrlRef = useRef(sanitizeNFCeUrl(url))
+  // url is already sanitized by ocr.tsx — do NOT call sanitizeNFCeUrl again here
+  const finalUrlRef = useRef(url)
   const sawRedirectRef = useRef(
-    state ? state.isRedirectUrl(sanitizeNFCeUrl(url)) : genericIsRedirectUrl(sanitizeNFCeUrl(url))
+    state ? state.isRedirectUrl(url) : genericIsRedirectUrl(url)
   )
 
   const checkIsRedirect = (u: string) => state ? state.isRedirectUrl(u) : genericIsRedirectUrl(u)
   const checkIsFinal = (u: string) => {
     if (state) {
       return state.isFinalUrl(u) ||
-        u.includes('consultaChaveAcesso') ||
-        u.includes('ConsultaChaveDeAcesso') ||
-        u.includes('consultaChaveAcesso.xhtml')
+        u.includes('resultadoQRCode') ||
+        u.includes('resultadoNfce') ||
+        u.includes('resultadoDFe')
     }
     return genericIsFinalResultUrl(u)
   }
 
-  // Resetar tentativaAlternativa e flags quando URL muda
+  // Reset flags when url prop changes
   useEffect(() => {
     setTentativaAlternativa(false)
     scriptInjectedRef.current = false
-    finalUrlRef.current = sanitizeNFCeUrl(url)
+    finalUrlRef.current = url
   }, [url])
 
   // Elapsed-seconds counter
@@ -337,6 +356,64 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
 
           console.log('[WebView] Navegando para:', navUrl.substring(0, 100))
 
+          // Chegou na página de consulta por chave — preencher e submeter formulário
+          if (isChaveAcessoUrl(navUrl) && chaveAcesso && !scriptInjectedRef.current) {
+            console.log('[WebView] Página de chave carregada — preenchendo formulário')
+            scriptInjectedRef.current = true  // evitar double-fill
+
+            setTimeout(() => {
+              const fillScript = `
+(function() {
+  try {
+    var input =
+      document.querySelector('input[type="text"]') ||
+      document.querySelector('input[name*="chave"]') ||
+      document.querySelector('input[id*="chave"]') ||
+      document.querySelector('input[maxlength="44"]') ||
+      document.querySelector('input[maxlength="48"]') ||
+      document.querySelector('input');
+
+    if (input) {
+      input.value = '${chaveAcesso}';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log('[Form] Campo preenchido com chave');
+
+      var btn =
+        document.querySelector('input[type="submit"]') ||
+        document.querySelector('button[type="submit"]') ||
+        document.querySelector('button') ||
+        document.querySelector('input[type="button"]');
+
+      if (btn) {
+        console.log('[Form] Clicando no botão');
+        btn.click();
+      } else {
+        var form = document.querySelector('form');
+        if (form) {
+          console.log('[Form] Submetendo form');
+          form.submit();
+        }
+      }
+    } else {
+      console.log('[Form] Campo não encontrado');
+      var inputs = document.querySelectorAll('input');
+      console.log('[Form] Inputs encontrados:', inputs.length);
+      inputs.forEach(function(inp, i) {
+        console.log('[Form] Input ' + i + ':', inp.type, inp.name, inp.id, inp.maxLength);
+      });
+    }
+  } catch(e) {
+    console.log('[Form] Erro:', String(e));
+  }
+})();`
+              // Reset scriptInjectedRef so EXTRACT_SCRIPT can run on the result page
+              scriptInjectedRef.current = false
+              webViewRef.current?.injectJavaScript(fillScript + '; true;')
+            }, 2000)
+            return
+          }
+
           if (checkIsRedirect(navUrl)) {
             sawRedirectRef.current = true
             finalUrlRef.current = navUrl
@@ -379,6 +456,12 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
 
           if (checkIsRedirect(currentUrl)) {
             console.log('[WebView] onLoadEnd ignorado — ainda na URL de redirect')
+            return
+          }
+
+          // Chave-acesso page handled by onNavigationStateChange fill script
+          if (isChaveAcessoUrl(currentUrl)) {
+            console.log('[WebView] onLoadEnd ignorado — URL de consulta por chave')
             return
           }
 
