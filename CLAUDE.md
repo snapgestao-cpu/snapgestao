@@ -81,10 +81,11 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **Pot deletion** — **soft DELETE** via `deleted_at`. On delete from `pot/[id].tsx`: expense transactions from `cycle.startISO` (the **viewed** cycle, not always the current cycle) are hard-deleted, then the pot gets `deleted_at = cycle.start.toISOString()`. Deleting from a future month (cycleOffset > 0) sets `deleted_at` to that future month's start — the current month is unaffected. The pot remains in the DB so past-cycle views still show it.
 
-**Pot queries by context:**
-- `index.tsx` (current cycle dashboard): `.is('deleted_at', null)` — only active pots.
-- `monthly.tsx` and `calculateCycleSummary`: use `fetchPotsForCycle(userId, cycleStartISO, cycleEndISO)` from `lib/pots.ts` — returns active pots + pots deleted AFTER the cycle end (`.gt('deleted_at', cycleEndISO)`). A pot deleted at the start of cycle N does NOT appear in cycle N, but does appear in earlier cycles.
+**Pot queries by context — always use `fetchPotsForCycle` or equivalent, never raw `.is('deleted_at', null)` alone:**
+- `index.tsx` and `monthly.tsx`: use `fetchPotsForCycle(userId, cycle.startISO, cycle.endISO)` from `lib/pots.ts` — two parallel queries: (1) active pots (`deleted_at IS NULL`, `created_at <= cycleEnd`); (2) deleted pots that still existed during the cycle (`deleted_at > cycleEnd`, `created_at <= cycleEnd`). A pot deleted at the start of cycle N does NOT appear in cycle N, but does appear in earlier cycles. Always pass `cycle.endISO` (date-only), not `cycle.end.toISOString()`.
+- `projection.tsx`: `activePotsList` = pots with `deleted_at IS NULL` + pots with `deleted_at > currentCycleEndISO` (still active today). Both fetched in the batch `Promise.all`.
 - Do **not** use `.or('deleted_at.is.null,...')` — that pattern was removed.
+- Do **not** use `.is('deleted_at', null)` alone for dashboard/monthly queries — it misses pots that are active now but soft-deleted for a future month.
 
 **Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
 
