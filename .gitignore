@@ -39,4 +39,4 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+# /android — rastreado para preservar customizações de build (local_repo asyncstorage)
