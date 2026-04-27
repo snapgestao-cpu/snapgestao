@@ -6,7 +6,10 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild": "expo prebuild --clean",
+    "build:android": "cd android && gradlew assembleRelease",
+    "build:android:debug": "cd android && gradlew assembleDebug"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.0.2",
