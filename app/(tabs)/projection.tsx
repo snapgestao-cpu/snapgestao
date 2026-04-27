@@ -43,7 +43,6 @@ type MonthRow = {
   cycleEndISO: string
   installmentsTotal: number
   isCurrent: boolean
-  temLancamentosReais?: boolean
 }
 
 export default function ProjectionScreen() {
@@ -170,8 +169,6 @@ export default function ProjectionScreen() {
 
         let income: number
         let expense: number
-        let temLancamentosReais = false
-
         if (isFuture) {
           // Futuro: orçado + excedente parcelas + lançamentos reais já registrados
           const creditInMonth = allCredit
@@ -200,7 +197,6 @@ export default function ProjectionScreen() {
             .filter(t => (t.type === 'expense' || t.type === 'goal_deposit') && t.payment_method !== 'credit' && t.date >= cycle.startISO && t.date <= cycle.endISO)
             .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
-          temLancamentosReais = realIncome > 0 || realExpense > 0
           income = base + realIncome
           expense = totalBudgeted + excedenteParcelas + realExpense
         } else {
@@ -225,7 +221,7 @@ export default function ProjectionScreen() {
 
         const shortLabel = formatMonthLabel(cycle.start)
         built.push({
-          label: isFuture ? shortLabel + ' *' : shortLabel,
+          label: shortLabel,
           income,
           expense,
           saldo: income - expense,
@@ -234,7 +230,6 @@ export default function ProjectionScreen() {
           cycleEndISO: cycle.endISO,
           installmentsTotal,
           isCurrent,
-          temLancamentosReais,
         })
       }
 
@@ -313,18 +308,13 @@ export default function ProjectionScreen() {
                           isFuture && styles.futureRow,
                           { borderLeftWidth: hasCredit ? 3 : 0, borderLeftColor: Colors.warning },
                         ]}>
-                          <View style={{ width: COL.month, paddingLeft: 8 }}>
-                            <Text style={[
-                              styles.tableCell,
-                              { fontWeight: row.isCurrent ? '700' : '400' },
-                              isFuture && styles.futureCellText,
-                            ]}>
-                              {row.label}
-                            </Text>
-                            {isFuture && row.temLancamentosReais && (
-                              <Text style={{ fontSize: 9, color: Colors.primary }}>📌 real</Text>
-                            )}
-                          </View>
+                          <Text style={[
+                            styles.tableCell,
+                            { width: COL.month, paddingLeft: 8, fontWeight: row.isCurrent ? '700' : '400' },
+                            isFuture && styles.futureCellText,
+                          ]}>
+                            {row.label}
+                          </Text>
                           <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
                             {brl(row.income)}
                           </Text>
@@ -393,13 +383,7 @@ export default function ProjectionScreen() {
                   <Text style={{ fontSize: 12 }}>🔮</Text>
                   <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
                     <Text style={{ fontWeight: '600', color: Colors.textDark }}>Meses futuros: </Text>
-                    orçamento dos potes + parcelas de cartão + lançamentos reais já registrados
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Text style={{ fontSize: 12 }}>📌</Text>
-                  <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
-                    Meses futuros com <Text style={{ fontWeight: '600', color: Colors.primary }}>📌 real</Text> incluem receitas ou despesas já lançadas naquele mês
+                    orçamento dos potes + parcelas de cartão que excedem o valor orçado
                   </Text>
                 </View>
               </View>
@@ -421,7 +405,7 @@ export default function ProjectionScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <View>
                 <Text style={styles.sheetTitle}>
-                  💳 Cartão — {selectedCreditMonth?.label?.replace(' *', '')}
+                  💳 Cartão — {selectedCreditMonth?.label}
                 </Text>
                 <Text style={styles.sheetSubtitle}>Parcelas com vencimento neste mês</Text>
               </View>
