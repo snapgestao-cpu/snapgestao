@@ -1,5 +1,6 @@
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
+import * as FileSystem from 'expo-file-system/legacy'
 
 function escapeHtml(str: string): string {
   return str
@@ -31,9 +32,12 @@ function markdownToHtml(texto: string): string {
     .replace(/^(.)/, '<p>$1') + '</p>'
 }
 
-function buildHtml(relatorio: string, userName: string, dataGeracao: string): string {
+function buildHtml(relatorio: string, userName: string, dataGeracao: string, logoBase64?: string): string {
   const conteudoHTML = markdownToHtml(relatorio)
   const safeUser = escapeHtml(userName)
+  const logoTag = logoBase64
+    ? `<img src="data:image/png;base64,${logoBase64}" style="width:44px;height:44px;border-radius:12px;object-fit:contain;" />`
+    : `<div class="brand-icon">🫙</div>`
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -42,6 +46,7 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Relatório Mentor Financeiro — SnapGestão</title>
 <style>
+  @page { margin: 2cm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
@@ -60,7 +65,7 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 
   .header {
     background: #0F5EA8;
-    padding: 40px 40px 32px;
+    padding: 32px 32px 24px;
     color: #fff;
   }
   .header-brand {
@@ -110,7 +115,7 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
   }
 
   .content {
-    padding: 40px;
+    padding: 32px;
   }
 
   h1 {
@@ -166,8 +171,8 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 
   .footer {
     background: #F4F6F9;
-    padding: 24px 40px;
-    margin-top: 40px;
+    padding: 20px 32px;
+    margin-top: 32px;
     border-top: 1px solid #E8EEF5;
     text-align: center;
   }
@@ -188,7 +193,7 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 <div class="page">
   <div class="header">
     <div class="header-brand">
-      <div class="brand-icon">🫙</div>
+      ${logoTag}
       <div>
         <div class="brand-name">SnapGestão</div>
         <div class="brand-sub">Controle Financeiro Pessoal</div>
@@ -215,12 +220,33 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string): st
 </html>`
 }
 
+async function loadLogoBase64(): Promise<string | undefined> {
+  try {
+    // expo-asset has no @types — use require
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Asset } = require('expo-asset')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const asset = Asset.fromModule(require('../assets/potes/logo_SpapGestao.png'))
+    await asset.downloadAsync()
+    const localUri: string | null = asset.localUri ?? asset.uri
+    if (!localUri) return undefined
+    return await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 })
+  } catch {
+    return undefined
+  }
+}
+
 export async function gerarPDF(relatorio: string, userName: string): Promise<string> {
   const dataGeracao = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'long', year: 'numeric',
   })
-  const html = buildHtml(relatorio, userName, dataGeracao)
-  const { uri } = await Print.printToFileAsync({ html, base64: false })
+  const logoBase64 = await loadLogoBase64()
+  const html = buildHtml(relatorio, userName, dataGeracao, logoBase64)
+  const { uri } = await Print.printToFileAsync({
+    html,
+    base64: false,
+    margins: { left: 20, top: 20, right: 20, bottom: 20 },
+  })
   return uri
 }
 

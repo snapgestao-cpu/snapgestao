@@ -15,6 +15,7 @@ import {
   QuestionarioRespostas,
   coletarContextoFinanceiro,
   gerarRelatorioMentor,
+  getMesesParaAnalisar,
 } from '../lib/mentor-financeiro'
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
 import { useCycleStore } from '../stores/useCycleStore'
@@ -92,6 +93,18 @@ const PERGUNTAS_BASE: Pergunta[] = [
     ],
     placeholder: 'Ou descreva como prefere...',
   },
+  {
+    id: 'periodo',
+    titulo: 'Qual período\ndeseja analisar?',
+    emoji: '📅',
+    opcoes: [
+      { key: '1mes', label: '📆 Último mês' },
+      { key: '3meses', label: '📅 Últimos 3 meses' },
+      { key: '6meses', label: '🗓️ Últimos 6 meses' },
+      { key: 'tudo', label: '📚 Todo o histórico disponível' },
+    ],
+    placeholder: 'Ou especifique o período...',
+  },
 ]
 
 type Step = 'intro' | 'quiz' | 'generating' | 'result' | 'error'
@@ -152,13 +165,17 @@ export default function MentorScreen() {
     if (currentQ < PERGUNTAS.length - 1) {
       fadeTransition(() => setCurrentQ(q => q + 1))
     } else {
+      const buildField = (id: string) => ({
+        opcao: selectedOpcoes[id] ?? null,
+        comentario: (comentarios[id] ?? '').trim(),
+      })
       const r: QuestionarioRespostas = {
-        objetivo: selectedOpcoes['objetivo'] ?? '',
-        dificuldade: selectedOpcoes['dificuldade'] ?? '',
-        metaPrincipal: selectedOpcoes['metaPrincipal'] ?? '',
-        prazo: selectedOpcoes['prazo'] ?? '',
-        tom: selectedOpcoes['tom'] ?? '',
-        comentarios,
+        objetivo: buildField('objetivo'),
+        dificuldade: buildField('dificuldade'),
+        metaPrincipal: buildField('metaPrincipal'),
+        prazo: buildField('prazo'),
+        tom: buildField('tom'),
+        periodo: buildField('periodo'),
       }
       gerarRelatorio(r)
     }
@@ -167,7 +184,8 @@ export default function MentorScreen() {
   const gerarRelatorio = async (r: QuestionarioRespostas) => {
     setStep('generating')
     try {
-      const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1)
+      const maxMeses = getMesesParaAnalisar(r.periodo.opcao)
+      const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1, maxMeses)
       const texto = await gerarRelatorioMentor(r, ctx, aiProvider)
       setRelatorio(texto)
 
@@ -274,7 +292,7 @@ export default function MentorScreen() {
 
           <View style={styles.disclaimer}>
             <Text style={styles.disclaimerText}>
-              Responda 5 perguntas rápidas e a IA vai gerar seu relatório personalizado em segundos.
+              Responda 6 perguntas rápidas e a IA vai gerar seu relatório personalizado em segundos.
             </Text>
           </View>
 
