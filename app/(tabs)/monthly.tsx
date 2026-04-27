@@ -85,7 +85,7 @@ export default function MonthlyScreen() {
           .not('billing_date', 'is', null)
           .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
           .order('billing_date', { ascending: false }),
-        fetchPotsForCycle(user.id, cycle.startISO, cycle.end.toISOString()),
+        fetchPotsForCycle(user.id, cycle.startISO, cycle.endISO),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),

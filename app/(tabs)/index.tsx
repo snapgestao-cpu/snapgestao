@@ -15,6 +15,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useCycleStore } from '../../stores/useCycleStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
+import { fetchPotsForCycle } from '../../lib/pots'
 import { Pot } from '../../types'
 import { brl } from '../../lib/finance'
 import MonthPickerModal from '../../components/MonthPickerModal'
@@ -57,14 +58,11 @@ export default function PotsScreen() {
     try {
       const c = getCycle(user.cycle_start ?? 1, cycleOffset)
 
-      const [sourcesRes, potsRes, epRes] = await Promise.all([
+      const [sourcesRes, pots, epRes] = await Promise.all([
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
-        supabase.from('pots').select('*')
-          .eq('user_id', user.id)
-          .eq('is_emergency', false)
-          .is('deleted_at', null)
-          .lte('created_at', c.end.toISOString())
-          .order('created_at', { ascending: true }),
+        // Potes ativos no ciclo: inclui potes deletados DEPOIS do fim do ciclo
+        // (ex: pote deletado em mês futuro ainda aparece no mês atual)
+        fetchPotsForCycle(user.id, c.startISO, c.endISO),
         supabase.from('pots').select('*')
           .eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
       ])
@@ -73,7 +71,6 @@ export default function PotsScreen() {
         .reduce((s, r) => s + Number(r.amount), 0)
       setTotalIncome(income)
 
-      const pots = (potsRes.data ?? []) as Pot[]
       const ep = epRes.data as Pot | null
       setEmergencyPot(ep)
 
