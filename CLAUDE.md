@@ -76,10 +76,10 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 - Edit mode: receives `editPot?: Pot`, does `UPDATE` instead of `INSERT`
 - Retroactive creation: `cycleStartDate?: Date` + `isRetroactive?: boolean` — saves `created_at` as cycle start date instead of `now()`
 - Prop `onBadges?: (badges: Badge[]) => void` to return newly granted badges to parent
-- **Duplicate prevention**: `onBlur` on name field runs `ilike` query; shows amber border + warning text if duplicate. On save, checks again — if duplicate found, shows Alert offering "Atualizar limite" (UPDATE + `pot_limit_history` insert) instead of INSERT. When `isRetroactive=true` and the existing pot's `created_at` is later than `cycleStartDate`, the Alert instead offers "Sim, criar desde este mês" and includes `created_at=cycleStartDate` in the UPDATE so the pot becomes visible in that earlier month.
+- **Duplicate prevention**: `onBlur` runs `ilike` query **with `.is('deleted_at', null)`** (only active pots) for the hint. On save, queries all pots (including deleted) with that name. If found pot has `deleted_at != null` → shows "Reativar" Alert (sets `deleted_at=null`, updates `limit_amount`/`color`). If found pot is active → shows "Atualizar limite" (UPDATE + `pot_limit_history` insert). When `isRetroactive=true` and the existing pot's `created_at` is later than `cycleStartDate`, the Alert instead offers "Sim, criar desde este mês" and includes `created_at=cycleStartDate` in the UPDATE so the pot becomes visible in that earlier month.
 - **Never include `icon` or `mesada_active` in pots INSERT/UPDATE** — these columns do not exist in the schema
 
-**Pot deletion** — **soft DELETE** via `deleted_at`. On delete: expense transactions from `cycle.startISO` onwards are hard-deleted, then the pot gets `deleted_at = cycle.start.toISOString()`. The pot remains in the DB so past-cycle views still show it.
+**Pot deletion** — **soft DELETE** via `deleted_at`. On delete from `pot/[id].tsx`: expense transactions from `cycle.startISO` (the **viewed** cycle, not always the current cycle) are hard-deleted, then the pot gets `deleted_at = cycle.start.toISOString()`. Deleting from a future month (cycleOffset > 0) sets `deleted_at` to that future month's start — the current month is unaffected. The pot remains in the DB so past-cycle views still show it.
 
 **Pot queries by context:**
 - `index.tsx` (current cycle dashboard): `.is('deleted_at', null)` — only active pots.
