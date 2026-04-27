@@ -15,13 +15,15 @@ import { getPotIcon } from '../lib/potIcons'
 import { checkCriticalPots } from '../lib/notifications'
 import { brl } from '../lib/finance'
 
-type PayMethod = 'cash' | 'debit' | 'credit' | 'pix'
+type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'voucher_alimentacao' | 'voucher_refeicao'
 
 const PAY_METHODS: { key: PayMethod; label: string }[] = [
-  { key: 'cash', label: 'Dinheiro' },
-  { key: 'debit', label: 'Débito' },
-  { key: 'credit', label: 'Crédito' },
-  { key: 'pix', label: 'Pix' },
+  { key: 'cash',               label: 'Dinheiro' },
+  { key: 'debit',              label: 'Débito' },
+  { key: 'credit',             label: 'Crédito' },
+  { key: 'pix',                label: 'Pix' },
+  { key: 'voucher_alimentacao', label: '🍽️ Vale Alimentação' },
+  { key: 'voucher_refeicao',   label: '🍴 Vale Refeição' },
 ]
 
 type Props = {

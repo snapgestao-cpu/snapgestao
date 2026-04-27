@@ -10,12 +10,24 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 
-type PayMethod = 'pix' | 'transfer' | 'cash'
+type PayMethod = 'pix' | 'transfer' | 'cash' | 'voucher_alimentacao' | 'voucher_refeicao'
 
 const PAY_METHODS: { key: PayMethod; label: string }[] = [
-  { key: 'pix', label: 'Pix' },
-  { key: 'transfer', label: 'Transferência' },
-  { key: 'cash', label: 'Dinheiro' },
+  { key: 'pix',                 label: 'Pix' },
+  { key: 'transfer',            label: 'Transferência' },
+  { key: 'cash',                label: 'Dinheiro' },
+  { key: 'voucher_alimentacao', label: '🍽️ Vale Alimentação' },
+  { key: 'voucher_refeicao',    label: '🍴 Vale Refeição' },
+]
+
+type IncomeType = 'salary' | 'freelance' | 'voucher_alimentacao' | 'voucher_refeicao' | 'other'
+
+const INCOME_TYPES: { key: IncomeType; label: string; payMethod: PayMethod }[] = [
+  { key: 'salary',              label: '💼 Salário',         payMethod: 'transfer' },
+  { key: 'freelance',           label: '🧑‍💻 Freelance',      payMethod: 'pix' },
+  { key: 'voucher_alimentacao', label: '🍽️ Vale Alimentação', payMethod: 'voucher_alimentacao' },
+  { key: 'voucher_refeicao',    label: '🍴 Vale Refeição',   payMethod: 'voucher_refeicao' },
+  { key: 'other',               label: '💰 Outro',           payMethod: 'pix' },
 ]
 
 type Props = {
@@ -38,6 +50,7 @@ export function NewIncomeModal({ visible, onClose, onSuccess, initialDate }: Pro
   const [description, setDescription] = useState('')
   const [sources, setSources] = useState<IncomeSource[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState<string | 'avulsa' | null>(null)
+  const [incomeType, setIncomeType] = useState<IncomeType>('other')
   const [dateISO, setDateISO] = useState(todayISO())
   const [dateDisplay, setDateDisplay] = useState(isoToDisplay(todayISO()))
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('pix')
@@ -49,6 +62,7 @@ export function NewIncomeModal({ visible, onClose, onSuccess, initialDate }: Pro
     setAmountDigits('')
     setDescription('')
     setSelectedSourceId(null)
+    setIncomeType('other')
     const d = initialDate ?? todayISO()
     setDateISO(d)
     setDateDisplay(isoToDisplay(d))
@@ -72,6 +86,15 @@ export function NewIncomeModal({ visible, onClose, onSuccess, initialDate }: Pro
       const parsed = new Date(`${y}-${mo}-${d}T12:00:00`)
       if (!isNaN(parsed.getTime())) setDateISO(`${y}-${mo}-${d}`)
     }
+  }
+
+  const handleIncomeTypeSelect = (type: IncomeType) => {
+    setIncomeType(type)
+    const entry = INCOME_TYPES.find(t => t.key === type)
+    if (entry) setPaymentMethod(entry.payMethod)
+    if (type === 'voucher_alimentacao') setDescription('Vale Alimentação')
+    else if (type === 'voucher_refeicao') setDescription('Vale Refeição')
+    else if (type !== 'other') { /* keep current description */ }
   }
 
   const handleSourceSelect = (id: string | 'avulsa') => {
@@ -144,6 +167,22 @@ export function NewIncomeModal({ visible, onClose, onSuccess, initialDate }: Pro
               placeholderTextColor={Colors.textMuted}
               textAlign="center"
             />
+
+            {/* Tipo de receita */}
+            <Text style={styles.label}>Tipo de receita</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {INCOME_TYPES.map(t => (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[styles.chip, incomeType === t.key && styles.chipActiveGreen]}
+                  onPress={() => handleIncomeTypeSelect(t.key)}
+                >
+                  <Text style={[styles.chipText, incomeType === t.key && styles.chipTextGreen]}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             {/* Fonte de receita */}
             {sources.length > 0 && (

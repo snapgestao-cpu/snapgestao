@@ -27,6 +27,7 @@ type Props = {
 const PAYMENT_LABEL: Record<string, string> = {
   credit: 'Crédito', debit: 'Débito',
   pix: 'Pix', cash: 'Dinheiro', transfer: 'Transferência',
+  voucher_alimentacao: 'Vale Alimentação', voucher_refeicao: 'Vale Refeição',
 }
 
 const POT_ICONS: Record<string, string> = {

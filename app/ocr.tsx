@@ -51,11 +51,13 @@ type ReviewItem = {
 }
 
 const PAYMENT_OPTIONS = [
-  { key: 'debit',    label: 'Débito'    },
-  { key: 'credit',   label: 'Crédito'   },
-  { key: 'pix',      label: 'Pix'       },
-  { key: 'cash',     label: 'Dinheiro'  },
-  { key: 'transfer', label: 'Transfer.' },
+  { key: 'debit',               label: 'Débito'    },
+  { key: 'credit',              label: 'Crédito'   },
+  { key: 'pix',                 label: 'Pix'       },
+  { key: 'cash',                label: 'Dinheiro'  },
+  { key: 'transfer',            label: 'Transfer.' },
+  { key: 'voucher_alimentacao', label: '🍽️ Aliment.' },
+  { key: 'voucher_refeicao',    label: '🍴 Refeição' },
 ]
 
 function formatCents(cents: number): string {

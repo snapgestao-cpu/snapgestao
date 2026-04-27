@@ -91,6 +91,8 @@ function parsePaymentMethod(raw: any): string {
   if (s === 'pix' || s.includes('pix')) return 'pix'
   if (s.includes('dinh') || s.includes('cash')) return 'cash'
   if (s.includes('transf')) return 'transfer'
+  if (s.includes('aliment')) return 'voucher_alimentacao'
+  if (s.includes('refei')) return 'voucher_refeicao'
   return 'cash'  // 'other' is not a valid payment_method in the DB
 }
 
@@ -221,7 +223,7 @@ function ExcelPreview() {
           <Text style={{ fontWeight: '700' }}>Obrigatória:</Text> valor{'\n'}
           <Text style={{ fontWeight: '700' }}>Opcionais:</Text> estabelecimento, parcelas, pote{'\n'}
           <Text style={{ color: Colors.primary, fontWeight: '600' }}>💡 Dica:</Text>
-          <Text>{' '}O nome do pote deve ser igual ao cadastrado no app. Ex: "Alimentação". Se não encontrado, será marcado como "Nenhum".</Text>
+          <Text>{' '}O nome do pote deve ser igual ao cadastrado no app. Ex: "Alimentação". Se não encontrado, será marcado como "Nenhum". Formas de pagamento aceitas: dinheiro, débito, crédito, pix, transferência, vale alimentação, vale refeição.</Text>
         </Text>
       </View>
     </View>
@@ -387,7 +389,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         if (!t.date || !dateRe.test(t.date)) t.date = formatDateISO(new Date())
         if (t.billing_date && !dateRe.test(t.billing_date)) t.billing_date = null
         if (!['expense', 'income', 'goal_deposit'].includes(t.type)) t.type = 'expense'
-        if (!['credit', 'debit', 'pix', 'cash', 'transfer'].includes(t.payment_method)) t.payment_method = 'cash'
+        if (!['credit', 'debit', 'pix', 'cash', 'transfer', 'voucher_alimentacao', 'voucher_refeicao'].includes(t.payment_method)) t.payment_method = 'cash'
       }
 
       const { data: inserted, error } = await supabase.from('transactions').insert(inserts).select()

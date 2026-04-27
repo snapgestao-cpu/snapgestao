@@ -11,14 +11,18 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
 
-type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'transfer'
+type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'transfer' | 'voucher_alimentacao' | 'voucher_refeicao'
 const PAY_METHODS_EXPENSE: { key: PayMethod; label: string }[] = [
   { key: 'cash', label: 'Dinheiro' }, { key: 'debit', label: 'Débito' },
   { key: 'credit', label: 'Crédito' }, { key: 'pix', label: 'Pix' },
+  { key: 'voucher_alimentacao', label: '🍽️ Vale Alimentação' },
+  { key: 'voucher_refeicao', label: '🍴 Vale Refeição' },
 ]
 const PAY_METHODS_INCOME: { key: PayMethod; label: string }[] = [
   { key: 'pix', label: 'Pix' }, { key: 'transfer', label: 'Transferência' },
   { key: 'cash', label: 'Dinheiro' },
+  { key: 'voucher_alimentacao', label: '🍽️ Vale Alimentação' },
+  { key: 'voucher_refeicao', label: '🍴 Vale Refeição' },
 ]
 
 function todayISO() { return new Date().toISOString().split('T')[0] }
