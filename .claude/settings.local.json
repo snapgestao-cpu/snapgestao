@@ -24,7 +24,9 @@
       "Bash(sed -n '180,215p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/goals.tsx)",
       "Bash(sed -n '160,200p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/monthly.tsx)",
       "Bash(sed -n '1,30p' C:/snapgestao/snapgestao/app/_layout.tsx)",
-      "Bash(sed -n '40,60p' C:/snapgestao/snapgestao/app/_layout.tsx)"
+      "Bash(sed -n '40,60p' C:/snapgestao/snapgestao/app/_layout.tsx)",
+      "Bash(sed -n '139,160p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/monthly.tsx)",
+      "Bash(sed -n '260,305p' C:/snapgestao/snapgestao/app/\\\\\\(tabs\\\\\\)/monthly.tsx)"
     ],
     "defaultMode": "bypassPermissions"
   }
