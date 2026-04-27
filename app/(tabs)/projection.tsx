@@ -43,6 +43,7 @@ type MonthRow = {
   cycleEndISO: string
   installmentsTotal: number
   isCurrent: boolean
+  temLancamentosReais?: boolean
 }
 
 export default function ProjectionScreen() {
@@ -140,6 +141,8 @@ export default function ProjectionScreen() {
         let income: number
         let expense: number
 
+        let temLancamentosReais = false
+
         if (isFuture) {
           // Futuro: orçado dos potes + excedente de parcelas de crédito agendadas
           const creditInMonth = allCredit
@@ -166,8 +169,22 @@ export default function ProjectionScreen() {
             }
           }
 
-          income = base
-          expense = totalBudgeted + excedenteParcelas
+          // Lançamentos reais em meses futuros (receitas e despesas não-crédito)
+          const [{ data: realIncomeData }, { data: realExpenseData }] = await Promise.all([
+            supabase.from('transactions').select('amount')
+              .eq('user_id', userId).eq('type', 'income')
+              .gte('date', cycle.startISO).lte('date', cycle.endISO),
+            supabase.from('transactions').select('amount')
+              .eq('user_id', userId).eq('type', 'expense')
+              .neq('payment_method', 'credit')
+              .gte('date', cycle.startISO).lte('date', cycle.endISO),
+          ])
+          const totalRealIncome = ((realIncomeData ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
+          const totalRealExpense = ((realExpenseData ?? []) as any[]).reduce((s, t) => s + Number(t.amount), 0)
+          temLancamentosReais = totalRealIncome > 0 || totalRealExpense > 0
+
+          income = base + totalRealIncome
+          expense = totalBudgeted + excedenteParcelas + totalRealExpense
         } else {
           // Passado e atual: dados reais (crédito por billing_date, restante por date)
           const { data: txs } = await supabase
@@ -203,6 +220,7 @@ export default function ProjectionScreen() {
           cycleEndISO: cycle.endISO,
           installmentsTotal,
           isCurrent,
+          temLancamentosReais,
         })
       }
 
@@ -282,13 +300,18 @@ export default function ProjectionScreen() {
                           isFuture && styles.futureRow,
                           { borderLeftWidth: hasCredit ? 3 : 0, borderLeftColor: Colors.warning },
                         ]}>
-                          <Text style={[
-                            styles.tableCell,
-                            { width: COL.month, paddingLeft: 8, fontWeight: row.isCurrent ? '700' : '400' },
-                            isFuture && styles.futureCellText,
-                          ]}>
-                            {row.label}
-                          </Text>
+                          <View style={{ width: COL.month, paddingLeft: 8 }}>
+                            <Text style={[
+                              styles.tableCell,
+                              { fontWeight: row.isCurrent ? '700' : '400' },
+                              isFuture && styles.futureCellText,
+                            ]}>
+                              {row.label}
+                            </Text>
+                            {isFuture && row.temLancamentosReais && (
+                              <Text style={{ fontSize: 9, color: Colors.primary }}>📌 real</Text>
+                            )}
+                          </View>
                           <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
                             {brl(row.income)}
                           </Text>
@@ -357,16 +380,13 @@ export default function ProjectionScreen() {
                   <Text style={{ fontSize: 12 }}>🔮</Text>
                   <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
                     <Text style={{ fontWeight: '600', color: Colors.textDark }}>Meses futuros: </Text>
-                    orçamento dos potes + parcelas de cartão que excedem o valor orçado
+                    orçamento dos potes + parcelas de cartão + lançamentos reais já registrados
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Text style={{ fontSize: 12 }}>💡</Text>
+                  <Text style={{ fontSize: 12 }}>📌</Text>
                   <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>
-                    Para adicionar gastos ou receitas em meses futuros, navegue até o mês desejado nas telas{' '}
-                    <Text style={{ fontWeight: '600', color: Colors.primary }}>Mensal</Text>
-                    {' '}ou{' '}
-                    <Text style={{ fontWeight: '600', color: Colors.primary }}>Potes</Text>
+                    Meses futuros com <Text style={{ fontWeight: '600', color: Colors.primary }}>📌 real</Text> incluem receitas ou despesas já lançadas naquele mês
                   </Text>
                 </View>
               </View>
