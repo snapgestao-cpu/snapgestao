@@ -100,7 +100,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
     if (!userId) return
     const { data } = await supabase
       .from('pots').select('id').eq('user_id', userId)
-      .ilike('name', potName.trim()).limit(1)
+      .ilike('name', potName.trim()).is('deleted_at', null).limit(1)
     setIsDuplicate(data != null && data.length > 0)
   }
 
@@ -117,11 +117,49 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       // Verificar duplicata apenas na criação
       if (!editPot) {
         const { data: existing } = await supabase
-          .from('pots').select('id, name, created_at').eq('user_id', userId)
+          .from('pots').select('id, name, created_at, deleted_at').eq('user_id', userId)
           .ilike('name', name.trim()).limit(1)
 
         if (existing && existing.length > 0) {
-          const existingPot = existing[0] as { id: string; name: string; created_at: string }
+          const existingPot = existing[0] as { id: string; name: string; created_at: string; deleted_at: string | null }
+
+          // Pote deletado → oferecer reativação
+          if (existingPot.deleted_at !== null) {
+            setLoading(false)
+            Alert.alert(
+              'Pote anteriormente excluído',
+              `O pote "${existingPot.name}" foi excluído anteriormente. Deseja reativá-lo com o limite atual?`,
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Reativar',
+                  onPress: async () => {
+                    try {
+                      setLoading(true)
+                      const { error: reactivateErr } = await supabase
+                        .from('pots')
+                        .update({ deleted_at: null, limit_amount: computedLimit, color })
+                        .eq('id', existingPot.id).eq('user_id', userId)
+                      if (reactivateErr) {
+                        setError('Erro ao reativar: ' + reactivateErr.message)
+                        setLoading(false)
+                        return
+                      }
+                      setLoading(false)
+                      onClose()
+                      setTimeout(() => { onSuccess('Pote reativado!') }, 100)
+                    } catch {
+                      setError('Erro inesperado.')
+                      setLoading(false)
+                    }
+                  },
+                },
+              ]
+            )
+            return
+          }
+
+          // Pote ativo → oferecer atualizar limite (comportamento original)
           const existingCreatedAt = new Date(existingPot.created_at)
           const isCreatedAfterCycle = isRetroactive && cycleStartDate != null
             && existingCreatedAt > cycleStartDate
