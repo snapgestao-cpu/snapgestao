@@ -145,8 +145,8 @@ const styles = StyleSheet.create({
   // Logo
   logoWrap: { alignItems: 'center', marginBottom: 44 },
   logoImage: {
-    width: 160,
-    height: 160,
+    width: 208,
+    height: 208,
     resizeMode: 'contain',
     alignSelf: 'center',
     marginBottom: 24,
