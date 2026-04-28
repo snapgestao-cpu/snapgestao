@@ -178,6 +178,53 @@ export async function updatePot(
   }
 }
 
+// Fetch all pots + all history in 2 queries, then compute per-offset state client-side.
+// Much faster than N+1 queries when building the projection table.
+export async function getPotsHistoryBatch(
+  userId: string,
+  cycleStart: number,
+  offsets: number[],
+): Promise<Record<number, any[]>> {
+  const [{ data: pots }, { data: allHistory }] = await Promise.all([
+    supabase.from('pots')
+      .select('id, created_at, deleted_at, color, is_emergency')
+      .eq('user_id', userId)
+      .eq('is_emergency', false)
+      .order('created_at', { ascending: true }),
+    supabase.from('pot_history')
+      .select('pot_id, name, limit_amount, valid_from')
+      .eq('user_id', userId)
+      .order('valid_from', { ascending: true }),
+  ])
+
+  const result: Record<number, any[]> = {}
+
+  for (const offset of offsets) {
+    const { start, end } = getCycle(cycleStart, offset)
+    const startStr = start.toISOString().split('T')[0]
+    const endStr = end.toISOString().split('T')[0]
+
+    const potsDoMes = (pots ?? []).filter(p => {
+      const created = ((p.created_at as string) ?? '').split('T')[0]
+      const deleted = p.deleted_at ? ((p.deleted_at as string)).split('T')[0] : null
+      return created <= endStr && (!deleted || deleted >= startStr)
+    })
+
+    result[offset] = potsDoMes.map(pot => {
+      const history = (allHistory ?? [])
+        .filter(h => (h as any).pot_id === pot.id && (h as any).valid_from <= startStr)
+        .sort((a, b) => (b as any).valid_from.localeCompare((a as any).valid_from))[0] as any
+      return {
+        ...pot,
+        name: history?.name ?? 'Pote',
+        limit_amount: history?.limit_amount ?? 0,
+      }
+    })
+  }
+
+  return result
+}
+
 // Soft-delete a pot starting from the viewed cycle month
 export async function deletePot(
   potId: string,
