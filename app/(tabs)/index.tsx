@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, FlatList,
+  View, Text, StyleSheet, FlatList, ActivityIndicator,
   RefreshControl, TouchableOpacity, Dimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router, useFocusEffect } from 'expo-router'
+import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { JarPot } from '../../components/JarPot'
 import { NewPotModal } from '../../components/NewPotModal'
@@ -51,26 +51,10 @@ export default function PotsScreen() {
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
-  type CacheEntry = {
-    offset: number; timestamp: number
-    rows: PotRow[]; ep: Pot | null; epBalance: number; income: number
-  }
-  const cacheRef = useRef<CacheEntry | null>(null)
-
   const cycle = user ? getCycle(user.cycle_start ?? 1, cycleOffset) : null
 
-  const loadPots = useCallback(async (forceRefresh = false) => {
+  const loadPots = useCallback(async () => {
     if (!user) return
-    const cached = cacheRef.current
-    if (!forceRefresh && cached && cached.offset === cycleOffset && Date.now() - cached.timestamp < 30000) {
-      setPotsData(cached.rows)
-      setEmergencyPot(cached.ep)
-      setEmergencyBalance(cached.epBalance)
-      setTotalIncome(cached.income)
-      setLoading(false)
-      setRefreshing(false)
-      return
-    }
     try {
       const c = getCycle(user.cycle_start ?? 1, cycleOffset)
 
@@ -114,40 +98,25 @@ export default function PotsScreen() {
       })
       setPotsData(rows)
 
-      let epBalance = 0
       if (ep) {
         const { data: epTxs } = await supabase
           .from('transactions').select('amount,type').eq('pot_id', ep.id)
-        epBalance = ((epTxs ?? []) as any[]).reduce((s: number, t: any) =>
+        const bal = ((epTxs ?? []) as any[]).reduce((s: number, t: any) =>
           t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0)
-        setEmergencyBalance(epBalance)
+        setEmergencyBalance(bal)
       }
-
-      cacheRef.current = { offset: cycleOffset, timestamp: Date.now(), rows, ep, epBalance, income }
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }, [user?.id, cycleOffset])
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true)
-      loadPots(true)
-    }, [loadPots])
-  )
+  useEffect(() => { setLoading(true); loadPots() }, [loadPots])
 
-  // Keep useEffect so cycleOffset changes reload while screen is already focused
-  useEffect(() => {
-    setLoading(true)
-    loadPots(true)
-  }, [cycleOffset]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const onRefresh = () => { setRefreshing(true); loadPots(true) }
+  const onRefresh = () => { setRefreshing(true); loadPots() }
 
   const handleSuccess = (msg: string) => {
-    cacheRef.current = null
-    loadPots(true)
+    loadPots()
     setToast({ message: msg, color: Colors.primary })
   }
 
@@ -214,12 +183,7 @@ export default function PotsScreen() {
       )}
 
       {loading ? (
-        <View style={{ flex: 1, padding: 16 }}>
-          <View style={styles.skeletonCard} />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {[1,2,3,4].map(i => <View key={i} style={styles.skeletonPot} />)}
-          </View>
-        </View>
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
           data={potsData}
@@ -348,12 +312,4 @@ const styles = StyleSheet.create({
   emergencyTitle: { fontSize: 14, fontWeight: '700', color: '#534AB7' },
   emergencyBalance: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
   emergencyArrow: { fontSize: 22, color: '#534AB7', fontWeight: '300' },
-  skeletonCard: {
-    height: 100, backgroundColor: Colors.border, borderRadius: 16,
-    marginBottom: 16, opacity: 0.4,
-  },
-  skeletonPot: {
-    width: CELL_WIDTH, height: 160, backgroundColor: Colors.border,
-    borderRadius: 14, opacity: 0.3, marginBottom: 12,
-  },
 })

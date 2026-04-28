@@ -9,7 +9,7 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import { getPotsHistoryBatch } from '../../lib/pot-history'
+import { getPotsForMonth } from '../../lib/pot-history'
 import { getPotIcon } from '../../lib/potIcons'
 
 const COL = { month: 52, value: 108 }
@@ -71,17 +71,20 @@ export default function ProjectionScreen() {
       // Range global: 6 meses atrás até 12 meses à frente
       const globalStart = getCycle(cycleStartDay, -6).startISO
       const globalEnd = getCycle(cycleStartDay, 12).endISO
-      // ── Fase 1: transactions + income (3 queries paralelas) ──
+      // ── 4 queries paralelas + potes com histórico ──
       const [
         { data: sources },
         { data: txsByDate },
         { data: txsByBilling },
+        activePotsList,
       ] = await Promise.all([
         supabase.from('income_sources').select('amount').eq('user_id', userId),
+        // Todas as transactions por date (income + non-credit expense + goal_deposit)
         supabase.from('transactions')
           .select('type, amount, payment_method, date, pot_id')
           .eq('user_id', userId)
           .gte('date', globalStart).lte('date', globalEnd),
+        // Todas as transactions de crédito por billing_date (para modal e cálculo)
         supabase.from('transactions')
           .select('*')
           .eq('user_id', userId)
@@ -89,15 +92,33 @@ export default function ProjectionScreen() {
           .not('billing_date', 'is', null)
           .gte('billing_date', globalStart).lte('billing_date', globalEnd)
           .order('billing_date', { ascending: true }),
+        // Potes ativos no mês atual com nome/limite do histórico
+        getPotsForMonth(userId, cycleStartDay, 0),
       ])
 
       const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
       setMonthlyIncome(base)
 
-      const allByDate = (txsByDate ?? []) as any[]
-      const rawCredit = (txsByBilling ?? []) as any[]
+      const totalBudgeted = activePotsList.reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
 
-      // ── Detectar meses anteriores com lançamentos reais ──
+      // Join manual com potes para exibir nome/cor no modal
+      const rawCredit = (txsByBilling ?? []) as any[]
+      const potIds = [...new Set(rawCredit.map((t: any) => t.pot_id).filter(Boolean))]
+      let potsMap: Record<string, { id: string; name: string; color: string }> = {}
+      if (potIds.length > 0) {
+        const { data: potsData } = await supabase
+          .from('pots').select('id, name, color').in('id', potIds)
+        ;(potsData ?? []).forEach((p: any) => { potsMap[p.id] = p })
+      }
+      const allCredit = rawCredit.map((t: any) => ({
+        ...t,
+        pots: t.pot_id ? (potsMap[t.pot_id] ?? null) : null,
+      }))
+      setCreditInstallments(allCredit)
+
+      const allByDate = (txsByDate ?? []) as any[]
+
+      // ── Detectar meses anteriores com lançamentos reais (sem queries extras) ──
       const pastOffsets: number[] = []
       for (let offset = -1; offset >= -6; offset--) {
         const cycle = getCycle(cycleStartDay, offset)
@@ -106,7 +127,7 @@ export default function ProjectionScreen() {
           t.payment_method !== 'credit' &&
           t.date >= cycle.startISO && t.date <= cycle.endISO
         )
-        const hasCredit = rawCredit.some(t =>
+        const hasCredit = allCredit.some(t =>
           t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO
         )
         if (hasExpense || hasCredit) {
@@ -125,23 +146,7 @@ export default function ProjectionScreen() {
         ...Array.from({ length: futureCount }, (_, i) => i + 1),
       ]
 
-      // ── Fase 2: potes com histórico por mês (apenas 2 queries) ──
-      const potsPorMes = await getPotsHistoryBatch(userId, cycleStartDay, allOffsets)
-
-      // Construir potsMap para o modal de parcelas (sem query extra)
-      const globalPotsMap: Record<string, any> = {}
-      for (const monthPots of Object.values(potsPorMes)) {
-        for (const p of monthPots as any[]) {
-          globalPotsMap[p.id] = p
-        }
-      }
-      const allCredit = rawCredit.map((t: any) => ({
-        ...t,
-        pots: t.pot_id ? (globalPotsMap[t.pot_id] ?? null) : null,
-      }))
-      setCreditInstallments(allCredit)
-
-      // ── Construir rows usando limites corretos por mês ──
+      // ── Construir rows localmente sem queries adicionais ──
       const built: MonthRow[] = []
 
       for (const offset of allOffsets) {
@@ -152,10 +157,7 @@ export default function ProjectionScreen() {
         let income: number
         let expense: number
         if (isFuture) {
-          // Futuro: orçado do mês específico + excedente parcelas + lançamentos reais
-          const potsDoMes: any[] = potsPorMes[offset] ?? []
-          const totalBudgetedDoMes = potsDoMes.reduce((s, p) => s + Number(p.limit_amount || 0), 0)
-
+          // Futuro: orçado + excedente parcelas + lançamentos reais já registrados
           const creditInMonth = allCredit
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
 
@@ -169,7 +171,7 @@ export default function ProjectionScreen() {
             }
           }
           for (const [potId, totalParcelas] of Object.entries(parcelasPorPote)) {
-            const pot = potsDoMes.find((p: any) => p.id === potId)
+            const pot = activePotsList.find((p: any) => p.id === potId)
             const limite = Number(pot?.limit_amount || 0)
             if (limite <= 0) excedenteParcelas += totalParcelas
             else if (totalParcelas > limite) excedenteParcelas += totalParcelas - limite
@@ -183,7 +185,7 @@ export default function ProjectionScreen() {
             .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
           income = base + realIncome
-          expense = totalBudgetedDoMes + excedenteParcelas + realExpense
+          expense = totalBudgeted + excedenteParcelas + realExpense
         } else {
           // Passado e atual: dados reais (crédito por billing_date, restante por date)
           const incomeActual = allByDate
@@ -221,11 +223,10 @@ export default function ProjectionScreen() {
       setRows(built)
 
       const last3 = built.filter(m => [0, -1, -2].includes(m.offset))
-      const fallbackBudget = (potsPorMes[0] ?? []).reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
       setAvgExpense(
         last3.length > 0
           ? last3.reduce((s, m) => s + m.expense, 0) / last3.length
-          : fallbackBudget
+          : totalBudgeted
       )
     } finally {
       setLoading(false)
