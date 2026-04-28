@@ -9,22 +9,12 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 
-function LogoBars() {
-  return (
-    <View style={styles.logoBars}>
-      <View style={[styles.bar, { height: 14, backgroundColor: Colors.primary }]} />
-      <View style={[styles.bar, { height: 22, backgroundColor: Colors.primary }]} />
-      <View style={[styles.bar, { height: 18, backgroundColor: Colors.accent }]} />
-      <View style={[styles.bar, { height: 28, backgroundColor: Colors.primary }]} />
-      <View style={[styles.bar, { height: 20, backgroundColor: Colors.primaryDark }]} />
-    </View>
-  )
-}
 
 export default function LoginScreen() {
   const { signIn } = useAuthStore()
@@ -65,7 +55,10 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={styles.logoWrap}>
-          <LogoBars />
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.logoImage}
+          />
           <Text style={styles.logoText}>SnapGestão</Text>
           <Text style={styles.logoSub}>Controle financeiro simples e eficaz</Text>
         </View>
@@ -152,14 +145,13 @@ const styles = StyleSheet.create({
 
   // Logo
   logoWrap: { alignItems: 'center', marginBottom: 44 },
-  logoBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-    height: 32,
-    marginBottom: 14,
+  logoImage: {
+    width: 120,
+    height: 120,
+    resizeMode: 'contain',
+    alignSelf: 'center',
+    marginBottom: 24,
   },
-  bar: { width: 7, borderRadius: 3 },
   logoText: {
     fontSize: 30,
     fontWeight: '800',

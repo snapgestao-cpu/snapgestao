@@ -20,7 +20,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F5EA8"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.snapgestao.app",
       "versionCode": 1,
