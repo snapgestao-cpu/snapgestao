@@ -74,14 +74,18 @@ export default function PotsScreen() {
       const ep = epRes.data as Pot | null
       setEmergencyPot(ep)
 
-      const [{ data: creditTxs }, { data: otherTxs }] = await Promise.all([
+      const [{ data: creditTxs }, { data: otherTxs }, epTxsRes] = await Promise.all([
         supabase.from('transactions').select('amount, pot_id')
           .eq('user_id', user.id).eq('type', 'expense').eq('payment_method', 'credit')
           .gte('billing_date', c.startISO).lte('billing_date', c.endISO),
         supabase.from('transactions').select('amount, pot_id')
           .eq('user_id', user.id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
           .gte('date', c.startISO).lte('date', c.endISO),
+        ep
+          ? supabase.from('transactions').select('amount, type').eq('pot_id', ep.id)
+          : Promise.resolve({ data: [] as any[], error: null }),
       ])
+
       const allCycleTxs = [
         ...((creditTxs ?? []) as any[]),
         ...((otherTxs ?? []) as any[]),
@@ -98,13 +102,10 @@ export default function PotsScreen() {
       })
       setPotsData(rows)
 
-      if (ep) {
-        const { data: epTxs } = await supabase
-          .from('transactions').select('amount,type').eq('pot_id', ep.id)
-        const bal = ((epTxs ?? []) as any[]).reduce((s: number, t: any) =>
-          t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0)
-        setEmergencyBalance(bal)
-      }
+      const epBal = ((epTxsRes.data ?? []) as any[]).reduce(
+        (s: number, t: any) => t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0
+      )
+      setEmergencyBalance(epBal)
     } finally {
       setLoading(false)
       setRefreshing(false)

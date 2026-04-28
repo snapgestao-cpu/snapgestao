@@ -4,20 +4,28 @@ import { Pot } from '../types'
 
 async function enrichWithHistory(pots: Pot[], cycleStartISO: string): Promise<Pot[]> {
   if (!pots.length) return []
-  return Promise.all(
-    pots.map(async (pot) => {
-      const { data } = await supabase
-        .from('pot_history')
-        .select('name, limit_amount')
-        .eq('pot_id', pot.id)
-        .lte('valid_from', cycleStartISO)
-        .order('valid_from', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      return data
-        ? { ...pot, name: (data as any).name, limit_amount: (data as any).limit_amount }
-        : pot
-    })
+  const potIds = pots.map(p => p.id)
+
+  // Single batch query instead of one query per pot (N+1 fix)
+  const { data: allHistory } = await supabase
+    .from('pot_history')
+    .select('pot_id, name, limit_amount, valid_from')
+    .in('pot_id', potIds)
+    .lte('valid_from', cycleStartISO)
+    .order('valid_from', { ascending: false })
+
+  // First match per pot_id is the most recent valid entry (DESC order)
+  const historyByPot: Record<string, { name: string; limit_amount: number }> = {}
+  for (const h of (allHistory ?? []) as any[]) {
+    if (!historyByPot[h.pot_id]) {
+      historyByPot[h.pot_id] = { name: h.name, limit_amount: h.limit_amount }
+    }
+  }
+
+  return pots.map(pot =>
+    historyByPot[pot.id]
+      ? { ...pot, name: historyByPot[pot.id].name, limit_amount: historyByPot[pot.id].limit_amount }
+      : pot
   )
 }
 

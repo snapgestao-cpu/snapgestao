@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export type Badge = {
   key: string
@@ -95,6 +96,24 @@ export async function checkAndGrantBadges(
   }
 
   return newBadges
+}
+
+const BADGE_COOLDOWN_MS = 60 * 60 * 1000 // 1 hour
+
+// Use this on app startup — skips all 5 queries if checked within the last hour.
+// Use checkAndGrantBadges directly for explicit user actions (cycle close, new pot, etc.)
+export async function checkAndGrantBadgesOnStartup(
+  userId: string,
+  cycleStart: number,
+): Promise<Badge[]> {
+  try {
+    const lastCheck = await AsyncStorage.getItem(`badge_check_${userId}`)
+    if (lastCheck && Date.now() - Number(lastCheck) < BADGE_COOLDOWN_MS) return []
+    await AsyncStorage.setItem(`badge_check_${userId}`, String(Date.now()))
+  } catch {
+    // AsyncStorage failure must not block startup
+  }
+  return checkAndGrantBadges(userId, cycleStart)
 }
 
 export async function getEarnedBadgeKeys(userId: string): Promise<Set<string>> {

@@ -4,7 +4,6 @@ import { Stack, router, useSegments } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { useAuthStore } from '../stores/useAuthStore'
-import { supabase } from '../lib/supabase'
 import { getDatabase } from '../lib/database'
 import { Colors } from '../constants/colors'
 import {
@@ -13,7 +12,7 @@ import {
   scheduleCycleEndReminder,
 } from '../lib/notifications'
 import { BadgeToast } from '../components/BadgeToast'
-import { checkAndGrantBadges, Badge } from '../lib/badges'
+import { checkAndGrantBadgesOnStartup, Badge } from '../lib/badges'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,15 +28,7 @@ export default function RootLayout() {
   useEffect(() => {
     getDatabase()
     const unsubscribe = init()
-
-    // Safety belt: if stored token is invalid (e.g. user deleted from Supabase),
-    // getSession returns an error — sign out to clear the stale token.
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error || !data.session) {
-        supabase.auth.signOut()
-      }
-    })
-
+    // init() already calls loadSession() which handles invalid/missing tokens
     return unsubscribe
   }, [])
 
@@ -47,7 +38,7 @@ export default function RootLayout() {
     registerForPushNotifications()
     checkCriticalPots(user.id, user.cycle_start ?? 1)
     scheduleCycleEndReminder()
-    checkAndGrantBadges(user.id, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
+    checkAndGrantBadgesOnStartup(user.id, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
   }, [user?.id])
 
   useEffect(() => {

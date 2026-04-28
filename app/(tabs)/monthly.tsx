@@ -121,16 +121,17 @@ export default function MonthlyScreen() {
       }))
       setTransactions(txsWithPot)
 
-      if (ep) {
-        const { data: epTxs } = await supabase.from('transactions').select('amount, type')
-          .eq('pot_id', ep.id)
-        const bal = ((epTxs ?? []) as any[]).reduce((s: number, t: any) => {
-          return t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount)
-        }, 0)
-        setEmergencyBalance(bal)
-      }
+      const [s, epTxsRes] = await Promise.all([
+        calculateCycleSummary(user.id, cycle),
+        ep
+          ? supabase.from('transactions').select('amount, type').eq('pot_id', ep.id)
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ])
 
-      const s = await calculateCycleSummary(user.id, cycle)
+      const epBal = ((epTxsRes.data ?? []) as any[]).reduce(
+        (acc: number, t: any) => t.type === 'income' ? acc + Number(t.amount) : acc - Number(t.amount), 0
+      )
+      setEmergencyBalance(epBal)
       setSummary(s)
     } finally {
       setLoading(false)
