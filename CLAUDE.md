@@ -40,7 +40,7 @@ EXPO_PUBLIC_ANTHROPIC_API_KEY=...
 
 ## Supabase Schema
 
-Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`.  
+Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`.  
 RLS enabled on all tables. Trigger `on_auth_user_created` active.
 
 **`projection_entries` — REMOVED**. The feature (future one-off entries via FAB in Projeção) was removed. If the table exists in Supabase, drop it: `DROP TABLE IF EXISTS public.projection_entries;`. Do not add it back — future-month entries are handled by navigating to Mensal or Potes screens for that month.
@@ -88,6 +88,20 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 - Do **not** use `.is('deleted_at', null)` alone for dashboard/monthly queries — it misses pots that are active now but soft-deleted for a future month.
 
 **Pot limit history** — `pot_limit_history` table records limit changes with `valid_from` per cycle. Has `ON DELETE CASCADE` on `pot_id`.
+
+**Pot history** — `pot_history` table records name + limit changes per cycle (`pot_id, user_id, name, limit_amount, valid_from`). Source of truth for historical pot state. To query a pot's state at a given month: `SELECT ... WHERE pot_id = X AND valid_from <= cycleStart ORDER BY valid_from DESC LIMIT 1`. The `pots` table columns `name`/`limit_amount` always mirror the latest `pot_history` entry (kept in sync for compatibility). **Never read `name`/`limit_amount` directly from `pots` for past-month views** — use `lib/pot-history.ts` functions instead.
+
+**`lib/pot-history.ts`** — centralized functions for pot history:
+- `fetchPotsForCycleWithHistory(userId, cycleStartISO, cycleEndISO)` — drop-in replacement for `fetchPotsForCycle`; overlays historical `name`/`limit_amount` from `pot_history`. Used by `index.tsx`, `monthly.tsx`, `cycleClose.ts`.
+- `getPotAtMonth(potId, cycleStart, offset)` — returns `{ name, limit_amount }` as of a specific cycle offset. Used by `pot/[id].tsx` to overlay correct name/limit.
+- `getPotsForMonth(userId, cycleStart, offset)` — convenience wrapper around `fetchPotsForCycleWithHistory` using cycle offset. Used by `projection.tsx`.
+- `upsertPotHistory(potId, userId, name, limitAmount, cycleStart)` — creates or updates a `pot_history` entry for the current month. Called by `NewPotModal` on create, edit, reactivate, and update-limit paths.
+
+**Pot queries — always use `pot-history.ts` functions:**
+- Dashboard/monthly/cycle-close: `fetchPotsForCycleWithHistory(userId, cycleStartISO, cycleEndISO)`
+- Pot detail screen: `getPotAtMonth(potId, cycleStart, offset)` to overlay on base pot query
+- Projection: `getPotsForMonth(userId, cycleStart, 0)` for current active pots
+- **Never use `fetchPotsForCycle` from `lib/pots.ts` for new code** — it reads name/limit directly from `pots` without history
 
 **Transactions** — `NewExpenseModal`: pote is mandatory (inline error if missing, "Criar pote →" button if list empty); credit payment shows installment toggle (2–24x), creates N rows with shared `installment_group_id` and per-month `billing_date`. `EditTransactionModal`: for installments, shows a 3-option Alert — "Só esta parcela", "Esta e as seguintes" (batch delete with `.gte('installment_number', current)`), "Cancelar". `onDeleteGroup` in `monthly.tsx` and `pot/[id].tsx` shows an extra warning when the group contains credit installments (`hasParcelas` check). **Vouchers** (`voucher_alimentacao`, `voucher_refeicao`) are valid `payment_method` values for both expense and income; treated like debit (`billing_date = null`, `isCredit = false`). `NewIncomeModal` has a "Tipo de receita" chip selector (Salário/Freelance/Vale Alimentação/Vale Refeição/Outro) that auto-fills `payment_method` and description.
 
