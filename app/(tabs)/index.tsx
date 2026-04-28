@@ -15,7 +15,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useCycleStore } from '../../stores/useCycleStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import { fetchPotsForCycle } from '../../lib/pots'
+import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
 import { Pot } from '../../types'
 import { brl } from '../../lib/finance'
 import MonthPickerModal from '../../components/MonthPickerModal'
@@ -62,7 +62,7 @@ export default function PotsScreen() {
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
         // Potes ativos no ciclo: inclui potes deletados DEPOIS do fim do ciclo
         // (ex: pote deletado em mês futuro ainda aparece no mês atual)
-        fetchPotsForCycle(user.id, c.startISO, c.endISO),
+        fetchPotsForCycleWithHistory(user.id, c.startISO, c.endISO),
         supabase.from('pots').select('*')
           .eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
       ])

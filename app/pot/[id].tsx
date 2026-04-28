@@ -15,6 +15,7 @@ import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
+import { getPotAtMonth } from '../../lib/pot-history'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
@@ -50,8 +51,9 @@ export default function PotDetailScreen() {
     try {
       const c = getCycle(user.cycle_start ?? 1, cycleOffset)
 
-      const [potRes, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes] = await Promise.all([
+      const [potRes, historyData, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes] = await Promise.all([
         supabase.from('pots').select('*').eq('id', id).single(),
+        getPotAtMonth(id, user.cycle_start ?? 1, cycleOffset),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
         supabase.from('transactions').select('*')
           .eq('pot_id', id).neq('payment_method', 'credit')
@@ -70,7 +72,10 @@ export default function PotDetailScreen() {
           .gte('date', c.startISO).lte('date', c.endISO),
       ])
 
-      const p = potRes.data as Pot | null
+      const base = potRes.data as Pot | null
+      const p = base && historyData
+        ? { ...base, name: historyData.name, limit_amount: historyData.limit_amount }
+        : base
       setPot(p)
 
       const income = ((sourcesRes.data ?? []) as any[])

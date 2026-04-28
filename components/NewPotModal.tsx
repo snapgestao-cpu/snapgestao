@@ -12,6 +12,7 @@ import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PotCard } from './PotCard'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { getCycle } from '../lib/cycle'
+import { upsertPotHistory } from '../lib/pot-history'
 
 function formatDatePT(d: Date): string {
   const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
@@ -145,6 +146,8 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                         setLoading(false)
                         return
                       }
+                      const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+                      await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay)
                       setLoading(false)
                       onClose()
                       setTimeout(() => { onSuccess('Pote reativado!') }, 100)
@@ -193,15 +196,17 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                       setLoading(false)
                       return
                     }
+                    const csDay = useAuthStore.getState().user?.cycle_start ?? 1
                     const validFrom = cycleStartDate
                       ? cycleStartDate.toISOString().split('T')[0]
-                      : getCycle(useAuthStore.getState().user?.cycle_start ?? 1, 0).start.toISOString().split('T')[0]
+                      : getCycle(csDay, 0).start.toISOString().split('T')[0]
                     await supabase.from('pot_limit_history').insert({
                       pot_id: existingPot.id,
                       user_id: userId,
                       limit_amount: computedLimit,
                       valid_from: validFrom,
                     }).select()
+                    await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay)
                     setLoading(false)
                     onClose()
                     setTimeout(() => { onSuccess('Pote atualizado!') }, 100)
@@ -230,17 +235,22 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
         is_emergency: isEmergency,
       }
 
+      const csDay = useAuthStore.getState().user?.cycle_start ?? 1
       if (editPot) {
         const { error: err } = await supabase.from('pots').update(payload).eq('id', editPot.id)
         if (err) { setError('Erro ao atualizar: ' + err.message); return }
+        await upsertPotHistory(editPot.id, userId, name.trim(), computedLimit, csDay)
         onSuccess('Pote atualizado!')
       } else {
-        const { error: err } = await supabase.from('pots').insert({ ...payload, created_at: potCreatedAt })
+        const { data: newPot, error: err } = await supabase
+          .from('pots').insert({ ...payload, created_at: potCreatedAt }).select().single()
         if (err) { setError('Erro ao criar: ' + err.message); return }
+        if (newPot) {
+          await upsertPotHistory((newPot as any).id, userId, name.trim(), computedLimit, csDay)
+        }
         onSuccess('Pote criado com sucesso!')
         if (onBadges) {
-          const cs = useAuthStore.getState().user?.cycle_start ?? 1
-          checkAndGrantBadges(userId, cs).then(b => { if (b.length > 0) onBadges(b) })
+          checkAndGrantBadges(userId, csDay).then(b => { if (b.length > 0) onBadges(b) })
         }
       }
       onClose()

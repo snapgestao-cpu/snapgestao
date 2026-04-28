@@ -9,6 +9,7 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
+import { getPotsForMonth } from '../../lib/pot-history'
 import { getPotIcon } from '../../lib/potIcons'
 
 const COL = { month: 52, value: 108 }
@@ -70,25 +71,14 @@ export default function ProjectionScreen() {
       // Range global: 6 meses atrás até 12 meses à frente
       const globalStart = getCycle(cycleStartDay, -6).startISO
       const globalEnd = getCycle(cycleStartDay, 12).endISO
-      const currentCycleEndISO = getCycle(cycleStartDay, 0).endISO
-
-      // ── 5 queries paralelas em vez de 13+ sequenciais ──
+      // ── 4 queries paralelas + potes com histórico ──
       const [
         { data: sources },
-        { data: activePotsOnly },
-        { data: futureDeletedPots },
         { data: txsByDate },
         { data: txsByBilling },
+        activePotsList,
       ] = await Promise.all([
         supabase.from('income_sources').select('amount').eq('user_id', userId),
-        // Potes sem deleted_at (ativos)
-        supabase.from('pots').select('id, limit_amount')
-          .eq('user_id', userId).eq('is_emergency', false).is('deleted_at', null),
-        // Potes deletados DEPOIS do ciclo atual (ainda ativos agora)
-        supabase.from('pots').select('id, limit_amount')
-          .eq('user_id', userId).eq('is_emergency', false)
-          .not('deleted_at', 'is', null)
-          .gt('deleted_at', currentCycleEndISO),
         // Todas as transactions por date (income + non-credit expense + goal_deposit)
         supabase.from('transactions')
           .select('type, amount, payment_method, date, pot_id')
@@ -102,17 +92,14 @@ export default function ProjectionScreen() {
           .not('billing_date', 'is', null)
           .gte('billing_date', globalStart).lte('billing_date', globalEnd)
           .order('billing_date', { ascending: true }),
+        // Potes ativos no mês atual com nome/limite do histórico
+        getPotsForMonth(userId, cycleStartDay, 0),
       ])
 
       const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
       setMonthlyIncome(base)
 
-      // Potes ativos no ciclo atual: sem deletar + deletados só em meses futuros
-      const activePotsList = [
-        ...((activePotsOnly ?? []) as any[]),
-        ...((futureDeletedPots ?? []) as any[]),
-      ]
-      const totalBudgeted = activePotsList.reduce((s, p) => s + Number(p.limit_amount || 0), 0)
+      const totalBudgeted = activePotsList.reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
 
       // Join manual com potes para exibir nome/cor no modal
       const rawCredit = (txsByBilling ?? []) as any[]

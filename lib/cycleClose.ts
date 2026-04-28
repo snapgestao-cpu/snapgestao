@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { getCycle, CycleInfo } from './cycle'
-import { fetchPotsForCycle } from './pots'
+import { fetchPotsForCycleWithHistory } from './pot-history'
 
 export type PotSummary = {
   id: string
@@ -34,7 +34,7 @@ export async function calculateCycleSummary(
   const [sourceRes, pots, rolloverRes, incomeRes, creditExpRes, otherExpRes] = await Promise.all([
     supabase.from('income_sources').select('amount').eq('user_id', userId),
 
-    fetchPotsForCycle(userId, cycle.startISO, cycle.end.toISOString()),
+    fetchPotsForCycleWithHistory(userId, cycle.startISO, cycle.endISO),
 
     supabase.from('cycle_rollovers').select('*')
       .eq('user_id', userId).eq('cycle_start_date', cycle.startISO).maybeSingle(),
