@@ -39,6 +39,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withAsyncStorageFix",
       "expo-router",
       "expo-secure-store",
       "expo-sqlite",

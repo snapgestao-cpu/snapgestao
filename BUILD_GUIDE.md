@@ -41,6 +41,9 @@ npx expo prebuild --clean
 ```
 Isso cria a pasta /android com todo o código nativo.
 
+> **A correção do asyncstorage é automática** via plugin em `plugins/withAsyncStorageFix.js`.
+> Não precisa corrigir manualmente o `build.gradle` após cada prebuild.
+
 ### 3. Gerar a keystore (APENAS NA PRIMEIRA VEZ)
 A keystore é sua assinatura digital — guarde com segurança!
 ```bash
