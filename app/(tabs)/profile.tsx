@@ -9,6 +9,7 @@ import { Colors } from '../../constants/colors'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { CreditCardModal } from '../../components/CreditCardModal'
+import { ExportExcelModal } from '../../components/ExportExcelModal'
 import { IncomeSourcesModal } from '../../components/IncomeSourcesModal'
 import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
@@ -45,6 +46,7 @@ export default function ProfileScreen() {
   const [showCards, setShowCards] = useState(false)
   const [showIncomeSources, setShowIncomeSources] = useState(false)
   const [showCicloEdit, setShowCicloEdit] = useState(false)
+  const [showExportExcel, setShowExportExcel] = useState(false)
   const [cicloInput, setCicloInput] = useState('')
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
 
@@ -248,6 +250,11 @@ export default function ProfileScreen() {
       title: 'Dados',
       items: [
         {
+          label: 'Exportar lançamentos (Excel)',
+          icon: '📋',
+          onPress: () => setShowExportExcel(true),
+        },
+        {
           label: `Exportar IR ${new Date().getFullYear() - 1} (CSV)`,
           icon: '📊',
           onPress: handleExportarIR,
@@ -447,6 +454,13 @@ export default function ProfileScreen() {
       </Modal>
 
       <CreditCardModal visible={showCards} onClose={() => setShowCards(false)} />
+      {user && (
+        <ExportExcelModal
+          visible={showExportExcel}
+          onClose={() => setShowExportExcel(false)}
+          userId={user.id}
+        />
+      )}
       <IncomeSourcesModal
         visible={showIncomeSources}
         onClose={() => setShowIncomeSources(false)}
