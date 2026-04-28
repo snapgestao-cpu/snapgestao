@@ -145,11 +145,11 @@ const styles = StyleSheet.create({
   // Logo
   logoWrap: { alignItems: 'center', marginBottom: 44 },
   logoImage: {
-    width: 208,
-    height: 208,
+    width: 248,
+    height: 248,
     resizeMode: 'contain',
     alignSelf: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   logoSub: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
 
