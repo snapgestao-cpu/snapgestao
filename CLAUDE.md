@@ -326,6 +326,10 @@ Each Supabase query = ~100–300ms network roundtrip. Minimize round-trips.
 - **`checkAndGrantBadgesOnStartup` on startup, `checkAndGrantBadges` on explicit actions** — the startup variant skips 5 queries if called within the last hour (AsyncStorage cooldown key: `badge_check_{userId}`). Use the direct `checkAndGrantBadges` when triggered by a user action (cycle close, pot creation, OCR scan, goal creation).
 - **No redundant `getSession()` in `_layout.tsx`** — `init()` already calls `loadSession()`.
 - **Projection uses `getPotsHistoryBatch`** — 2 queries for all offsets, not one `getPotsForMonth` call per month.
+- **`monthly.tsx` uses `computeCycleSummaryFromData`** — synchronous, zero queries. The incoming rollover (`cycle_start_date = cycle.startISO`) is fetched as part of the main 8-query `Promise.all`. Do NOT call `calculateCycleSummary` from `monthly.tsx` — it would duplicate all 5 queries already fetched.
+- **`monthly.tsx` transaction queries have `.limit(200)`** — prevents unbounded memory on large datasets. If pagination is needed in future, add offset-based loading.
+- **`ImportFileModal` in `monthly.tsx` is conditionally mounted** — `{showImport && <ImportFileModal .../>}`. Never revert to unconditional mount.
+- **Single `NewPotModal` in `index.tsx`** — the create and edit modes share one instance via `key={editingPot?.id ?? 'new'}` + `visible={showNewPot || !!editingPot}`. Do not split back into two mounts.
 
 ## Known Android bugs (fixed — do not reintroduce)
 
