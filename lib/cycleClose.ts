@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { getCycle, CycleInfo } from './cycle'
 import { fetchPotsForCycleWithHistory } from './pot-history'
+import { Pot } from '../types'
 
 export type PotSummary = {
   id: string
@@ -25,6 +26,55 @@ export type CycleSummary = {
   potSummaries: PotSummary[]
   isOverBudget: boolean
   needsAlert: boolean
+}
+
+// Compute CycleSummary from already-fetched data (zero queries).
+// Use in monthly.tsx to avoid duplicating the 5 queries inside calculateCycleSummary.
+export function computeCycleSummaryFromData(
+  pots: Pot[],
+  sources: { amount: number }[],
+  incomingRollover: any | null,
+  nonCreditTxs: { amount: number; type: string; pot_id: string | null }[],
+  creditTxs: { amount: number; type: string; pot_id: string | null }[],
+): CycleSummary {
+  const monthlyIncome = sources.reduce((s, r) => s + Number(r.amount), 0)
+  const totalIncome = nonCreditTxs
+    .filter(t => t.type === 'income')
+    .reduce((s, t) => s + Number(t.amount), 0)
+
+  const allExpenses = [
+    ...creditTxs.filter(t => t.type !== 'income'),
+    ...nonCreditTxs.filter(t => t.type === 'expense' || t.type === 'goal_deposit'),
+  ]
+  const totalExpense = allExpenses.reduce((s, t) => s + Number(t.amount), 0)
+
+  const debtFromPrev = Number(incomingRollover?.total_debt ?? 0)
+  const surplusFromPrev = Number(incomingRollover?.total_surplus ?? 0)
+  const availableIncome = monthlyIncome + totalIncome + surplusFromPrev - debtFromPrev
+  const cycleSaldo = availableIncome - totalExpense
+
+  const potSummaries: PotSummary[] = pots.map(pot => {
+    const spent = allExpenses
+      .filter(t => t.pot_id === pot.id)
+      .reduce((s, t) => s + Number(t.amount), 0)
+    const remaining = (pot.limit_amount ?? 0) - spent
+    return {
+      id: pot.id, name: pot.name, color: pot.color,
+      limit_amount: pot.limit_amount, spent, remaining,
+      isOverBudget: pot.limit_amount != null && remaining < 0,
+    }
+  })
+
+  const totalDebt = cycleSaldo < 0 ? Math.abs(cycleSaldo) : 0
+  const totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0
+
+  return {
+    monthlyIncome, totalIncome, totalExpense,
+    debtFromPrev, surplusFromPrev, availableIncome, cycleSaldo,
+    totalDebt, totalSurplus, potSummaries,
+    isOverBudget: cycleSaldo < 0,
+    needsAlert: potSummaries.some(p => p.isOverBudget),
+  }
 }
 
 export async function calculateCycleSummary(

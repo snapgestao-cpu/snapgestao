@@ -18,7 +18,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useCycleStore } from '../../stores/useCycleStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo } from '../../lib/cycle'
-import { calculateCycleSummary, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
+import { computeCycleSummaryFromData, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
 import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
@@ -73,25 +73,30 @@ export default function MonthlyScreen() {
     if (!user) return
     try {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
-      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes] = await Promise.all([
-        // Non-credit: filter by date
+      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes, incomingRolloverRes] = await Promise.all([
+        // Non-credit: filter by date (limit prevents extreme edge cases)
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .neq('payment_method', 'credit')
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
-          .order('date', { ascending: false }),
+          .order('date', { ascending: false })
+          .limit(200),
         // Credit: filter by billing_date (captures installments from prior months)
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .eq('payment_method', 'credit')
           .not('billing_date', 'is', null)
           .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
-          .order('billing_date', { ascending: false }),
+          .order('billing_date', { ascending: false })
+          .limit(200),
         fetchPotsForCycleWithHistory(user.id, cycle.startISO, cycle.endISO),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
-        // Verificar se este ciclo já foi encerrado (tem rollover processado no próximo ciclo)
+        // Rollover de saída (verifica se este ciclo foi encerrado — chave = início do próximo)
         supabase.from('cycle_rollovers').select('*')
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
+        // Rollover de entrada (débito/sobra vindo do ciclo anterior — chave = início deste ciclo)
+        supabase.from('cycle_rollovers').select('total_debt, total_surplus')
+          .eq('user_id', user.id).eq('cycle_start_date', cycle.startISO).maybeSingle(),
       ])
 
       const txs: Transaction[] = [
@@ -121,18 +126,25 @@ export default function MonthlyScreen() {
       }))
       setTransactions(txsWithPot)
 
-      const [s, epTxsRes] = await Promise.all([
-        calculateCycleSummary(user.id, cycle),
-        ep
-          ? supabase.from('transactions').select('amount, type').eq('pot_id', ep.id)
-          : Promise.resolve({ data: [] as any[], error: null }),
-      ])
-
-      const epBal = ((epTxsRes.data ?? []) as any[]).reduce(
-        (acc: number, t: any) => t.type === 'income' ? acc + Number(t.amount) : acc - Number(t.amount), 0
+      // Summary computed from already-fetched data — zero extra queries
+      const s = computeCycleSummaryFromData(
+        pots,
+        (sourcesRes.data ?? []) as any[],
+        incomingRolloverRes.data,
+        (txNonCreditRes.data ?? []) as any[],
+        (txCreditRes.data ?? []) as any[],
       )
-      setEmergencyBalance(epBal)
       setSummary(s)
+
+      // Emergency balance: single query, runs after main block
+      if (ep) {
+        const { data: epTxs } = await supabase
+          .from('transactions').select('amount, type').eq('pot_id', ep.id)
+        const epBal = ((epTxs ?? []) as any[]).reduce(
+          (acc: number, t: any) => t.type === 'income' ? acc + Number(t.amount) : acc - Number(t.amount), 0
+        )
+        setEmergencyBalance(epBal)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -745,15 +757,17 @@ export default function MonthlyScreen() {
         isRetroactive={offset < 0}
         cycleOffset={offset}
       />
-      <ImportFileModal
-        visible={showImport}
-        onClose={() => setShowImport(false)}
-        onSuccess={msg => { setShowImport(false); handleTxSuccess(msg) }}
-        pots={expPots}
-        userId={user?.id ?? ''}
-        cycleStartISO={cycle.startISO}
-        cycleEndISO={cycle.endISO}
-      />
+      {showImport && (
+        <ImportFileModal
+          visible={showImport}
+          onClose={() => setShowImport(false)}
+          onSuccess={msg => { setShowImport(false); handleTxSuccess(msg) }}
+          pots={expPots}
+          userId={user?.id ?? ''}
+          cycleStartISO={cycle.startISO}
+          cycleEndISO={cycle.endISO}
+        />
+      )}
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
       {pendingBadges.length > 0 && (
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />

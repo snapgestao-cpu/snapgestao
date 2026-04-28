@@ -233,21 +233,15 @@ export default function PotsScreen() {
         onClose={() => setShowMonthPicker(false)}
       />
       <NewPotModal
-        visible={showNewPot}
-        onClose={() => setShowNewPot(false)}
+        key={editingPot?.id ?? 'new'}
+        visible={showNewPot || !!editingPot}
+        onClose={() => { setShowNewPot(false); setEditingPot(null) }}
         onSuccess={handleSuccess}
         onBadges={setPendingBadges}
+        editPot={editingPot ?? undefined}
         totalIncome={totalIncome}
         cycleStartDate={cycle?.start}
         isRetroactive={cycleOffset < 0}
-        cycleOffset={cycleOffset}
-      />
-      <NewPotModal
-        visible={!!editingPot}
-        onClose={() => setEditingPot(null)}
-        onSuccess={handleSuccess}
-        editPot={editingPot ?? undefined}
-        totalIncome={totalIncome}
         cycleOffset={cycleOffset}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
