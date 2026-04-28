@@ -69,7 +69,7 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 
 **JarPot** (`components/JarPot.tsx`) — PNG-based fill visualization using `assets/potes/` images (`Pote_vazio.png`, `Pote_10/30/50/70/90/100.png`). Image chosen by percent band. Export: `export function JarPot` (named) + `export default JarPot` — always import as named: `import { JarPot } from '...'`. Prop `limit: number | null` accepted without type error.
 
-**NewPotModal** (`components/NewPotModal.tsx`) — create and edit pots.
+**NewPotModal** (`components/NewPotModal.tsx`) — create and edit pots. Prop `cycleOffset?: number` controls which month the pot is created/edited in. `potCreatedAt` uses `cycleStartDate` whenever provided (handles both past and future months — not just `isRetroactive`). All `upsertPotHistory` calls pass `cycleOffset` so the history entry is written for the correct month.
 - Quick-suggestion chips; limit by fixed value or % of income
 - `POT_COLORS` (12 colors) exported from here — import from here to stay in sync
 - Emergency pot toggle (purple `#534AB7`; disabled if one already exists)
@@ -95,7 +95,10 @@ Note: `supabase/migrations/20240421_pots_display_order.sql` exists but the featu
 - `fetchPotsForCycleWithHistory(userId, cycleStartISO, cycleEndISO)` — drop-in replacement for `fetchPotsForCycle`; overlays historical `name`/`limit_amount` from `pot_history`. Used by `index.tsx`, `monthly.tsx`, `cycleClose.ts`.
 - `getPotAtMonth(potId, cycleStart, offset)` — returns `{ name, limit_amount }` as of a specific cycle offset. Used by `pot/[id].tsx` to overlay correct name/limit.
 - `getPotsForMonth(userId, cycleStart, offset)` — convenience wrapper around `fetchPotsForCycleWithHistory` using cycle offset. Used by `projection.tsx`.
-- `upsertPotHistory(potId, userId, name, limitAmount, cycleStart)` — creates or updates a `pot_history` entry for the current month. Called by `NewPotModal` on create, edit, reactivate, and update-limit paths.
+- `upsertPotHistory(potId, userId, name, limitAmount, cycleStart, cycleOffset = 0)` — creates or updates a `pot_history` entry for the viewed month. Called by `NewPotModal` on create, edit, reactivate, and update-limit paths.
+- `createPot(userId, name, limitAmount, color, limitType, cycleStart, cycleOffset = 0)` — inserts pot with `created_at = start of viewed month` + initial `pot_history` entry. Use this instead of direct Supabase INSERT.
+- `updatePot(potId, userId, changes, cycleStart, cycleOffset = 0)` — writes to `pot_history` for the viewed month only; mirrors to `pots` table for compat.
+- `deletePot(potId, userId, cycleStart, cycleOffset = 0)` — sets `deleted_at = start of viewed month`.
 
 **Pot queries — always use `pot-history.ts` functions:**
 - Dashboard/monthly/cycle-close: `fetchPotsForCycleWithHistory(userId, cycleStartISO, cycleEndISO)`
