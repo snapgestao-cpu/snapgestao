@@ -42,24 +42,7 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
-# 6. Gerar bundle JavaScript
-Write-Host "Gerando bundle JavaScript..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Force `
-  -Path "android\app\src\main\assets" | Out-Null
-
-npx react-native bundle `
-  --platform android `
-  --dev false `
-  --entry-file node_modules/expo-router/entry.js `
-  --bundle-output android\app\src\main\assets\index.android.bundle `
-  --assets-dest android\app\src\main\res
-
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "Erro ao gerar bundle!" -ForegroundColor Red
-  exit 1
-}
-
-# 7. Build do APK
+# 6. Build do APK
 Write-Host "Compilando APK..." -ForegroundColor Yellow
 Set-Location android
 .\gradlew assembleRelease
@@ -71,7 +54,7 @@ if ($buildResult -ne 0) {
   exit 1
 }
 
-# 8. Copiar APK com nome da versao do app.json
+# 7. Copiar APK com nome da versao do app.json
 $appJson = Get-Content app.json | ConvertFrom-Json
 $version = $appJson.expo.version
 $versionCode = $appJson.expo.android.versionCode
