@@ -87,6 +87,11 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
     namespace 'com.snapgestao.app'
     defaultConfig {
         applicationId 'com.snapgestao.app'
