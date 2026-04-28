@@ -238,7 +238,8 @@ export default function PotsScreen() {
         onBadges={setPendingBadges}
         totalIncome={totalIncome}
         cycleStartDate={cycle?.start}
-        isRetroactive={false}
+        isRetroactive={cycleOffset < 0}
+        cycleOffset={cycleOffset}
       />
       <NewPotModal
         visible={!!editingPot}
@@ -246,6 +247,7 @@ export default function PotsScreen() {
         onSuccess={handleSuccess}
         editPot={editingPot ?? undefined}
         totalIncome={totalIncome}
+        cycleOffset={cycleOffset}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
       {pendingBadges.length > 0 && (

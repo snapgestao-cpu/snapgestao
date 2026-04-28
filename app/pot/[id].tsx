@@ -301,6 +301,7 @@ export default function PotDetailScreen() {
         onSuccess={handleSuccess}
         editPot={pot}
         totalIncome={totalIncome}
+        cycleOffset={cycleOffset}
       />
       <EditTransactionModal
         visible={!!editingTx}

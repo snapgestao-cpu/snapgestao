@@ -41,9 +41,10 @@ type Props = {
   totalIncome: number
   cycleStartDate?: Date
   isRetroactive?: boolean
+  cycleOffset?: number
 }
 
-export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, totalIncome, cycleStartDate, isRetroactive }: Props) {
+export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, totalIncome, cycleStartDate, isRetroactive, cycleOffset = 0 }: Props) {
   const insets = useSafeAreaInsets()
 
   const [name, setName] = useState('')
@@ -147,7 +148,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                         return
                       }
                       const csDay = useAuthStore.getState().user?.cycle_start ?? 1
-                      await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay)
+                      await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay, cycleOffset)
                       setLoading(false)
                       onClose()
                       setTimeout(() => { onSuccess('Pote reativado!') }, 100)
@@ -206,7 +207,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                       limit_amount: computedLimit,
                       valid_from: validFrom,
                     }).select()
-                    await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay)
+                    await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay, cycleOffset)
                     setLoading(false)
                     onClose()
                     setTimeout(() => { onSuccess('Pote atualizado!') }, 100)
@@ -222,8 +223,9 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
         }
       }
 
-      const potCreatedAt = isRetroactive && cycleStartDate
-        ? cycleStartDate.toISOString()
+      // Use cycleStartDate when provided (handles both past and future months)
+      const potCreatedAt = cycleStartDate
+        ? new Date(cycleStartDate.toISOString().split('T')[0] + 'T12:00:00').toISOString()
         : new Date().toISOString()
 
       const payload = {
@@ -239,14 +241,14 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       if (editPot) {
         const { error: err } = await supabase.from('pots').update(payload).eq('id', editPot.id)
         if (err) { setError('Erro ao atualizar: ' + err.message); return }
-        await upsertPotHistory(editPot.id, userId, name.trim(), computedLimit, csDay)
+        await upsertPotHistory(editPot.id, userId, name.trim(), computedLimit, csDay, cycleOffset)
         onSuccess('Pote atualizado!')
       } else {
         const { data: newPot, error: err } = await supabase
           .from('pots').insert({ ...payload, created_at: potCreatedAt }).select().single()
         if (err) { setError('Erro ao criar: ' + err.message); return }
         if (newPot) {
-          await upsertPotHistory((newPot as any).id, userId, name.trim(), computedLimit, csDay)
+          await upsertPotHistory((newPot as any).id, userId, name.trim(), computedLimit, csDay, cycleOffset)
         }
         onSuccess('Pote criado com sucesso!')
         if (onBadges) {

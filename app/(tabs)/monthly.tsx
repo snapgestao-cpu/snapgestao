@@ -742,6 +742,7 @@ export default function MonthlyScreen() {
         totalIncome={totalIncome}
         cycleStartDate={cycle.start}
         isRetroactive={offset < 0}
+        cycleOffset={offset}
       />
       <ImportFileModal
         visible={showImport}
