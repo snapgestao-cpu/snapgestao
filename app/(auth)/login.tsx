@@ -56,10 +56,9 @@ export default function LoginScreen() {
         {/* Logo */}
         <View style={styles.logoWrap}>
           <Image
-            source={require('../../assets/icon.png')}
+            source={require('../../assets/icon_v1.png')}
             style={styles.logoImage}
           />
-          <Text style={styles.logoText}>SnapGestão</Text>
           <Text style={styles.logoSub}>Controle financeiro simples e eficaz</Text>
         </View>
 
@@ -146,18 +145,11 @@ const styles = StyleSheet.create({
   // Logo
   logoWrap: { alignItems: 'center', marginBottom: 44 },
   logoImage: {
-    width: 120,
-    height: 120,
+    width: 160,
+    height: 160,
     resizeMode: 'contain',
     alignSelf: 'center',
     marginBottom: 24,
-  },
-  logoText: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: -0.5,
-    marginBottom: 6,
   },
   logoSub: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
 
