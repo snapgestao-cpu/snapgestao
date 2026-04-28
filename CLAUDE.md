@@ -173,7 +173,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 - Route registered in `_layout.tsx` as `name="mentor"`; guard allows `segments[0] === 'mentor'`
 - Entry point: blue "Mentor Financeiro IA" card in profile screen above settings groups
 
-**Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle).
+**Gamification** — `lib/badges.ts`: 10 badges, `checkAndGrantBadges(userId, cycleStart)`, `checkAndGrantBadgesOnStartup(userId, cycleStart)`, `getEarnedBadgeKeys(userId)`. `BadgeToast`: slide-in + fadeOut queue (3s per badge). `app/achievements.tsx`: stack screen (not tab) with badge grid. Auto-checked in: `_layout.tsx` (startup via `checkAndGrantBadgesOnStartup` — skips if checked within 1h via AsyncStorage), `NewPotModal`, `NewGoalModal`, `ocr.tsx`, `monthly.tsx` (after closing cycle — use `checkAndGrantBadges` directly for explicit user actions, not the startup variant).
 
 **Excel import** (`components/ImportFileModal.tsx`) — Steps: pick → preview → card_select (if any credit row) → assign → saving → done. Auto-detects columns: tipo, descrição, data, valor, pagamento, estabelecimento, parcelas, **pote** (also: categoria/category). Valid `payment_method` values: `cash/debit/credit/pix/transfer/voucher_alimentacao/voucher_refeicao` — **never use `'other'`** (not valid in DB); fallback is `'cash'`. `parsePaymentMethod` recognizes "aliment" → `voucher_alimentacao`, "refei" → `voucher_refeicao`. `parseDateISO` + `formatDateISO` always produce zero-padded `YYYY-MM-DD` (handles Excel serial, DD/MM/YYYY, DD/MM/YY, YYYY-M-D). **`saveAll` uses `supabase.auth.getUser()` exclusively for `user_id`** — the prop may be stale; never use it for the insert. Pre-insert loop auto-fixes invalid date/type/payment_method. Credit items trigger `card_select` step; `saveAll` uses explicit `if (isCredit) { N installment rows only } else { 1 row, no billing_date }` — **never insert the total row for credit**. `calcBillingDate` (same as `NewExpenseModal`) computes per-installment `billing_date` when a card is selected; `calcBillingDateNoCard` handles credit rows without a card (offsets months from purchase date). `ImportRow.poteName` stores the raw name from the spreadsheet; `potId` is resolved case-insensitively from the `pots` prop after `parseSheet`. Assign step shows a card per item with merchant badge, `poteName` hint ("não encontrado" / "✓ encontrado"), and colored dot next to each pot chip.
 
@@ -191,7 +191,7 @@ Both paths converge at `review` step. Entry points: monthly FAB (`cycleDate`), p
 | `app/pot/[id].tsx` | Dynamic route — registered as `name="pot/[id]"` in root Stack |
 | `app/ocr.tsx`, `app/achievements.tsx`, `app/mentor.tsx` | Stack screens (not tabs) |
 
-`app/_layout.tsx` root — on mount: opens SQLite DB, restores Supabase session, fetches `users` row into `useAuthStore`, wraps in `QueryClientProvider` (staleTime: 5 min, retry: 2), calls `checkAndGrantBadges`.
+`app/_layout.tsx` root — on mount: opens SQLite DB, calls `init()` (restores session + starts `onAuthStateChange`), wraps in `QueryClientProvider` (staleTime: 5 min, retry: 2), calls `checkAndGrantBadgesOnStartup`. **Do not add a separate `supabase.auth.getSession()` call** — `init()` already calls `loadSession()` which handles invalid/missing tokens.
 
 **Route guard logic:**
 1. Loading → `ActivityIndicator` (Stack not mounted)
@@ -316,6 +316,16 @@ Singleton `getDatabase()` — opens `snapgestao.db` via `expo-sqlite`, creates `
 **Goal icon mapping** (`lib/goalIcons.ts`) — `getGoalIcon(name)`: ~40 categories.
 
 **Finance utils** (`lib/finance.ts`) — `calcFV(monthlyDeposit, annualRatePct, years)`, `brl(value)`.
+
+## Performance rules (do not reintroduce regressions)
+
+Each Supabase query = ~100–300ms network roundtrip. Minimize round-trips.
+
+- **No N+1 on pot queries** — `enrichWithHistory` uses a single `.in('pot_id', potIds)` batch query, not one query per pot. Never revert to `Promise.all(pots.map(pot => supabase...eq('pot_id', pot.id)...))`.
+- **Emergency pot balance is always fetched inside a `Promise.all`** — never sequentially after the main data block. Both `index.tsx` and `monthly.tsx` include the ep balance query in their second parallel block.
+- **`checkAndGrantBadgesOnStartup` on startup, `checkAndGrantBadges` on explicit actions** — the startup variant skips 5 queries if called within the last hour (AsyncStorage cooldown key: `badge_check_{userId}`). Use the direct `checkAndGrantBadges` when triggered by a user action (cycle close, pot creation, OCR scan, goal creation).
+- **No redundant `getSession()` in `_layout.tsx`** — `init()` already calls `loadSession()`.
+- **Projection uses `getPotsHistoryBatch`** — 2 queries for all offsets, not one `getPotsForMonth` call per month.
 
 ## Known Android bugs (fixed — do not reintroduce)
 
