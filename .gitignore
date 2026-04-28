@@ -40,3 +40,4 @@ yarn-error.*
 # generated native folders
 /ios
 # /android — rastreado para preservar customizações de build (local_repo asyncstorage)
+*.apk

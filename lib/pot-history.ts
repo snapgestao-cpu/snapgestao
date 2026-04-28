@@ -178,6 +178,55 @@ export async function updatePot(
   }
 }
 
+// Fetch pots with historical name/limit for multiple offsets in a single batch.
+// Returns a map of offset → Pot[] so projection.tsx can use per-month limits.
+export async function getPotsHistoryBatch(
+  userId: string,
+  cycleStart: number,
+  offsets: number[],
+): Promise<Record<number, Pot[]>> {
+  const { data: pots } = await supabase
+    .from('pots')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_emergency', false)
+    .order('created_at', { ascending: true })
+
+  if (!pots?.length) {
+    return offsets.reduce((acc, o) => { acc[o] = []; return acc }, {} as Record<number, Pot[]>)
+  }
+
+  const potIds = (pots as Pot[]).map(p => p.id)
+  const { data: allHistory } = await supabase
+    .from('pot_history')
+    .select('pot_id, name, limit_amount, valid_from')
+    .in('pot_id', potIds)
+    .order('valid_from', { ascending: true })
+
+  const result: Record<number, Pot[]> = {}
+
+  for (const offset of offsets) {
+    const { startISO, endISO } = getCycle(cycleStart, offset)
+
+    const potsInCycle = (pots as Pot[]).filter(p => {
+      const createdStr = p.created_at.split('T')[0]
+      const deletedStr = p.deleted_at ? p.deleted_at.split('T')[0] : null
+      return createdStr <= endISO && (!deletedStr || deletedStr > endISO)
+    })
+
+    result[offset] = potsInCycle.map(pot => {
+      const history = ((allHistory ?? []) as any[])
+        .filter(h => h.pot_id === pot.id && h.valid_from <= startISO)
+        .sort((a, b) => (b.valid_from as string).localeCompare(a.valid_from))[0]
+      return history
+        ? { ...pot, name: history.name, limit_amount: history.limit_amount }
+        : pot
+    })
+  }
+
+  return result
+}
+
 // Soft-delete a pot starting from the viewed cycle month
 export async function deletePot(
   potId: string,

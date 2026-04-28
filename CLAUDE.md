@@ -22,6 +22,13 @@ npx tsc --noEmit
 
 # Install dependencies (peer-dep conflicts are expected — always use --legacy-peer-deps)
 npm install <package> --legacy-peer-deps
+
+# Regenerate native Android/iOS folders (destructive — wipes existing android/ ios/)
+npm run prebuild
+
+# Build Android APK
+npm run build:android          # release
+npm run build:android:debug    # debug
 ```
 
 No test suite or linter configured yet.
@@ -43,7 +50,7 @@ EXPO_PUBLIC_ANTHROPIC_API_KEY=...
 Tables: `users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`.  
 RLS enabled on all tables. Trigger `on_auth_user_created` active.
 
-**`projection_entries` — REMOVED**. The feature (future one-off entries via FAB in Projeção) was removed. If the table exists in Supabase, drop it: `DROP TABLE IF EXISTS public.projection_entries;`. Do not add it back — future-month entries are handled by navigating to Mensal or Potes screens for that month.
+**`projection_entries` — REMOVED**. The feature (future one-off entries via FAB in Projeção) was removed. If the table exists in Supabase, drop it: `DROP TABLE IF EXISTS public.projection_entries;`. Do not add it back — future-month entries are handled by navigating to Mensal or Potes screens for that month. `components/ProjectionEntryModal.tsx` and `components/charts/BarChart.tsx` are dead files — neither is imported anywhere and both can be deleted.
 
 **Migrations that must be run manually in Supabase** (in order):
 1. `supabase/migrations/20240418_cycle_rollovers.sql`

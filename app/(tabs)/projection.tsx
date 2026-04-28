@@ -9,7 +9,7 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import { getPotsForMonth } from '../../lib/pot-history'
+import { getPotsHistoryBatch } from '../../lib/pot-history'
 import { getPotIcon } from '../../lib/potIcons'
 
 const COL = { month: 52, value: 108 }
@@ -71,12 +71,15 @@ export default function ProjectionScreen() {
       // Range global: 6 meses atrás até 12 meses à frente
       const globalStart = getCycle(cycleStartDay, -6).startISO
       const globalEnd = getCycle(cycleStartDay, 12).endISO
-      // ── 4 queries paralelas + potes com histórico ──
+      // Full offset range: 6 past + current + 12 future = 19 buckets maximum
+      const fullOffsets = Array.from({ length: 19 }, (_, i) => i - 6)
+
+      // ── 4 queries paralelas + potes batch por offset ──
       const [
         { data: sources },
         { data: txsByDate },
         { data: txsByBilling },
-        activePotsList,
+        potsPorMes,
       ] = await Promise.all([
         supabase.from('income_sources').select('amount').eq('user_id', userId),
         // Todas as transactions por date (income + non-credit expense + goal_deposit)
@@ -92,14 +95,12 @@ export default function ProjectionScreen() {
           .not('billing_date', 'is', null)
           .gte('billing_date', globalStart).lte('billing_date', globalEnd)
           .order('billing_date', { ascending: true }),
-        // Potes ativos no mês atual com nome/limite do histórico
-        getPotsForMonth(userId, cycleStartDay, 0),
+        // Potes com histórico correto para cada offset (uma query batch)
+        getPotsHistoryBatch(userId, cycleStartDay, fullOffsets),
       ])
 
       const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
       setMonthlyIncome(base)
-
-      const totalBudgeted = activePotsList.reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
 
       // Join manual com potes para exibir nome/cor no modal
       const rawCredit = (txsByBilling ?? []) as any[]
@@ -158,6 +159,9 @@ export default function ProjectionScreen() {
         let expense: number
         if (isFuture) {
           // Futuro: orçado + excedente parcelas + lançamentos reais já registrados
+          const potsDoMes = potsPorMes[offset] ?? []
+          const totalBudgeted = potsDoMes.reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
+
           const creditInMonth = allCredit
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
 
@@ -171,7 +175,7 @@ export default function ProjectionScreen() {
             }
           }
           for (const [potId, totalParcelas] of Object.entries(parcelasPorPote)) {
-            const pot = activePotsList.find((p: any) => p.id === potId)
+            const pot = potsDoMes.find((p: any) => p.id === potId)
             const limite = Number(pot?.limit_amount || 0)
             if (limite <= 0) excedenteParcelas += totalParcelas
             else if (totalParcelas > limite) excedenteParcelas += totalParcelas - limite
@@ -223,10 +227,11 @@ export default function ProjectionScreen() {
       setRows(built)
 
       const last3 = built.filter(m => [0, -1, -2].includes(m.offset))
+      const currentMonthBudgeted = (potsPorMes[0] ?? []).reduce((s: number, p: any) => s + Number(p.limit_amount || 0), 0)
       setAvgExpense(
         last3.length > 0
           ? last3.reduce((s, m) => s + m.expense, 0) / last3.length
-          : totalBudgeted
+          : currentMonthBudgeted
       )
     } finally {
       setLoading(false)
