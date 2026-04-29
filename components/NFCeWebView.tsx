@@ -171,10 +171,26 @@ const EXTRACT_SCRIPT = `
       }
 
       // ── TOTAL ──
+      // Prioridade: "Valor a pagar" (após desconto). Fallback: subtotal - desconto. Último: soma dos itens.
       var total = 0
-      var totalMatch2 = bodyText.match(/Valor\\s+a\\s+pagar\\s+R\\$[:\\s]*\\n?\\s*([\\d\\.]+,[\\d]{2})/i)
-        || bodyText.match(/Valor\\s+a\\s+pagar[^\\d]*([\\d\\.]+,[\\d]{2})/i)
-      if (totalMatch2) total = parseFloat(totalMatch2[1].replace(/\\./g, '').replace(',', '.'))
+      var totalPatterns = [
+        /Valor\\s+a\\s+pagar[\\s\\S]{0,60}?([\\d\\.]+,[\\d]{2})/i,
+        /Valor\\s+pago[\\s\\S]{0,60}?([\\d\\.]+,[\\d]{2})/i,
+        /Total\\s+a\\s+pagar[\\s\\S]{0,60}?([\\d\\.]+,[\\d]{2})/i,
+      ]
+      for (var pi = 0; pi < totalPatterns.length; pi++) {
+        var tm = bodyText.match(totalPatterns[pi])
+        if (tm) { total = parseFloat(tm[1].replace(/\\./g, '').replace(',', '.')); break }
+      }
+      if (!total) {
+        var subtotalMatch = bodyText.match(/Valor\\s+Total[\\s\\S]{0,30}?([\\d\\.]+,[\\d]{2})/i)
+        var descontoMatch = bodyText.match(/Desconto[\\s\\S]{0,30}?([\\d\\.]+,[\\d]{2})/i)
+        if (subtotalMatch) {
+          var sub = parseFloat(subtotalMatch[1].replace(/\\./g, '').replace(',', '.'))
+          var desc = descontoMatch ? parseFloat(descontoMatch[1].replace(/\\./g, '').replace(',', '.')) : 0
+          total = sub - desc
+        }
+      }
       if (!total) total = items.reduce(function(s, i) { return s + i.totalValue }, 0)
 
       // ── DATA ──
@@ -350,6 +366,7 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebView/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        mixedContentMode="always"
         onNavigationStateChange={(navState) => {
           const navUrl = navState.url
           if (!navUrl || navUrl === 'about:blank') return
