@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#91abc8"
+      "backgroundColor": "#65a7c1"
     },
     "ios": {
       "supportsTablet": false,
@@ -20,7 +20,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#91abc8"
+        "backgroundColor": "#65a7c1"
       },
       "package": "com.snapgestao.app",
       "versionCode": 2,
