@@ -16,7 +16,7 @@ import { getCycle } from '../lib/cycle'
 import { getPotIcon } from '../lib/potIcons'
 import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
-import { Pot } from '../types'
+import { Pot, CreditCard } from '../types'
 import QRCameraScanner from '../components/QRCameraScanner'
 import NFCeWebView, { sanitizeNFCeUrl } from '../components/NFCeWebView'
 import {
@@ -60,6 +60,33 @@ const PAYMENT_OPTIONS = [
   { key: 'voucher_refeicao',    label: '🍴 Refeição' },
 ]
 
+function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
+  const [y, m, d] = txISO.split('-').map(Number)
+  let month0 = m - 1
+  if (d >= card.closing_day) month0 += 1
+  if (card.due_day < card.closing_day) month0 += 1
+  month0 += offset
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
+}
+
+function calcBillingDateNoCard(txISO: string, offset = 0): string {
+  const [y, m, d] = txISO.split('-').map(Number)
+  let month0 = m - 1 + offset + 1
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  const lastDay = new Date(year, month0 + 1, 0).getDate()
+  return new Date(year, month0, Math.min(d, lastDay)).toISOString().split('T')[0]
+}
+
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
 function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -95,9 +122,24 @@ export default function OCRScreen() {
   const [nfceChave, setNfceChave] = useState<string | null>(null)
   const [nfceStateCode, setNfceStateCode] = useState<string>('33')
   const [paymentMethod, setPaymentMethod] = useState<string>('debit')
+  const [cards, setCards] = useState<CreditCard[]>([])
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [isInstallment, setIsInstallment] = useState(false)
+  const [installments, setInstallments] = useState(2)
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
-  const [globalPotId, setGlobalPotId] = useState<string | null>(null)
-  const [globalPotName, setGlobalPotName] = useState<string>('')
+  const [globalPotId, setGlobalPotId] = useState<string | null>(defaultPotId ?? null)
+  const [globalPotName, setGlobalPotName] = useState<string>(defaultPotName ?? '')
+
+  useEffect(() => {
+    if (paymentMethod !== 'credit') { setIsInstallment(false); return }
+    if (!user) return
+    supabase.from('credit_cards').select('*').eq('user_id', user.id)
+      .then(({ data }) => {
+        const list = (data as CreditCard[]) ?? []
+        setCards(list)
+        setSelectedCardId(list[0]?.id ?? null)
+      })
+  }, [paymentMethod])
 
   const loadPots = async () => {
     if (!user) return
@@ -245,29 +287,81 @@ export default function OCRScreen() {
     const userId = user.id
     const today = receiptDate || new Date().toISOString().split('T')[0]
     const totalAmount = parseFloat(total) || 0
+    const isCredit = paymentMethod === 'credit'
+    const card = cards.find(c => c.id === selectedCardId) ?? null
 
     try {
+      const rows: any[] = []
+
       if (simplified) {
         if (totalAmount > 0) {
-          await supabase.from('transactions').insert({
-            user_id: userId, pot_id: singlePotId,
-            type: 'expense', amount: totalAmount,
-            description: merchant || 'Cupom fiscal',
-            merchant: merchant || null,
-            date: today, payment_method: paymentMethod, is_need: true,
-          })
+          const billingDate = isCredit
+            ? (card ? calcBillingDate(today, card, 0) : calcBillingDateNoCard(today, 0))
+            : null
+          if (isCredit && isInstallment && installments > 1) {
+            const groupId = genUUID()
+            const installAmt = Math.round((totalAmount / installments) * 100) / 100
+            for (let i = 0; i < installments; i++) {
+              rows.push({
+                user_id: userId, pot_id: singlePotId, type: 'expense',
+                amount: installAmt,
+                description: `${merchant || 'Cupom fiscal'} (${i + 1}/${installments})`,
+                merchant: merchant || null, date: today,
+                payment_method: paymentMethod, is_need: true,
+                card_id: selectedCardId ?? null,
+                billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
+                installment_total: installments, installment_number: i + 1,
+                installment_group_id: groupId,
+              })
+            }
+          } else {
+            rows.push({
+              user_id: userId, pot_id: singlePotId, type: 'expense',
+              amount: totalAmount, description: merchant || 'Cupom fiscal',
+              merchant: merchant || null, date: today,
+              payment_method: paymentMethod, is_need: true,
+              card_id: isCredit ? (selectedCardId ?? null) : null,
+              billing_date: billingDate,
+            })
+          }
         }
       } else {
         const validItems = reviewItems.filter(i => i.valueCents > 0)
         for (const item of validItems) {
-          await supabase.from('transactions').insert({
-            user_id: userId, pot_id: item.potId,
-            type: 'expense', amount: item.valueCents / 100,
-            description: item.name,
-            merchant: merchant || null,
-            date: today, payment_method: paymentMethod, is_need: true,
-          })
+          if (isCredit && isInstallment && installments > 1) {
+            const groupId = genUUID()
+            const installAmt = Math.round((item.valueCents / installments) / 100 * 100) / 100
+            for (let i = 0; i < installments; i++) {
+              rows.push({
+                user_id: userId, pot_id: item.potId, type: 'expense',
+                amount: installAmt,
+                description: `${item.name} (${i + 1}/${installments})`,
+                merchant: merchant || null, date: today,
+                payment_method: paymentMethod, is_need: true,
+                card_id: selectedCardId ?? null,
+                billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
+                installment_total: installments, installment_number: i + 1,
+                installment_group_id: groupId,
+              })
+            }
+          } else {
+            rows.push({
+              user_id: userId, pot_id: item.potId, type: 'expense',
+              amount: item.valueCents / 100, description: item.name,
+              merchant: merchant || null, date: today,
+              payment_method: paymentMethod, is_need: true,
+              card_id: isCredit ? (selectedCardId ?? null) : null,
+              billing_date: isCredit
+                ? (card ? calcBillingDate(today, card, 0) : calcBillingDateNoCard(today, 0))
+                : null,
+            })
+          }
         }
+      }
+
+      if (rows.length > 0) {
+        const { error: txErr } = await supabase.from('transactions').insert(rows)
+        if (txErr) throw txErr
       }
 
       if (receiptId) {
@@ -500,6 +594,62 @@ export default function OCRScreen() {
             ))}
           </View>
           <Text style={styles.payHint}>Detectado automaticamente — toque para alterar</Text>
+
+          {paymentMethod === 'credit' && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: 12, marginBottom: 8 }]}>Cartão</Text>
+              {cards.length === 0 ? (
+                <Text style={styles.payHint}>Nenhum cartão cadastrado — lançamento sem vínculo de fatura.</Text>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {cards.map(c => (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => setSelectedCardId(c.id)}
+                      style={[styles.payChip, { marginRight: 8 }, selectedCardId === c.id && styles.payChipActive]}
+                    >
+                      <Text style={[styles.payChipText, selectedCardId === c.id && styles.payChipTextActive]}>
+                        💳 {c.name}{c.last_four ? ` ••${c.last_four}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <Text style={styles.sectionLabel}>Compra parcelada?</Text>
+                <TouchableOpacity
+                  onPress={() => setIsInstallment(v => !v)}
+                  style={{
+                    width: 44, height: 24, borderRadius: 12,
+                    backgroundColor: isInstallment ? Colors.primary : Colors.border,
+                    justifyContent: 'center',
+                    paddingHorizontal: 2,
+                  }}
+                >
+                  <View style={{
+                    width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+                    alignSelf: isInstallment ? 'flex-end' : 'flex-start',
+                  }} />
+                </TouchableOpacity>
+              </View>
+
+              {isInstallment && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, backgroundColor: Colors.background, borderRadius: 10, padding: 12 }}>
+                  <Text style={{ fontSize: 13, color: Colors.textDark }}>Nº de parcelas</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity onPress={() => setInstallments(v => Math.max(2, v - 1))} style={{ padding: 6 }}>
+                      <Text style={{ fontSize: 20, color: Colors.primary, fontWeight: '700' }}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.primary, minWidth: 30, textAlign: 'center' }}>{installments}x</Text>
+                    <TouchableOpacity onPress={() => setInstallments(v => Math.min(24, v + 1))} style={{ padding: 6 }}>
+                      <Text style={{ fontSize: 20, color: Colors.primary, fontWeight: '700' }}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
         </View>
 
         <TouchableOpacity style={styles.toggleRow} onPress={() => setSimplified(v => !v)}>
