@@ -20,6 +20,7 @@ import { brl } from '../../lib/finance'
 import { Pot, Transaction } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
 import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
+import { SearchBar } from '../../components/SearchBar'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
@@ -45,6 +46,7 @@ export default function PotDetailScreen() {
   const [showEdit, setShowEdit] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const loadData = useCallback(async () => {
     if (!user || !id) return
@@ -179,7 +181,14 @@ export default function PotDetailScreen() {
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]
 
-  const merchantGroups = groupTransactionsByMerchantAndDate(transactions)
+  const q = searchQuery.trim().toLowerCase()
+  const filteredTransactions = q
+    ? transactions.filter(t =>
+        (t.description ?? '').toLowerCase().includes(q) ||
+        (t.merchant ?? '').toLowerCase().includes(q)
+      )
+    : transactions
+  const merchantGroups = groupTransactionsByMerchantAndDate(filteredTransactions)
   const txByDate = groupByDate(merchantGroups)
   const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
 
@@ -233,6 +242,7 @@ export default function PotDetailScreen() {
 
         {/* Transactions */}
         <Text style={styles.sectionTitle}>Lançamentos — {cycle.monthYear}</Text>
+        <SearchBar value={searchQuery} onChangeText={setSearchQuery} />
 
         {txDates.length === 0 ? (
           <View style={styles.emptyWrapper}>

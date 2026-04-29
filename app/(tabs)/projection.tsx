@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { getPotsHistoryBatch } from '../../lib/pot-history'
 import { getPotIcon } from '../../lib/potIcons'
+import { SearchBar } from '../../components/SearchBar'
 
 const COL = { month: 52, value: 108 }
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -54,6 +55,7 @@ export default function ProjectionScreen() {
   const [creditInstallments, setCreditInstallments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCreditMonth, setSelectedCreditMonth] = useState<MonthRow | null>(null)
+  const [creditSearchQuery, setCreditSearchQuery] = useState('')
 
   useFocusEffect(
     useCallback(() => {
@@ -245,6 +247,14 @@ export default function ProjectionScreen() {
       )
     : []
 
+  const cq = creditSearchQuery.trim().toLowerCase()
+  const filteredCreditTxs = cq
+    ? selectedCreditTxs.filter(t =>
+        (t.description ?? '').toLowerCase().includes(cq) ||
+        (t.merchant ?? '').toLowerCase().includes(cq)
+      )
+    : selectedCreditTxs
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -389,7 +399,7 @@ export default function ProjectionScreen() {
         visible={!!selectedCreditMonth}
         transparent
         animationType="slide"
-        onRequestClose={() => setSelectedCreditMonth(null)}
+        onRequestClose={() => { setSelectedCreditMonth(null); setCreditSearchQuery('') }}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
           <View style={[styles.bottomSheet, { maxHeight: '80%' }]}>
@@ -401,12 +411,13 @@ export default function ProjectionScreen() {
                 </Text>
                 <Text style={styles.sheetSubtitle}>Parcelas com vencimento neste mês</Text>
               </View>
-              <TouchableOpacity onPress={() => setSelectedCreditMonth(null)}>
+              <TouchableOpacity onPress={() => { setSelectedCreditMonth(null); setCreditSearchQuery('') }}>
                 <Text style={{ fontSize: 20, color: Colors.textMuted }}>✕</Text>
               </TouchableOpacity>
             </View>
+            <SearchBar value={creditSearchQuery} onChangeText={setCreditSearchQuery} />
             <ScrollView showsVerticalScrollIndicator={false}>
-              {selectedCreditTxs.map((t, i) => (
+              {filteredCreditTxs.map((t, i) => (
                 <View key={t.id ?? i} style={{ paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <Text style={[styles.entryDesc, { flex: 1, marginRight: 8 }]}>
@@ -438,13 +449,18 @@ export default function ProjectionScreen() {
                 </View>
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, marginTop: 8, borderTopWidth: 1.5, borderTopColor: Colors.border }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark }}>Total no cartão</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark }}>
+                  {cq ? 'Total filtrado' : 'Total no cartão'}
+                </Text>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.danger }}>
-                  -{brl(selectedCreditMonth?.installmentsTotal ?? 0)}
+                  -{brl(cq
+                    ? filteredCreditTxs.reduce((s, t) => s + Number(t.amount), 0)
+                    : (selectedCreditMonth?.installmentsTotal ?? 0)
+                  )}
                 </Text>
               </View>
             </ScrollView>
-            <TouchableOpacity onPress={() => setSelectedCreditMonth(null)} style={styles.closeBtn}>
+            <TouchableOpacity onPress={() => { setSelectedCreditMonth(null); setCreditSearchQuery('') }} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>Fechar</Text>
             </TouchableOpacity>
           </View>

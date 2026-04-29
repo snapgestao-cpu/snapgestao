@@ -26,6 +26,7 @@ import { Pot, Transaction, Goal } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
 import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
 import MonthPickerModal from '../../components/MonthPickerModal'
+import { SearchBar } from '../../components/SearchBar'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
@@ -62,6 +63,7 @@ export default function MonthlyScreen() {
   const [showIncome, setShowIncome] = useState(false)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
 
   function toggleViewMode(mode: 'tabela' | 'potes') {
     setViewMode(mode)
@@ -238,7 +240,14 @@ export default function MonthlyScreen() {
   }
 
   const expPots = allPots.filter(p => !p.is_emergency)
-  const txMerchantGroups = groupTransactionsByMerchantAndDate(transactions)
+  const q = searchQuery.trim().toLowerCase()
+  const filteredTransactions = q
+    ? transactions.filter(t =>
+        (t.description ?? '').toLowerCase().includes(q) ||
+        (t.merchant ?? '').toLowerCase().includes(q)
+      )
+    : transactions
+  const txMerchantGroups = groupTransactionsByMerchantAndDate(filteredTransactions)
   const txByDate = groupByDate(txMerchantGroups)
   const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
 
@@ -520,6 +529,7 @@ export default function MonthlyScreen() {
             {/* Lançamentos agrupados por estabelecimento */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Lançamentos</Text>
+              <SearchBar value={searchQuery} onChangeText={setSearchQuery} />
               {txDates.length === 0 ? (
                 <Text style={styles.empty}>Nenhum lançamento neste ciclo.</Text>
               ) : (
