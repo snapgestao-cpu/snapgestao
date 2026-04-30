@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
 import {
-  captureReceipt, pickReceiptFromGallery, processReceipt,
+  processReceipt,
 } from '../lib/ocr'
 import type { NFCeResult } from '../lib/ocr'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -105,7 +105,7 @@ export default function OCRScreen() {
 
   const initialDate = cycleDate ?? new Date().toISOString().split('T')[0]
 
-  const [step, setStep] = useState<OCRStep>('menu')
+  const [step, setStep] = useState<OCRStep>('qr_camera')
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
@@ -150,15 +150,6 @@ export default function OCRScreen() {
       .lte('created_at', cycle.end.toISOString()).order('created_at')
     setPots((data ?? []) as Pot[])
   }
-
-  // Auto-launch camera when step becomes 'ocr_camera'
-  useEffect(() => {
-    if (step !== 'ocr_camera') return
-    captureReceipt().then(uri => {
-      if (uri) handleOCRCapture(uri)
-      else setStep('menu')
-    })
-  }, [step])
 
   // Aplicar pote global em todos os itens quando selecionado
   useEffect(() => {
@@ -225,10 +216,10 @@ export default function OCRScreen() {
         : 'Estado não identificado'
       Alert.alert(
         'Estado não suportado ainda',
-        `O cupom é de ${stateName}.\n\nAtualmente suportamos:\n• Rio de Janeiro (RJ)\n• São Paulo (SP)\n• Minas Gerais (MG)\n\nUse a opção OCR para ler o texto do cupom.`,
+        `O cupom é de ${stateName}.\n\nAtualmente suportamos:\n• Rio de Janeiro (RJ)\n• São Paulo (SP)\n• Minas Gerais (MG)`,
         [
-          { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
-          { text: 'Cancelar', onPress: () => setStep('menu') },
+          { text: 'Tentar novamente', onPress: () => setStep('qr_camera') },
+          { text: 'Voltar', onPress: () => router.back() },
         ]
       )
       return
@@ -274,8 +265,8 @@ export default function OCRScreen() {
       'Não foi possível ler o cupom',
       msg,
       [
-        { text: 'Tentar OCR', onPress: () => setStep('ocr_camera') },
-        { text: 'Cancelar', onPress: () => setStep('menu') },
+        { text: 'Tentar novamente', onPress: () => setStep('qr_camera') },
+        { text: 'Voltar', onPress: () => router.back() },
       ]
     )
   }
@@ -392,94 +383,13 @@ export default function OCRScreen() {
       name: '', valueCents: 0, quantity: 1, unit: 'UN', potId: null,
     }])
 
-  // ── STEP: menu ────────────────────────────────────────────────────────────
-  if (step === 'menu') {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={styles.backBtn}>‹ Voltar</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Adicionar cupom</Text>
-          <View style={{ width: 60 }} />
-        </View>
-
-        <View style={styles.menuContainer}>
-          {defaultPotName ? (
-            <View style={styles.potBadge}>
-              <Text style={styles.potBadgeText}>📌 Pote: {defaultPotName}</Text>
-            </View>
-          ) : null}
-
-          {/* QR Code — recomendado */}
-          <TouchableOpacity
-            style={styles.menuOptionPrimary}
-            onPress={() => setStep('qr_camera')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.menuOptionIcon}>📷</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.menuOptionTitlePrimary}>Cupom fiscal (QR Code)</Text>
-              <Text style={styles.menuOptionDescPrimary}>
-                Aponte para o QR Code do cupom. Dados buscados direto da SEFAZ — mais preciso.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <Text style={{ fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: -6 }}>
-            Suporta cupons de RJ, SP e MG
-          </Text>
-
-          {/* OCR — alternativa */}
-          <TouchableOpacity
-            style={styles.menuOptionSecondary}
-            activeOpacity={0.85}
-            onPress={async () => {
-              const uri = await captureReceipt()
-              if (uri) handleOCRCapture(uri)
-            }}
-          >
-            <Text style={styles.menuOptionIcon}>🔍</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.menuOptionTitleSecondary}>Ler texto do cupom (OCR)</Text>
-              <Text style={styles.menuOptionDescSecondary}>
-                Fotografa e lê o texto. Funciona para recibos sem QR Code.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.menuOptionSecondary}
-            activeOpacity={0.85}
-            onPress={async () => {
-              const uri = await pickReceiptFromGallery()
-              if (uri) handleOCRCapture(uri)
-            }}
-          >
-            <Text style={styles.menuOptionIcon}>🖼️</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.menuOptionTitleSecondary}>Escolher da galeria</Text>
-              <Text style={styles.menuOptionDescSecondary}>
-                Selecione uma foto já tirada do cupom.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => router.back()} style={styles.cancelLink}>
-            <Text style={styles.cancelLinkText}>Cancelar</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
   // ── STEP: qr_camera ───────────────────────────────────────────────────────
   if (step === 'qr_camera') {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <QRCameraScanner
           onQRCodeScanned={handleQRCodeScanned}
-          onCancel={() => setStep('menu')}
+          onCancel={() => router.back()}
         />
       </SafeAreaView>
     )
@@ -496,7 +406,7 @@ export default function OCRScreen() {
           stateCode={nfceStateCode}
           onSuccess={handleNFCeSuccess}
           onError={handleNFCeError}
-          onCancel={() => { setNfceUrl(null); setNfceState(null); setNfceChave(null); setStep('menu') }}
+          onCancel={() => { setNfceUrl(null); setNfceState(null); setNfceChave(null); router.back() }}
         />
       )
     }
@@ -527,8 +437,8 @@ export default function OCRScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setStep('menu')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={styles.backBtn}>‹ Novo</Text>
+        <TouchableOpacity onPress={() => setStep('qr_camera')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={styles.backBtn}>‹ Novo scan</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Revisar cupom</Text>
         <View style={{ width: 60 }} />
