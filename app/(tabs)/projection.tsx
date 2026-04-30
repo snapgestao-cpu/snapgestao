@@ -166,32 +166,30 @@ export default function ProjectionScreen() {
 
           const creditInMonth = allCredit
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
+          const nonCreditInMonth = allByDate
+            .filter(t => (t.type === 'expense' || t.type === 'goal_deposit') && t.payment_method !== 'credit' && t.date >= cycle.startISO && t.date <= cycle.endISO)
 
-          const parcelasPorPote: Record<string, number> = {}
-          let excedenteParcelas = 0
-          for (const t of creditInMonth) {
-            if (!t.pot_id) {
-              excedenteParcelas += Number(t.amount)
-            } else {
-              parcelasPorPote[t.pot_id] = (parcelasPorPote[t.pot_id] ?? 0) + Number(t.amount)
-            }
+          // Group all spending by pot to compute only excedente above limit
+          const spendingByPot: Record<string, number> = {}
+          let noPotTotal = 0
+          for (const t of [...creditInMonth, ...nonCreditInMonth]) {
+            if (!t.pot_id) noPotTotal += Number(t.amount)
+            else spendingByPot[t.pot_id] = (spendingByPot[t.pot_id] ?? 0) + Number(t.amount)
           }
-          for (const [potId, totalParcelas] of Object.entries(parcelasPorPote)) {
+          let excedente = noPotTotal
+          for (const [potId, total] of Object.entries(spendingByPot)) {
             const pot = potsDoMes.find((p: any) => p.id === potId)
             const limite = Number(pot?.limit_amount || 0)
-            if (limite <= 0) excedenteParcelas += totalParcelas
-            else if (totalParcelas > limite) excedenteParcelas += totalParcelas - limite
+            if (limite <= 0) excedente += total
+            else if (total > limite) excedente += total - limite
           }
 
           const realIncome = allByDate
             .filter(t => t.type === 'income' && t.date >= cycle.startISO && t.date <= cycle.endISO)
             .reduce((s: number, t: any) => s + Number(t.amount), 0)
-          const realExpense = allByDate
-            .filter(t => (t.type === 'expense' || t.type === 'goal_deposit') && t.payment_method !== 'credit' && t.date >= cycle.startISO && t.date <= cycle.endISO)
-            .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
           income = base + realIncome
-          expense = totalBudgeted + excedenteParcelas + realExpense
+          expense = totalBudgeted + excedente
         } else {
           // Passado e atual: dados reais (crédito por billing_date, restante por date)
           const incomeActual = allByDate

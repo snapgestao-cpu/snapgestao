@@ -10,6 +10,18 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
+import { CreditCard } from '../types'
+
+function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
+  const [y, m, d] = txISO.split('-').map(Number)
+  let month0 = m - 1
+  if (d >= card.closing_day) month0 += 1
+  if (card.due_day < card.closing_day) month0 += 1
+  month0 += offset
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
+}
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'transfer' | 'voucher_alimentacao' | 'voucher_refeicao'
 const PAY_METHODS_EXPENSE: { key: PayMethod; label: string }[] = [
@@ -47,6 +59,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
   const [dateISO, setDateISO] = useState(todayISO())
   const [dateDisplay, setDateDisplay] = useState(isoToDisplay(todayISO()))
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('pix')
+  const [cards, setCards] = useState<CreditCard[]>([])
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
   const [isNeed, setIsNeed] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
@@ -60,10 +74,24 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     setDateISO(transaction.date)
     setDateDisplay(isoToDisplay(transaction.date))
     setPaymentMethod(transaction.payment_method as PayMethod)
+    setSelectedCardId(transaction.card_id ?? null)
     setMerchant(transaction.merchant ?? '')
     setIsNeed(transaction.is_need ?? null)
     setError(null)
+    setCards([])
   }, [visible, transaction?.id])
+
+  useEffect(() => {
+    if (paymentMethod !== 'credit') return
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    supabase.from('credit_cards').select('*').eq('user_id', userId).then(({ data }) => {
+      const list = (data as CreditCard[]) ?? []
+      setCards(list)
+      // Se já havia card_id salvo e ele está na lista, mantém; senão usa o primeiro
+      setSelectedCardId(prev => list.find(c => c.id === prev) ? prev : (list[0]?.id ?? null))
+    })
+  }, [paymentMethod])
 
   const handleDateInput = (text: string) => {
     const digits = text.replace(/\D/g, '').slice(0, 8)
@@ -86,12 +114,23 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     setError(null)
     setLoading(true)
     try {
+      const isCredit = paymentMethod === 'credit'
+      const card = cards.find(c => c.id === selectedCardId) ?? null
+      const installOffset = (transaction.installment_number ?? 1) - 1
+      const billingDate = isCredit
+        ? (card
+            ? calcBillingDate(dateISO, card, installOffset)
+            : (transaction.billing_date ?? null))
+        : null
+
       const { error: err } = await supabase.from('transactions').update({
         amount,
         description: description.trim() || null,
         pot_id: selectedPotId,
         date: dateISO,
         payment_method: paymentMethod,
+        card_id: isCredit ? (selectedCardId ?? null) : null,
+        billing_date: billingDate,
         merchant: transaction.type === 'expense' ? (merchant.trim() || null) : null,
         is_need: transaction.type === 'expense' ? isNeed : null,
       }).eq('id', transaction.id)
@@ -239,6 +278,29 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
               ))}
             </View>
 
+            {isExpense && paymentMethod === 'credit' && (
+              <>
+                <Text style={styles.label}>Cartão</Text>
+                {cards.length === 0 ? (
+                  <Text style={styles.hint}>Nenhum cartão cadastrado.</Text>
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                    {cards.map(c => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.chip, selectedCardId === c.id && styles.chipActiveBlue]}
+                        onPress={() => setSelectedCardId(c.id)}
+                      >
+                        <Text style={[styles.chipText, selectedCardId === c.id && styles.chipTextBlue]}>
+                          {c.name}{c.last_four ? ` ••${c.last_four}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </>
+            )}
+
             {isExpense && (
               <>
                 <Text style={styles.label}>Estabelecimento <Text style={styles.optional}>(opcional)</Text></Text>
@@ -340,6 +402,7 @@ const styles = StyleSheet.create({
   needBtnYes: { borderColor: Colors.success, backgroundColor: Colors.lightGreen },
   needBtnNo: { borderColor: Colors.danger, backgroundColor: Colors.lightRed },
   needBtnText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
+  hint: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
   errorBox: {
     backgroundColor: Colors.lightRed, borderRadius: 10,
     borderLeftWidth: 3, borderLeftColor: Colors.danger,
