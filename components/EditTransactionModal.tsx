@@ -23,6 +23,21 @@ function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   return new Date(year, month0, card.due_day).toISOString().split('T')[0]
 }
 
+function calcBillingDateNoCard(txISO: string, offset = 0): string {
+  const [y, m] = txISO.split('-').map(Number)
+  let month0 = m - 1 + 1 + offset
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, 1).toISOString().split('T')[0]
+}
+
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'transfer' | 'voucher_alimentacao' | 'voucher_refeicao'
 const PAY_METHODS_EXPENSE: { key: PayMethod; label: string }[] = [
   { key: 'cash', label: 'Dinheiro' }, { key: 'debit', label: 'Débito' },
@@ -61,6 +76,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('pix')
   const [cards, setCards] = useState<CreditCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [isInstallment, setIsInstallment] = useState(false)
+  const [installments, setInstallments] = useState(2)
   const [merchant, setMerchant] = useState('')
   const [isNeed, setIsNeed] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
@@ -75,6 +92,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     setDateDisplay(isoToDisplay(transaction.date))
     setPaymentMethod(transaction.payment_method as PayMethod)
     setSelectedCardId(transaction.card_id ?? null)
+    setIsInstallment(!!(transaction.installment_group_id))
+    setInstallments(transaction.installment_total ?? 2)
     setMerchant(transaction.merchant ?? '')
     setIsNeed(transaction.is_need ?? null)
     setError(null)
@@ -116,6 +135,38 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     try {
       const isCredit = paymentMethod === 'credit'
       const card = cards.find(c => c.id === selectedCardId) ?? null
+      const userId = useAuthStore.getState().session?.user?.id
+
+      // Converter em parcelado: apaga o lançamento original e cria N parcelas
+      if (isCredit && isInstallment && installments >= 2 && !transaction.installment_group_id && userId) {
+        const { error: delErr } = await supabase.from('transactions').delete().eq('id', transaction.id)
+        if (delErr) { setError('Erro ao excluir original: ' + delErr.message); return }
+
+        const groupId = genUUID()
+        const perInstallment = Math.round((amount / installments) * 100) / 100
+        const rows = Array.from({ length: installments }, (_, i) => ({
+          user_id: userId,
+          pot_id: selectedPotId,
+          type: transaction.type,
+          amount: perInstallment,
+          description: description.trim() || null,
+          date: dateISO,
+          payment_method: paymentMethod,
+          card_id: selectedCardId ?? null,
+          billing_date: card ? calcBillingDate(dateISO, card, i) : calcBillingDateNoCard(dateISO, i),
+          merchant: merchant.trim() || null,
+          is_need: isNeed,
+          installment_group_id: groupId,
+          installment_number: i + 1,
+          installment_total: installments,
+        }))
+        const { error: insErr } = await supabase.from('transactions').insert(rows)
+        if (insErr) { setError('Erro ao criar parcelas: ' + insErr.message); return }
+        onSuccess(`${installments}x criadas com sucesso!`)
+        onClose()
+        return
+      }
+
       const installOffset = (transaction.installment_number ?? 1) - 1
       const billingDate = isCredit
         ? (card
@@ -301,6 +352,38 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
               </>
             )}
 
+            {isExpense && paymentMethod === 'credit' && transaction && !transaction.installment_group_id && (
+              <View style={styles.installmentRow}>
+                <TouchableOpacity
+                  style={[styles.installmentToggle, isInstallment && styles.installmentToggleActive]}
+                  onPress={() => setIsInstallment(v => !v)}
+                >
+                  <Text style={[styles.installmentToggleText, isInstallment && styles.installmentToggleTextActive]}>
+                    💳 Parcelar
+                  </Text>
+                </TouchableOpacity>
+                {isInstallment && (
+                  <View style={styles.installmentCounter}>
+                    <TouchableOpacity onPress={() => setInstallments(v => Math.max(2, v - 1))} style={styles.counterBtn}>
+                      <Text style={styles.counterBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.counterValue}>{installments}x</Text>
+                    <TouchableOpacity onPress={() => setInstallments(v => Math.min(24, v + 1))} style={styles.counterBtn}>
+                      <Text style={styles.counterBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {isExpense && paymentMethod === 'credit' && transaction?.installment_group_id && (
+              <View style={styles.installmentBadge}>
+                <Text style={styles.installmentBadgeText}>
+                  💳 Parcela {transaction.installment_number}/{transaction.installment_total}
+                </Text>
+              </View>
+            )}
+
             {isExpense && (
               <>
                 <Text style={styles.label}>Estabelecimento <Text style={styles.optional}>(opcional)</Text></Text>
@@ -403,6 +486,26 @@ const styles = StyleSheet.create({
   needBtnNo: { borderColor: Colors.danger, backgroundColor: Colors.lightRed },
   needBtnText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
   hint: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
+  installmentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  installmentToggle: {
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background,
+  },
+  installmentToggleActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
+  installmentToggleText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  installmentToggleTextActive: { color: Colors.primary },
+  installmentCounter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  counterBtn: {
+    width: 32, height: 32, borderRadius: 16, borderWidth: 1.5,
+    borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  counterBtnText: { fontSize: 18, fontWeight: '700', color: Colors.primary, lineHeight: 22 },
+  counterValue: { fontSize: 16, fontWeight: '700', color: Colors.textDark, minWidth: 32, textAlign: 'center' },
+  installmentBadge: {
+    backgroundColor: Colors.lightBlue, borderRadius: 10, borderWidth: 1,
+    borderColor: Colors.primary + '40', paddingHorizontal: 12, paddingVertical: 8, marginBottom: 10,
+  },
+  installmentBadgeText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
   errorBox: {
     backgroundColor: Colors.lightRed, borderRadius: 10,
     borderLeftWidth: 3, borderLeftColor: Colors.danger,
