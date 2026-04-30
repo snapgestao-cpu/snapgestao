@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Switch,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../constants/colors'
@@ -126,6 +126,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
   }
 
   const handleSave = async () => {
+    if (loading) return
     const amount = centsToFloat(amountDigits)
     if (amount <= 0) { setError('Informe um valor maior que zero.'); return }
     if (!transaction) return
@@ -137,8 +138,9 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
       const card = cards.find(c => c.id === selectedCardId) ?? null
       const userId = useAuthStore.getState().session?.user?.id
 
-      // Converter em parcelado: apaga o lançamento original e cria N parcelas
-      if (isCredit && isInstallment && installments >= 2 && !transaction.installment_group_id && userId) {
+      if (isCredit && isInstallment && installments >= 2 && !transaction.installment_group_id) {
+        // Converter para parcelado: exclui lançamento original e cria N parcelas
+        if (!userId) { setError('Usuário não identificado.'); return }
         const { error: delErr } = await supabase.from('transactions').delete().eq('id', transaction.id)
         if (delErr) { setError('Erro ao excluir original: ' + delErr.message); return }
 
@@ -164,30 +166,30 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
         if (insErr) { setError('Erro ao criar parcelas: ' + insErr.message); return }
         onSuccess(`${installments}x criadas com sucesso!`)
         onClose()
-        return
+      } else {
+        // Atualização simples (sem parcelamento novo)
+        const installOffset = (transaction.installment_number ?? 1) - 1
+        const billingDate = isCredit
+          ? (card
+              ? calcBillingDate(dateISO, card, installOffset)
+              : (transaction.billing_date ?? null))
+          : null
+
+        const { error: err } = await supabase.from('transactions').update({
+          amount,
+          description: description.trim() || null,
+          pot_id: selectedPotId,
+          date: dateISO,
+          payment_method: paymentMethod,
+          card_id: isCredit ? (selectedCardId ?? null) : null,
+          billing_date: billingDate,
+          merchant: transaction.type === 'expense' ? (merchant.trim() || null) : null,
+          is_need: transaction.type === 'expense' ? isNeed : null,
+        }).eq('id', transaction.id)
+        if (err) { setError('Erro ao salvar: ' + err.message); return }
+        onSuccess('Lançamento atualizado!')
+        onClose()
       }
-
-      const installOffset = (transaction.installment_number ?? 1) - 1
-      const billingDate = isCredit
-        ? (card
-            ? calcBillingDate(dateISO, card, installOffset)
-            : (transaction.billing_date ?? null))
-        : null
-
-      const { error: err } = await supabase.from('transactions').update({
-        amount,
-        description: description.trim() || null,
-        pot_id: selectedPotId,
-        date: dateISO,
-        payment_method: paymentMethod,
-        card_id: isCredit ? (selectedCardId ?? null) : null,
-        billing_date: billingDate,
-        merchant: transaction.type === 'expense' ? (merchant.trim() || null) : null,
-        is_need: transaction.type === 'expense' ? isNeed : null,
-      }).eq('id', transaction.id)
-      if (err) { setError('Erro ao salvar: ' + err.message); return }
-      onSuccess('Lançamento atualizado!')
-      onClose()
     } finally {
       setLoading(false)
     }
@@ -353,15 +355,16 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
             )}
 
             {isExpense && paymentMethod === 'credit' && transaction && !transaction.installment_group_id && (
-              <View style={styles.installmentRow}>
-                <TouchableOpacity
-                  style={[styles.installmentToggle, isInstallment && styles.installmentToggleActive]}
-                  onPress={() => setIsInstallment(v => !v)}
-                >
-                  <Text style={[styles.installmentToggleText, isInstallment && styles.installmentToggleTextActive]}>
-                    💳 Parcelar
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.installmentBlock}>
+                <View style={styles.installmentRow}>
+                  <Text style={styles.label}>Parcelar compra</Text>
+                  <Switch
+                    value={isInstallment}
+                    onValueChange={setIsInstallment}
+                    trackColor={{ false: Colors.border, true: Colors.primary + '60' }}
+                    thumbColor={isInstallment ? Colors.primary : Colors.textMuted}
+                  />
+                </View>
                 {isInstallment && (
                   <View style={styles.installmentCounter}>
                     <TouchableOpacity onPress={() => setInstallments(v => Math.max(2, v - 1))} style={styles.counterBtn}>
@@ -486,15 +489,9 @@ const styles = StyleSheet.create({
   needBtnNo: { borderColor: Colors.danger, backgroundColor: Colors.lightRed },
   needBtnText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
   hint: { fontSize: 13, color: Colors.textMuted, marginBottom: 8 },
-  installmentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
-  installmentToggle: {
-    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
-    borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background,
-  },
-  installmentToggleActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
-  installmentToggleText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
-  installmentToggleTextActive: { color: Colors.primary },
-  installmentCounter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  installmentBlock: { marginBottom: 10 },
+  installmentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  installmentCounter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   counterBtn: {
     width: 32, height: 32, borderRadius: 16, borderWidth: 1.5,
     borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
