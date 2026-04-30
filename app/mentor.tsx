@@ -126,8 +126,15 @@ export default function MentorScreen() {
   const [pdfUri, setPdfUri] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
   const [savingPdf, setSavingPdf] = useState(false)
+  const [aiTokens, setAiTokens] = useState<number | null>(null)
 
   const fadeAnim = useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    if (!user) return
+    supabase.from('users').select('ai_tokens').eq('id', user.id).single()
+      .then(({ data }) => setAiTokens(data?.ai_tokens ?? 0))
+  }, [user?.id])
 
   // Load user goals for the metaPrincipal question
   useEffect(() => {
@@ -182,6 +189,19 @@ export default function MentorScreen() {
   }
 
   const gerarRelatorio = async (r: QuestionarioRespostas) => {
+    if (!user) return
+
+    const { data: remaining, error: tokenErr } = await supabase.rpc('use_ai_token', { p_user_id: user.id })
+    if (tokenErr || remaining === -1) {
+      Alert.alert(
+        'Análises esgotadas',
+        'Você utilizou todas as suas análises de IA disponíveis.\n\nEntre em contato com o suporte para liberar mais análises.',
+        [{ text: 'OK' }]
+      )
+      return
+    }
+    setAiTokens(remaining as number)
+
     setStep('generating')
     try {
       const maxMeses = getMesesParaAnalisar(r.periodo.opcao)
@@ -306,12 +326,27 @@ export default function MentorScreen() {
         </ScrollView>
 
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {aiTokens !== null && (
+            <View style={[
+              styles.tokenBadge,
+              aiTokens === 0 ? styles.tokenBadgeEmpty : aiTokens <= 2 ? styles.tokenBadgeLow : styles.tokenBadgeOk,
+            ]}>
+              <Text style={[styles.tokenBadgeText, aiTokens === 0 ? styles.tokenTextEmpty : aiTokens <= 2 ? styles.tokenTextLow : styles.tokenTextOk]}>
+                {aiTokens === 0
+                  ? '🔒 Nenhuma análise disponível'
+                  : `💎 ${aiTokens} análise${aiTokens !== 1 ? 's' : ''} disponíve${aiTokens !== 1 ? 'is' : 'l'}`}
+              </Text>
+            </View>
+          )}
           <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => setStep('quiz')}
+            style={[styles.primaryBtn, aiTokens === 0 && styles.primaryBtnDisabled]}
+            onPress={() => aiTokens !== 0 ? setStep('quiz') : undefined}
             activeOpacity={0.85}
+            disabled={aiTokens === 0}
           >
-            <Text style={styles.primaryBtnText}>Começar análise →</Text>
+            <Text style={styles.primaryBtnText}>
+              {aiTokens === 0 ? '🔒 Sem análises disponíveis' : 'Começar análise →'}
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -686,7 +721,16 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border,
   },
   btnDisabled: { opacity: 0.45 },
+  primaryBtnDisabled: { backgroundColor: Colors.textMuted, shadowOpacity: 0, elevation: 0 },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
+  tokenBadge: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 10, alignItems: 'center' },
+  tokenBadgeOk: { backgroundColor: '#E8F5E9' },
+  tokenBadgeLow: { backgroundColor: '#FFF8E1' },
+  tokenBadgeEmpty: { backgroundColor: '#FFEBEE' },
+  tokenBadgeText: { fontSize: 13, fontWeight: '600' },
+  tokenTextOk: { color: '#2E7D32' },
+  tokenTextLow: { color: '#E65100' },
+  tokenTextEmpty: { color: Colors.danger },
   secondaryBtn: {
     borderRadius: 14, paddingVertical: 13, alignItems: 'center',
     borderWidth: 1.5, borderColor: Colors.border,

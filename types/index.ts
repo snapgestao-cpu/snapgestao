@@ -5,6 +5,7 @@ export type User = {
   cycle_start: number
   initial_balance: number
   onboarding_completed: boolean
+  ai_tokens: number
   created_at: string
 }
 

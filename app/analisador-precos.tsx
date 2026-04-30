@@ -65,11 +65,17 @@ export default function AnalisadorPrecosScreen() {
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [relatorio, setRelatorio] = useState<string | null>(null)
+  const [aiTokens, setAiTokens] = useState<number | null>(null)
 
   const slideAnim = useRef(new Animated.Value(0)).current
   const opacityAnim = useRef(new Animated.Value(1)).current
 
   useEffect(() => { loadPotes() }, [])
+  useEffect(() => {
+    if (!user) return
+    supabase.from('users').select('ai_tokens').eq('id', user.id).single()
+      .then(({ data }) => setAiTokens(data?.ai_tokens ?? 0))
+  }, [user?.id])
 
   async function loadPotes() {
     const { data } = await supabase
@@ -131,11 +137,24 @@ export default function AnalisadorPrecosScreen() {
   }
 
   async function executarAnalise() {
+    const userId = user?.id
+    if (!userId) return
+
+    const { data: remaining, error: tokenErr } = await supabase.rpc('use_ai_token', { p_user_id: userId })
+    if (tokenErr || remaining === -1) {
+      Alert.alert(
+        'Análises esgotadas',
+        'Você utilizou todas as suas análises de IA disponíveis.\n\nEntre em contato com o suporte para liberar mais análises.',
+        [{ text: 'OK' }]
+      )
+      return
+    }
+    setAiTokens(remaining as number)
+
     setLoading(true)
     setLoadingMsg('Buscando suas compras...')
 
     try {
-      const userId = user?.id
       if (!userId) throw new Error('Não autenticado')
 
       const poteSelecionado = respostas['pote']?.opcao === 'todos'
@@ -294,6 +313,22 @@ export default function AnalisadorPrecosScreen() {
             padding: 16, marginHorizontal: 0, marginBottom: 16,
           }}>
             <AIProviderSelector selected={aiProvider} onSelect={setAiProvider} />
+            {aiTokens !== null && (
+              <View style={{
+                marginTop: 12, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12,
+                backgroundColor: aiTokens === 0 ? '#FFEBEE' : aiTokens <= 2 ? '#FFF8E1' : '#E8F5E9',
+                alignItems: 'center',
+              }}>
+                <Text style={{
+                  fontSize: 13, fontWeight: '600',
+                  color: aiTokens === 0 ? Colors.danger : aiTokens <= 2 ? '#E65100' : '#2E7D32',
+                }}>
+                  {aiTokens === 0
+                    ? '🔒 Nenhuma análise disponível'
+                    : `💎 ${aiTokens} análise${aiTokens !== 1 ? 's' : ''} disponíve${aiTokens !== 1 ? 'is' : 'l'}`}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
