@@ -188,7 +188,8 @@ export default function AnalisadorPrecosScreen() {
           preocupacao: respostas['preocupacao'] || { opcao: null, comentario: '' },
           foco: respostas['foco'] || { opcao: null, comentario: '' },
         },
-        aiProvider
+        aiProvider,
+        user?.id
       )
 
       setRelatorio(textoRelatorio)

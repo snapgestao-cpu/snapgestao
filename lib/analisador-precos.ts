@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { getMesesValidos } from './getMesesValidos'
 import { AIProvider, callAI } from './ai-provider'
+import { getPriceComparison, getUserCity } from './price-database'
 
 export type ItemPreco = {
   descricao: string
@@ -62,7 +63,8 @@ export async function analisarPrecos(
     preocupacao: { opcao: string | null; comentario: string }
     foco: { opcao: string | null; comentario: string }
   },
-  provider: AIProvider = 'claude'
+  provider: AIProvider = 'claude',
+  userId?: string
 ): Promise<string> {
 
   const grupos: Record<string, any[]> = {}
@@ -96,11 +98,39 @@ export async function analisarPrecos(
     )
   }
 
+  // Dados colaborativos: buscar comparativo para top 5 itens (silencioso se falhar)
+  let dadosColaborativos = ''
+  if (userId) {
+    try {
+      const userCity = await getUserCity(userId)
+      const comparativos = await Promise.all(
+        itensRelevantes.slice(0, 5).map(async item => {
+          const comparacao = await getPriceComparison(item.descricao, userCity)
+          return { item: item.descricao, comparacao: comparacao.slice(0, 3) }
+        })
+      )
+      const comparativoText = comparativos
+        .filter(c => c.comparacao.length >= 2)
+        .map(c => {
+          const precos = c.comparacao.map(e =>
+            `${e.establishment}: min R$${e.min_price.toFixed(2)} / med R$${e.avg_price.toFixed(2)}`
+          ).join(', ')
+          return `${c.item}: ${precos}`
+        }).join('\n')
+
+      if (comparativoText) {
+        dadosColaborativos = `\nDADOS DA COMUNIDADE (últimos 30 dias — preços de outros usuários):\n${comparativoText}`
+      }
+    } catch {
+      // Dados colaborativos são opcionais — não bloquear análise
+    }
+  }
+
   const prompt = `Você é um especialista em análise de preços e comportamento de consumo brasileiro.
 Analise os dados de compras abaixo e gere um relatório detalhado em português.
 
 DADOS DE COMPRAS (últimos meses):
-${JSON.stringify(itensRelevantes, null, 2)}
+${JSON.stringify(itensRelevantes, null, 2)}${dadosColaborativos}
 
 PREFERÊNCIAS DO USUÁRIO:
 - Pote analisado: ${questionario.pote || 'Todos'}

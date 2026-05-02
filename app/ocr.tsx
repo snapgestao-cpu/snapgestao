@@ -23,6 +23,12 @@ import {
   extractStateCode, getStateByCode, isStateSupported, STATE_NAMES,
 } from '../lib/nfce-states'
 import type { NFCeState } from '../lib/nfce-states'
+import {
+  getUserPriceShareOptIn,
+  setUserPriceShareOptIn,
+  submitPriceData,
+} from '../lib/price-database'
+import PriceShareOptInModal from '../components/PriceShareOptInModal'
 
 function extractChaveAcesso(url: string): string | null {
   try {
@@ -129,6 +135,16 @@ export default function OCRScreen() {
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [globalPotId, setGlobalPotId] = useState<string | null>(defaultPotId ?? null)
   const [globalPotName, setGlobalPotName] = useState<string>(defaultPotName ?? '')
+
+  // Price database
+  const [nfceMeta, setNfceMeta] = useState<{ cnpj: string | null } | null>(null)
+  const [showOptInModal, setShowOptInModal] = useState(false)
+  const [pendingPriceData, setPendingPriceData] = useState<{
+    items: Array<{ name: string; totalValue: number; quantity: number }>
+    merchant: string
+    cnpj: string | null
+    emission_date: string
+  } | null>(null)
 
   useEffect(() => {
     if (paymentMethod !== 'credit') { setIsInstallment(false); return }
@@ -240,6 +256,7 @@ export default function OCRScreen() {
     setNfceUrl(null)
     setNfceState(null)
     setNfceChave(null)
+    setNfceMeta({ cnpj: result.cnpj ?? null })
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
@@ -362,8 +379,34 @@ export default function OCRScreen() {
       checkAndGrantBadges(userId, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
 
       const count = simplified ? 1 : reviewItems.filter(i => i.valueCents > 0).length
+
+      // Verificar opt-in para base colaborativa (apenas cupons NFC-e com itens)
+      let localPriceData: typeof pendingPriceData = null
+      if (nfceMeta && reviewItems.some(i => i.valueCents > 0)) {
+        const optIn = await getUserPriceShareOptIn(userId)
+        const priceItems = reviewItems
+          .filter(i => i.valueCents > 0 && i.name)
+          .map(i => ({ name: i.name, totalValue: i.valueCents / 100, quantity: i.quantity || 1 }))
+
+        if (optIn === true) {
+          submitPriceData(priceItems, merchant, '', nfceMeta.cnpj, receiptDate).catch(() => {})
+        } else if (optIn === null) {
+          localPriceData = { items: priceItems, merchant, cnpj: nfceMeta.cnpj, emission_date: receiptDate }
+          setPendingPriceData(localPriceData)
+        }
+      }
+
       Alert.alert('Sucesso', `${count} lançamento${count !== 1 ? 's' : ''} registrado${count !== 1 ? 's' : ''}!`, [
-        { text: 'OK', onPress: () => router.replace('/(tabs)/monthly') },
+        {
+          text: 'OK',
+          onPress: () => {
+            if (localPriceData) {
+              setShowOptInModal(true)
+            } else {
+              router.replace('/(tabs)/monthly')
+            }
+          },
+        },
       ])
     } catch {
       Alert.alert('Erro', 'Falha ao salvar lançamentos.')
@@ -738,6 +781,30 @@ export default function OCRScreen() {
       {pendingBadges.length > 0 && (
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
       )}
+      <PriceShareOptInModal
+        visible={showOptInModal}
+        onAccept={async () => {
+          setShowOptInModal(false)
+          if (user && pendingPriceData) {
+            await setUserPriceShareOptIn(user.id, true)
+            submitPriceData(
+              pendingPriceData.items,
+              pendingPriceData.merchant,
+              '',
+              pendingPriceData.cnpj,
+              pendingPriceData.emission_date
+            ).catch(() => {})
+          }
+          setPendingPriceData(null)
+          router.replace('/(tabs)/monthly')
+        }}
+        onDecline={async () => {
+          setShowOptInModal(false)
+          if (user) await setUserPriceShareOptIn(user.id, false)
+          setPendingPriceData(null)
+          router.replace('/(tabs)/monthly')
+        }}
+      />
     </SafeAreaView>
   )
 }

@@ -14,6 +14,7 @@ import { IncomeSourcesModal } from '../../components/IncomeSourcesModal'
 import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
 import { getCycle } from '../../lib/cycle'
+import { getUserPriceShareOptIn, setUserPriceShareOptIn } from '../../lib/price-database'
 import { calculateCycleSummary } from '../../lib/cycleClose'
 import { Goal } from '../../types'
 import { BadgeToast } from '../../components/BadgeToast'
@@ -36,6 +37,8 @@ export default function ProfileScreen() {
   const [earnedCount, setEarnedCount] = useState(0)
   const [previewBadges, setPreviewBadges] = useState<Badge[]>([])
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+
+  const [sharePrices, setSharePrices] = useState(false)
 
   // Notification toggles (local state only)
   const [notifGasto, setNotifGasto] = useState(false)
@@ -87,6 +90,12 @@ export default function ProfileScreen() {
   }, [user?.id])
 
   useEffect(() => { loadStats() }, [loadStats])
+
+  useEffect(() => {
+    if (user?.id) {
+      getUserPriceShareOptIn(user.id).then(v => setSharePrices(v === true))
+    }
+  }, [user?.id])
 
   const onRefresh = () => { setRefreshing(true); loadStats() }
 
@@ -249,6 +258,17 @@ export default function ProfileScreen() {
     {
       title: 'Dados',
       items: [
+        {
+          label: 'Compartilhar preços anônimos',
+          icon: '🤝',
+          onPress: () => {},
+          toggle: true,
+          toggleValue: sharePrices,
+          onToggle: async (value: boolean) => {
+            setSharePrices(value)
+            if (user) await setUserPriceShareOptIn(user.id, value)
+          },
+        },
         {
           label: 'Exportar lançamentos (Excel)',
           icon: '📋',
