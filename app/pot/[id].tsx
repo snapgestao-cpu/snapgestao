@@ -21,6 +21,9 @@ import { Pot, Transaction } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
 import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
 import { SearchBar } from '../../components/SearchBar'
+import NewScheduledModal from '../../components/NewScheduledModal'
+import ScheduledItem from '../../components/ScheduledItem'
+import { getScheduledForMonth, confirmScheduled, cancelScheduledMonth } from '../../lib/scheduled-transactions'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
@@ -47,6 +50,8 @@ export default function PotDetailScreen() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [scheduledItems, setScheduledItems] = useState<any[]>([])
+  const [showScheduledModal, setShowScheduledModal] = useState(false)
 
   const loadData = useCallback(async () => {
     if (!user || !id) return
@@ -108,7 +113,16 @@ export default function PotDetailScreen() {
     }
   }, [user?.id, id, cycleOffset])
 
+  async function loadScheduled() {
+    if (!user || !id) return
+    const items = await getScheduledForMonth(
+      user.id, user.cycle_start ?? 1, cycleOffset, id
+    )
+    setScheduledItems(items)
+  }
+
   useEffect(() => { setLoading(true); loadData() }, [loadData])
+  useEffect(() => { loadScheduled() }, [user?.id, id, cycleOffset])
 
   const onRefresh = () => { setRefreshing(true); loadData() }
 
@@ -177,6 +191,7 @@ export default function PotDetailScreen() {
         },
       }),
     },
+    { icon: '📋', label: 'Agendar', onPress: () => setShowScheduledModal(true) },
     { icon: '✏️', label: 'Editar', onPress: () => setShowEdit(true) },
     { icon: '🗑️', label: 'Excluir', onPress: handleDelete },
   ]
@@ -239,6 +254,74 @@ export default function PotDetailScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Lançamentos a confirmar */}
+        {scheduledItems.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={[styles.sectionTitle, { color: '#92400E' }]}>
+              📋 A Confirmar
+            </Text>
+            {scheduledItems.map(item => (
+              <ScheduledItem
+                key={item.id}
+                item={item}
+                onConfirm={() => {
+                  const s = item.scheduled_transactions
+                  const amountFmt = Number(s?.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  Alert.alert(
+                    '✅ Confirmar lançamento',
+                    `Confirmar "${s?.description}" de ${amountFmt}?`,
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Confirmar',
+                        onPress: async () => {
+                          try {
+                            await confirmScheduled(
+                              item.id, s.id, user!.id, s.pot_id,
+                              {
+                                description: s.description,
+                                amount: s.amount,
+                                payment_method: s.payment_method,
+                                merchant: s.merchant,
+                                date: new Date().toISOString().split('T')[0],
+                              }
+                            )
+                            await Promise.all([loadScheduled(), loadData()])
+                            setToast({ message: 'Lançamento confirmado!', color: Colors.success })
+                          } catch {
+                            Alert.alert('Erro', 'Não foi possível confirmar.')
+                          }
+                        },
+                      },
+                    ]
+                  )
+                }}
+                onCancel={() => {
+                  Alert.alert(
+                    '🗑️ Excluir este mês',
+                    'Excluir apenas este mês? Os outros meses não serão afetados.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Excluir',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await cancelScheduledMonth(item.id)
+                            await loadScheduled()
+                          } catch {
+                            Alert.alert('Erro', 'Não foi possível excluir.')
+                          }
+                        },
+                      },
+                    ]
+                  )
+                }}
+              />
+            ))}
+          </View>
+        )}
 
         {/* Transactions */}
         <Text style={styles.sectionTitle}>Lançamentos — {cycle.monthYear}</Text>
@@ -321,6 +404,19 @@ export default function PotDetailScreen() {
         onSuccess={msg => { setEditingTx(null); handleSuccess(msg) }}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
+      <NewScheduledModal
+        visible={showScheduledModal}
+        potId={pot.id}
+        potName={pot.name}
+        cycleStart={user?.cycle_start ?? 1}
+        cycleOffset={cycleOffset}
+        onClose={() => setShowScheduledModal(false)}
+        onSuccess={() => {
+          setShowScheduledModal(false)
+          loadScheduled()
+          setToast({ message: 'Lançamento agendado!', color: Colors.primary })
+        }}
+      />
     </SafeAreaView>
   )
 }

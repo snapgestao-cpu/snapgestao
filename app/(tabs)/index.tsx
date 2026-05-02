@@ -13,6 +13,7 @@ import { Badge } from '../../lib/badges'
 import { Toast } from '../../components/Toast'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCycleStore } from '../../stores/useCycleStore'
+import { getScheduledForMonth } from '../../lib/scheduled-transactions'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
@@ -36,7 +37,7 @@ type PotRow = {
 
 export default function PotsScreen() {
   const { user } = useAuthStore()
-  const { cycleOffset, setCycleOffset } = useCycleStore()
+  const { cycleOffset, setCycleOffset, setPendingScheduledCount } = useCycleStore()
 
   const [potsData, setPotsData] = useState<PotRow[]>([])
   const [emergencyPot, setEmergencyPot] = useState<Pot | null>(null)
@@ -106,6 +107,10 @@ export default function PotsScreen() {
         (s: number, t: any) => t.type === 'income' ? s + Number(t.amount) : s - Number(t.amount), 0
       )
       setEmergencyBalance(epBal)
+
+      // Atualiza badge do tab com pendentes do mês atual
+      const pending = await getScheduledForMonth(user.id, user.cycle_start ?? 1, 0)
+      setPendingScheduledCount(pending.length)
     } finally {
       setLoading(false)
       setRefreshing(false)

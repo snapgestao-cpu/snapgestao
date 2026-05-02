@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Projeto
 
 **SnapGestão** — app de controle financeiro pessoal (React Native + Expo 54).  
@@ -51,6 +53,44 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 - **PDF**: nunca usar `documentDirectory` para salvar — usar `MediaLibrary` + Downloads
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
+
+## Arquitetura (resumo)
+
+- **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; autenticado sem perfil → onboarding; perfil OK → tabs.
+- **Data flow**: React Query (fetch/cache) → Supabase → `onSuccess` atualiza Zustand store. Componentes leem do store. Nunca chamar `supabase` diretamente de componentes (exceto `useAuthStore`, `onboarding/step3.tsx`, `app/(tabs)/index.tsx`).
+- **Cycle sync**: `useCycleStore` sincroniza `cycleOffset` e `viewMode` entre Potes e Mensal. Range −24 a +12.
+- **AI**: `callAI(provider, prompt)` em `lib/ai-provider.ts`. Modelos: `claude-haiku-4-5-20251001`, Gemini 2.5 Flash, Llama 3.3 70B (Groq). Provider padrão: `'claude'`. Limite de tokens por usuário — ver `supabase/scripts/grant_ai_tokens.sql`.
+- **Offline**: `expo-sqlite` (`snapgestao.db`) — sync não implementado.
+
+## Constraints de plataforma
+
+- `expo-router` pinado em `~6.0.23` — não atualizar sem atualizar `expo` junto.
+- New Architecture habilitada (`newArchEnabled: true`) — evitar libs incompatíveis.
+- Nunca importar de `@react-navigation` diretamente — usar apenas APIs de `expo-router`.
+- `babel.config.js` não existe — não criar sem necessidade explícita.
+
+## Arquivos mortos (podem ser deletados)
+
+- `components/ProjectionEntryModal.tsx` — não importado em nenhum lugar
+- `components/charts/BarChart.tsx` — não importado em nenhum lugar
+
+## Lançamentos a Confirmar (Scheduled Transactions)
+
+Feature implementada em `lib/scheduled-transactions.ts`.
+
+**Tabelas** (migration: `supabase/migrations/20240501_scheduled_transactions.sql`):
+- `scheduled_transactions` — lançamento orçado: descrição, valor, pote, forma de pagamento, `start_date`, `total_months`
+- `scheduled_transaction_months` — 1 row por mês; `status`: `pending` | `confirmed` | `cancelled`; `transaction_id` preenchido ao confirmar
+
+**Fluxo**:
+1. Botão "📋 Agendar" em `app/pot/[id].tsx` → `NewScheduledModal` → `createScheduledTransaction` (cria N rows mensais)
+2. Tela do pote lista pendentes do mês via `getScheduledForMonth(userId, cycleStart, cycleOffset, potId)`
+3. Confirmar → `confirmScheduled` cria `transaction` real + marca `status: 'confirmed'`
+4. Excluir (mês único) → `cancelScheduledMonth`
+
+**Badge**: `useCycleStore.pendingScheduledCount` — atualizado em `app/(tabs)/index.tsx` (carrega `getScheduledForMonth` para offset 0). Lido em `app/(tabs)/_layout.tsx` via `tabBarBadge`.
+
+**Regra**: `getScheduledForMonth` aceita `potId?` opcional — sem ele retorna todos os potes (usado para o badge); com ele filtra client-side (usado no detalhe do pote).
 
 ## Roadmap
 

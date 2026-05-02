@@ -10,6 +10,8 @@ type CycleStore = {
   setAlertsExpanded: (v: boolean) => void
   aiProvider: AIProvider
   setAiProvider: (p: AIProvider) => void
+  pendingScheduledCount: number
+  setPendingScheduledCount: (n: number) => void
 }
 
 export const useCycleStore = create<CycleStore>((set) => ({
@@ -21,4 +23,6 @@ export const useCycleStore = create<CycleStore>((set) => ({
   setAlertsExpanded: (v) => set({ alertsExpanded: v }),
   aiProvider: 'claude',
   setAiProvider: (p) => set({ aiProvider: p }),
+  pendingScheduledCount: 0,
+  setPendingScheduledCount: (n) => set({ pendingScheduledCount: n }),
 }))

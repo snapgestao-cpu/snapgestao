@@ -2,6 +2,7 @@ import React from 'react'
 import { Text } from 'react-native'
 import { Tabs } from 'expo-router'
 import { Colors } from '../../constants/colors'
+import { useCycleStore } from '../../stores/useCycleStore'
 
 function TabIcon({ emoji, active }: { emoji: string; active: boolean }) {
   return (
@@ -10,6 +11,8 @@ function TabIcon({ emoji, active }: { emoji: string; active: boolean }) {
 }
 
 export default function TabsLayout() {
+  const pendingScheduledCount = useCycleStore(s => s.pendingScheduledCount)
+
   return (
     <Tabs
       screenOptions={{
@@ -30,6 +33,7 @@ export default function TabsLayout() {
         options={{
           title: 'Potes',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🫙" active={focused} />,
+          tabBarBadge: pendingScheduledCount > 0 ? pendingScheduledCount : undefined,
         }}
       />
       <Tabs.Screen
