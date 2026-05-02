@@ -472,6 +472,30 @@ export default function OCRScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.processingTitle}>Salvando lançamentos...</Text>
         </View>
+        <PriceShareOptInModal
+          visible={showOptInModal}
+          onAccept={async () => {
+            setShowOptInModal(false)
+            if (user && pendingPriceData) {
+              await setUserPriceShareOptIn(user.id, true)
+              submitPriceData(
+                pendingPriceData.items,
+                pendingPriceData.merchant,
+                '',
+                pendingPriceData.cnpj,
+                pendingPriceData.emission_date
+              ).catch(() => {})
+            }
+            setPendingPriceData(null)
+            router.replace('/(tabs)/monthly')
+          }}
+          onDecline={async () => {
+            setShowOptInModal(false)
+            if (user) await setUserPriceShareOptIn(user.id, false)
+            setPendingPriceData(null)
+            router.replace('/(tabs)/monthly')
+          }}
+        />
       </SafeAreaView>
     )
   }
