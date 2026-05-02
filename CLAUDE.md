@@ -98,6 +98,27 @@ Feature implementada em `lib/scheduled-transactions.ts`.
 
 **Regra**: `getScheduledForMonth` aceita `potId?` opcional — sem ele retorna todos os potes (usado para o badge); com ele filtra client-side (usado no detalhe do pote).
 
+## Base de Preços Colaborativa
+
+**Tabelas** (migrations):
+- `price_database` — itens de cupons fiscais: `item_name` (normalizado), `item_name_raw`, `price`, `establishment`, `establishment_cnpj`, `city`, `state`, `scanned_at`. Limpo pela Edge Function `cleanup-price-database` (>30 dias).
+- `user_preferences` — `share_price_data BOOLEAN NULL` + `share_price_accepted_at`. `NULL` = nunca perguntou.
+
+**Lib**: `lib/price-database.ts`
+- `getUserPriceShareOptIn` → `boolean | null` (null = nunca respondeu, true = aceitou, false = recusou)
+- `submitPriceData` — coleta apenas de cupons NFC-e. **Nunca inclui user_id ou dados pessoais.** Lotes de 50.
+- `getPriceComparison(itemName, city?)` — últimos 30 dias, agrupa por estabelecimento
+- `getUserCity` — extrai cidade dos endereços de receipts do usuário
+
+**Fluxo opt-in** (ocr.tsx após salvar):
+1. Opted-in → `submitPriceData` fire-and-forget
+2. Nunca respondeu → `PriceShareOptInModal` → decisão → navegação
+3. Recusou → skip silencioso
+
+**Dados colaborativos no Analisador**: `analisarPrecos` aceita `userId?` (4º parâmetro). Busca comparativos dos top 5 itens e inclui no prompt quando há ≥2 estabelecimentos.
+
+**Preferência de perfil**: toggle "Compartilhar preços anônimos" em `profile.tsx` → grupo Dados.
+
 ## Roadmap
 
 - [ ] Glossário financeiro
