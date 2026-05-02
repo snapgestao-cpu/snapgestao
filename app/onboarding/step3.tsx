@@ -168,7 +168,7 @@ export default function Step3() {
 
       // 5. Limpar draft e navegar
       onboardingDraft.clear()
-      router.replace('/(tabs)/')
+      router.replace('/(tabs)/monthly')
     } finally {
       setLoading(false)
     }

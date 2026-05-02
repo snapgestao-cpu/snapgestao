@@ -29,18 +29,18 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="monthly"
+        options={{
+          title: 'Mensal',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📅" active={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
           title: 'Potes',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🫙" active={focused} />,
           tabBarBadge: pendingScheduledCount > 0 ? pendingScheduledCount : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="monthly"
-        options={{
-          title: 'Mensal',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📅" active={focused} />,
         }}
       />
       <Tabs.Screen

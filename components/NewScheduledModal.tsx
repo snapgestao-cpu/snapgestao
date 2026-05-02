@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   Modal, ScrollView, Alert, StyleSheet,
 } from 'react-native'
+import DateTimePicker from '@react-native-community/datetimepicker'
 import { Colors } from '../constants/colors'
 import { createScheduledTransaction } from '../lib/scheduled-transactions'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -45,8 +46,11 @@ export default function NewScheduledModal({
   const [totalMonths, setTotalMonths] = useState(1)
   const [saving, setSaving] = useState(false)
 
-  const { start } = getCycle(cycleStart, cycleOffset)
-  const startDate = start.toISOString().split('T')[0]
+  const { start, end } = getCycle(cycleStart, cycleOffset)
+  const [selectedDate, setSelectedDate] = useState<Date>(
+    cycleOffset === 0 ? new Date() : start
+  )
+  const [showDatePicker, setShowDatePicker] = useState(false)
 
   function reset() {
     setDescription('')
@@ -54,6 +58,7 @@ export default function NewScheduledModal({
     setPaymentMethod('debit')
     setMerchant('')
     setTotalMonths(1)
+    setSelectedDate(cycleOffset === 0 ? new Date() : start)
   }
 
   async function handleSave() {
@@ -73,7 +78,7 @@ export default function NewScheduledModal({
         amount: amountCents / 100,
         payment_method: paymentMethod,
         merchant: merchant.trim() || undefined,
-        start_date: startDate,
+        start_date: selectedDate.toISOString().split('T')[0],
         total_months: totalMonths,
       })
       reset()
@@ -128,6 +133,30 @@ export default function NewScheduledModal({
             placeholderTextColor={Colors.textMuted}
             style={styles.input}
           />
+
+          <Text style={styles.label}>Data do lançamento</Text>
+          <TouchableOpacity
+            onPress={() => setShowDatePicker(true)}
+            style={styles.dateBtn}
+          >
+            <Text style={styles.dateBtnText}>
+              📅 {selectedDate.toLocaleDateString('pt-BR')}
+            </Text>
+            <Text style={styles.dateBtnAlt}>Alterar</Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display="default"
+              minimumDate={start}
+              maximumDate={end}
+              onChange={(_, date) => {
+                setShowDatePicker(false)
+                if (date) setSelectedDate(date)
+              }}
+            />
+          )}
 
           <Text style={styles.label}>Valor *</Text>
           <TextInput
@@ -184,7 +213,9 @@ export default function NewScheduledModal({
               {description || 'Sem descrição'} · {formatCents(amountCents)} ·{' '}
               {totalMonths === 1 ? 'Apenas este mês' : `${totalMonths} meses`}
             </Text>
-            <Text style={styles.summaryDate}>Início: {startDate}</Text>
+            <Text style={styles.summaryDate}>
+              Data: {selectedDate.toLocaleDateString('pt-BR')}
+            </Text>
           </View>
         </ScrollView>
       </View>
@@ -285,5 +316,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginTop: 4,
+  },
+  dateBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateBtnText: {
+    fontSize: 15,
+    color: Colors.textDark,
+  },
+  dateBtnAlt: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 })

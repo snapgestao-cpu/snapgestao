@@ -245,6 +245,24 @@ export default function PotDetailScreen() {
           </Text>
         </View>
 
+        {/* Banner: lançamentos a confirmar */}
+        {scheduledItems.length > 0 && (
+          <View style={styles.pendingBanner}>
+            <Text style={{ fontSize: 20 }}>📋</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pendingBannerTitle}>
+                {scheduledItems.length}{' '}
+                {scheduledItems.length === 1
+                  ? 'lançamento aguardando confirmação'
+                  : 'lançamentos aguardando confirmação'}
+              </Text>
+              <Text style={styles.pendingBannerSub}>
+                Confirme ou exclua os lançamentos abaixo
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Action buttons */}
         <View style={styles.actionsRow}>
           {ACTION_BTNS.map(btn => (
@@ -448,6 +466,19 @@ const styles = StyleSheet.create({
   },
   actionBtnIcon: { fontSize: 20, marginBottom: 4 },
   actionBtnLabel: { fontSize: 11, fontWeight: '600', color: Colors.textDark },
+  pendingBanner: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  pendingBannerTitle: { fontSize: 13, fontWeight: '700', color: '#92400E' },
+  pendingBannerSub: { fontSize: 11, color: '#B45309', marginTop: 2 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 12 },
   emptyWrapper: { alignItems: 'center', paddingVertical: 40 },
   emptyIcon: { fontSize: 40, marginBottom: 12 },
