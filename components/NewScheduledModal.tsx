@@ -99,18 +99,10 @@ export default function NewScheduledModal({
     >
       <View style={styles.root}>
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.headerAction}>Cancelar</Text>
-          </TouchableOpacity>
           <Text style={styles.headerTitle}>📋 Lançamento a Confirmar</Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving}>
-            <Text style={[styles.headerAction, styles.headerSave, saving && { opacity: 0.5 }]}>
-              Salvar
-            </Text>
-          </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.body}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body}>
           <View style={styles.potChip}>
             <Text style={{ fontSize: 16 }}>🫙</Text>
             <Text style={styles.potChipText}>Pote: {potName}</Text>
@@ -218,6 +210,23 @@ export default function NewScheduledModal({
             </Text>
           </View>
         </ScrollView>
+
+        {/* Botões fixos no rodapé */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.footerPrimary, saving && { opacity: 0.7 }]}
+          >
+            <Text style={{ fontSize: 18 }}>📋</Text>
+            <Text style={styles.footerPrimaryText}>
+              {saving ? 'Registrando...' : 'Registrar Agendamento'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={styles.footerSecondary}>
+            <Text style={styles.footerSecondaryText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   )
@@ -229,13 +238,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     padding: 20,
     paddingTop: 48,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  headerAction: { color: '#fff', fontSize: 16 },
-  headerSave: { fontWeight: '700' },
-  headerTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   body: { padding: 20 },
   potChip: {
     backgroundColor: Colors.lightBlue,
@@ -266,7 +271,7 @@ const styles = StyleSheet.create({
   inputAmount: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.danger,
+    color: Colors.textDark,
   },
   chip: {
     paddingHorizontal: 12,
@@ -317,6 +322,33 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 4,
   },
+  footer: {
+    padding: 16,
+    paddingBottom: 32,
+    backgroundColor: Colors.white,
+    borderTopWidth: 0.5,
+    borderTopColor: Colors.border,
+    gap: 10,
+  },
+  footerPrimary: {
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  footerPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  footerSecondary: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  footerSecondaryText: { color: Colors.textMuted, fontSize: 15 },
   dateBtn: {
     backgroundColor: Colors.white,
     borderRadius: 12,

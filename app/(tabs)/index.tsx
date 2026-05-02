@@ -51,6 +51,7 @@ export default function PotsScreen() {
   const [totalIncome, setTotalIncome] = useState(0)
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+  const [potsPendentes, setPotsPendentes] = useState<Set<string>>(new Set())
 
   const cycle = user ? getCycle(user.cycle_start ?? 1, cycleOffset) : null
 
@@ -108,9 +109,20 @@ export default function PotsScreen() {
       )
       setEmergencyBalance(epBal)
 
-      // Atualiza badge do tab com pendentes do mês atual
-      const pending = await getScheduledForMonth(user.id, user.cycle_start ?? 1, 0)
-      setPendingScheduledCount(pending.length)
+      // Pendentes do mês visualizado → badge por pote
+      const pendingCycle = await getScheduledForMonth(user.id, user.cycle_start ?? 1, cycleOffset)
+      const potIds = new Set(
+        pendingCycle.map((i: any) => i.scheduled_transactions?.pot_id).filter(Boolean) as string[]
+      )
+      setPotsPendentes(potIds)
+
+      // Badge do tab sempre reflete o mês atual (offset 0)
+      if (cycleOffset === 0) {
+        setPendingScheduledCount(pendingCycle.length)
+      } else {
+        const pendingCurrent = await getScheduledForMonth(user.id, user.cycle_start ?? 1, 0)
+        setPendingScheduledCount(pendingCurrent.length)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -135,14 +147,21 @@ export default function PotsScreen() {
       })}
       activeOpacity={0.75}
     >
-      <JarPot
-        name={item.pot.name}
-        color={item.pot.color}
-        percent={item.percent}
-        spent={item.spent}
-        limit={item.pot.limit_amount}
-        size={120}
-      />
+      <View style={{ position: 'relative' }}>
+        <JarPot
+          name={item.pot.name}
+          color={item.pot.color}
+          percent={item.percent}
+          spent={item.spent}
+          limit={item.pot.limit_amount}
+          size={120}
+        />
+        {potsPendentes.has(item.pot.id) && (
+          <View style={styles.pendenteBadge}>
+            <Text style={styles.pendenteBadgeText}>!</Text>
+          </View>
+        )}
+      </View>
       <Text style={styles.potName}>{item.pot.name}</Text>
       <Text style={styles.potSpent}>{brl(item.spent)}</Text>
       <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
@@ -312,4 +331,19 @@ const styles = StyleSheet.create({
   emergencyTitle: { fontSize: 14, fontWeight: '700', color: '#534AB7' },
   emergencyBalance: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
   emergencyArrow: { fontSize: 22, color: '#534AB7', fontWeight: '300' },
+  pendenteBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+    zIndex: 10,
+  },
+  pendenteBadgeText: { fontSize: 11, color: '#fff', fontWeight: '800' },
 })
