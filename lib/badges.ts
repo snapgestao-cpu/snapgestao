@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
 
 export type Badge = {
   key: string
@@ -107,11 +107,11 @@ export async function checkAndGrantBadgesOnStartup(
   cycleStart: number,
 ): Promise<Badge[]> {
   try {
-    const lastCheck = await AsyncStorage.getItem(`badge_check_${userId}`)
+    const lastCheck = await SecureStore.getItemAsync(`badge_check_${userId}`)
     if (lastCheck && Date.now() - Number(lastCheck) < BADGE_COOLDOWN_MS) return []
-    await AsyncStorage.setItem(`badge_check_${userId}`, String(Date.now()))
+    await SecureStore.setItemAsync(`badge_check_${userId}`, String(Date.now()))
   } catch {
-    // AsyncStorage failure must not block startup
+    // SecureStore failure must not block startup
   }
   return checkAndGrantBadges(userId, cycleStart)
 }
