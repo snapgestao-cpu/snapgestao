@@ -54,6 +54,10 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
 
+## Tela inicial
+
+Mensal (`/(tabs)/monthly`) é a tela inicial após login/onboarding. Tabs em ordem: Mensal · Potes · Projeção · Metas · Perfil. Todos os `router.replace('/(tabs)')` devem apontar para `/(tabs)/monthly`.
+
 ## Arquitetura (resumo)
 
 - **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; autenticado sem perfil → onboarding; perfil OK → tabs.
@@ -88,7 +92,9 @@ Feature implementada em `lib/scheduled-transactions.ts`.
 3. Confirmar → `confirmScheduled` cria `transaction` real + marca `status: 'confirmed'`
 4. Excluir (mês único) → `cancelScheduledMonth`
 
-**Badge**: `useCycleStore.pendingScheduledCount` — atualizado em `app/(tabs)/index.tsx` (carrega `getScheduledForMonth` para offset 0). Lido em `app/(tabs)/_layout.tsx` via `tabBarBadge`.
+**Badge**: `useCycleStore.pendingScheduledCount` — atualizado em `app/(tabs)/index.tsx` (carrega `getScheduledForMonth` para offset 0). Lido em `app/(tabs)/_layout.tsx` via `tabBarBadge` no tab Potes.
+
+**Data**: `NewScheduledModal` usa `DateTimePicker` (`@react-native-community/datetimepicker`) com `minimumDate=start` e `maximumDate=end` do ciclo. Default: hoje se `cycleOffset===0`, primeiro dia do mês caso contrário.
 
 **Regra**: `getScheduledForMonth` aceita `potId?` opcional — sem ele retorna todos os potes (usado para o badge); com ele filtra client-side (usado no detalhe do pote).
 
