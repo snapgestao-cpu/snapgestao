@@ -216,24 +216,9 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, flex: 1 }}>
-                {transactions[0].merchant}
-              </Text>
-              {onEditMerchant && (
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation?.()
-                    setMerchantDraft(transactions[0].merchant ?? '')
-                    setEditingMerchant(true)
-                    if (!expanded) setExpanded(true)
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={{ fontSize: 12 }}>✏️</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 2 }}>
+              {transactions[0].merchant}
+            </Text>
           )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {todosDoMesmoPote && potName ? (
@@ -252,10 +237,24 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
           </View>
         </View>
 
-        {/* Valor total */}
+        {/* Valor total + botão editar estabelecimento */}
         <Text style={{ fontSize: 14, fontWeight: '700', color: total >= 0 ? Colors.success : Colors.danger }}>
           {total >= 0 ? '+' : ''}{brl(Math.abs(total))}
         </Text>
+        {onEditMerchant && !editingMerchant && (
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation?.()
+              setMerchantDraft(transactions[0].merchant ?? '')
+              setEditingMerchant(true)
+              if (!expanded) setExpanded(true)
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ marginLeft: 6 }}
+          >
+            <Text style={{ fontSize: 12 }}>✏️</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
 
       {/* Itens expandidos */}
