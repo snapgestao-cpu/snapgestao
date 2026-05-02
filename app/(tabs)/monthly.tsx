@@ -542,6 +542,12 @@ export default function MonthlyScreen() {
                           key={group.key}
                           transactions={group.transactions}
                           onEdit={t => setEditingTx(t as any)}
+                          onEditMerchant={async (txs, newMerchant) => {
+                            const ids = txs.map(t => t.id)
+                            const { error } = await supabase.from('transactions').update({ merchant: newMerchant }).in('id', ids)
+                            if (error) { Alert.alert('Erro', 'Não foi possível renomear o estabelecimento.'); return }
+                            loadData()
+                          }}
                           onDeleteGroup={txs => {
                             const hasParcelas = txs.some(t => t.payment_method === 'credit' && (t.installment_total ?? 0) > 1)
                             const aviso = hasParcelas

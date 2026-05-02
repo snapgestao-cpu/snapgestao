@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput } from 'react-native'
 import { Colors } from '../constants/colors'
 
 type TxItem = {
@@ -22,6 +22,7 @@ type Props = {
   transactions: TxItem[]
   onEdit?: (t: TxItem) => void
   onDeleteGroup?: (transactions: TxItem[]) => void
+  onEditMerchant?: (transactions: TxItem[], newMerchant: string) => void
 }
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -128,8 +129,10 @@ function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
-export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }: Props) {
+export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, onEditMerchant }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [editingMerchant, setEditingMerchant] = useState(false)
+  const [merchantDraft, setMerchantDraft] = useState('')
 
   const hasMerchant = !!transactions[0]?.merchant
   const isMultiple = transactions.length > 1
@@ -176,9 +179,62 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup }
 
         {/* Conteúdo central */}
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 2 }}>
-            {transactions[0].merchant}
-          </Text>
+          {editingMerchant ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <TextInput
+                value={merchantDraft}
+                onChangeText={setMerchantDraft}
+                autoFocus
+                style={{
+                  flex: 1, fontSize: 14, fontWeight: '700', color: Colors.textDark,
+                  borderBottomWidth: 1.5, borderBottomColor: Colors.primary,
+                  paddingVertical: 0, paddingHorizontal: 2,
+                }}
+                onSubmitEditing={() => {
+                  if (merchantDraft.trim() && onEditMerchant) {
+                    onEditMerchant(transactions, merchantDraft.trim())
+                  }
+                  setEditingMerchant(false)
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (merchantDraft.trim() && onEditMerchant) {
+                    onEditMerchant(transactions, merchantDraft.trim())
+                  }
+                  setEditingMerchant(false)
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ fontSize: 16, color: Colors.primary }}>✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setEditingMerchant(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ fontSize: 14, color: Colors.textMuted }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, flex: 1 }}>
+                {transactions[0].merchant}
+              </Text>
+              {onEditMerchant && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation?.()
+                    setMerchantDraft(transactions[0].merchant ?? '')
+                    setEditingMerchant(true)
+                    if (!expanded) setExpanded(true)
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={{ fontSize: 12 }}>✏️</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {todosDoMesmoPote && potName ? (
               <Text style={{ fontSize: 11, color: Colors.textMuted }}>
