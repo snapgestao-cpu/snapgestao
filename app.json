@@ -3,7 +3,7 @@
     "name": "SnapGestão",
     "slug": "snapgestao",
     "scheme": "snapgestao",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
         "backgroundColor": "#65a7c1"
       },
       "package": "com.snapgestao.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -58,7 +58,8 @@
           "savePhotosPermission": "Permitir salvar relatórios PDF.",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
