@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, TextInput } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native'
 import { Colors } from '../constants/colors'
 
 type TxItem = {
@@ -22,7 +22,7 @@ type Props = {
   transactions: TxItem[]
   onEdit?: (t: TxItem) => void
   onDeleteGroup?: (transactions: TxItem[]) => void
-  onEditMerchant?: (transactions: TxItem[], newMerchant: string) => void
+  onEditMerchant?: (transactions: TxItem[], newMerchant: string) => Promise<void> | void
 }
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -133,6 +133,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
   const [expanded, setExpanded] = useState(false)
   const [editingMerchant, setEditingMerchant] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState('')
+  const [savingMerchant, setSavingMerchant] = useState(false)
 
   const hasMerchant = !!transactions[0]?.merchant
   const isMultiple = transactions.length > 1
@@ -179,7 +180,14 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
 
         {/* Conteúdo central */}
         <View style={{ flex: 1 }}>
-          {editingMerchant ? (
+          {savingMerchant ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>
+                Salvando...
+              </Text>
+            </View>
+          ) : editingMerchant ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
               <TextInput
                 value={merchantDraft}
@@ -190,19 +198,21 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
                   borderBottomWidth: 1.5, borderBottomColor: Colors.primary,
                   paddingVertical: 0, paddingHorizontal: 2,
                 }}
-                onSubmitEditing={() => {
-                  if (merchantDraft.trim() && onEditMerchant) {
-                    onEditMerchant(transactions, merchantDraft.trim())
-                  }
+                onSubmitEditing={async () => {
+                  if (!merchantDraft.trim() || !onEditMerchant) { setEditingMerchant(false); return }
                   setEditingMerchant(false)
+                  setSavingMerchant(true)
+                  await onEditMerchant(transactions, merchantDraft.trim())
+                  setSavingMerchant(false)
                 }}
               />
               <TouchableOpacity
-                onPress={() => {
-                  if (merchantDraft.trim() && onEditMerchant) {
-                    onEditMerchant(transactions, merchantDraft.trim())
-                  }
+                onPress={async () => {
+                  if (!merchantDraft.trim() || !onEditMerchant) { setEditingMerchant(false); return }
                   setEditingMerchant(false)
+                  setSavingMerchant(true)
+                  await onEditMerchant(transactions, merchantDraft.trim())
+                  setSavingMerchant(false)
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
