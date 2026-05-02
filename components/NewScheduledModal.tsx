@@ -29,7 +29,6 @@ const PAYMENT_METHODS = [
   { key: 'voucher_refeicao', label: '🍴 Vale Refeição' },
 ]
 
-const MONTH_OPTIONS = [1, 2, 3, 6, 12, 24]
 
 function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -183,21 +182,40 @@ export default function NewScheduledModal({
 
           <Text style={styles.label}>Por quantos meses?</Text>
           <View style={styles.monthsRow}>
-            {MONTH_OPTIONS.map(m => {
-              const active = totalMonths === m
-              return (
-                <TouchableOpacity
-                  key={m}
-                  onPress={() => setTotalMonths(m)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                    {m === 1 ? '1 mês' : `${m} meses`}
-                  </Text>
-                </TouchableOpacity>
-              )
-            })}
+            <TouchableOpacity
+              onPress={() => setTotalMonths(Math.max(1, totalMonths - 1))}
+              style={styles.monthBtn}
+            >
+              <Text style={styles.monthBtnText}>−</Text>
+            </TouchableOpacity>
+
+            <TextInput
+              value={String(totalMonths)}
+              onChangeText={(text) => {
+                const num = parseInt(text.replace(/\D/g, '') || '1')
+                if (num >= 1 && num <= 60) setTotalMonths(num)
+              }}
+              keyboardType="numeric"
+              style={styles.monthInput}
+            />
+
+            <TouchableOpacity
+              onPress={() => setTotalMonths(Math.min(60, totalMonths + 1))}
+              style={[styles.monthBtn, styles.monthBtnPrimary]}
+            >
+              <Text style={[styles.monthBtnText, { color: '#fff' }]}>+</Text>
+            </TouchableOpacity>
           </View>
+          <Text style={styles.monthHint}>
+            {totalMonths === 1
+              ? 'Apenas este mês'
+              : `${totalMonths} meses (até ${(() => {
+                  const d = new Date(selectedDate.toISOString().split('T')[0] + 'T12:00:00')
+                  d.setMonth(d.getMonth() + totalMonths - 1)
+                  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+                })()})`
+            }
+          </Text>
 
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>📋 Resumo</Text>
@@ -297,8 +315,42 @@ const styles = StyleSheet.create({
   },
   monthsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  monthBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthBtnPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  monthBtnText: {
+    fontSize: 22,
+    color: Colors.textDark,
+    fontWeight: '600',
+  },
+  monthInput: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textDark,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    textAlign: 'center',
+  },
+  monthHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
     marginBottom: 16,
   },
   summary: {
