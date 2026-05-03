@@ -2,14 +2,16 @@ export type TransactionGroup = {
   key: string
   merchant: string | null
   date: string
+  _createdHour: string | null
   transactions: any[]
 }
 
 export function groupTransactionsByMerchantAndDate(transactions: any[]): TransactionGroup[] {
-  // Usar display date (billing_date para crédito, senão date)
   const withDisplayDate = transactions.map(t => ({
     ...t,
     _displayDate: t.payment_method === 'credit' && t.billing_date ? t.billing_date : t.date,
+    // hora de criação no banco — ex: "2026-05-02T14" (precisão por hora)
+    _createdHour: t.created_at ? (t.created_at as string).substring(0, 13) : null,
   }))
 
   const sorted = [...withDisplayDate].sort((a, b) => {
@@ -22,17 +24,22 @@ export function groupTransactionsByMerchantAndDate(transactions: any[]): Transac
   for (const t of sorted) {
     const merchant = t.merchant || null
     const date = t._displayDate
+    const createdHour = t._createdHour
 
     if (!merchant) {
-      groups.push({ key: `no-merchant-${t.id}`, merchant: null, date, transactions: [t] })
+      groups.push({ key: `no-merchant-${t.id}`, merchant: null, date, _createdHour: createdHour, transactions: [t] })
       continue
     }
 
-    const existing = groups.find(g => g.merchant === merchant && g.date === date)
+    const existing = groups.find(g =>
+      g.merchant === merchant &&
+      g.date === date &&
+      g._createdHour === createdHour
+    )
     if (existing) {
       existing.transactions.push(t)
     } else {
-      groups.push({ key: `${merchant}-${date}-${groups.length}`, merchant, date, transactions: [t] })
+      groups.push({ key: `${merchant}-${date}-${createdHour ?? groups.length}`, merchant, date, _createdHour: createdHour, transactions: [t] })
     }
   }
 
