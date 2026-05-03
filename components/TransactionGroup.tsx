@@ -150,7 +150,10 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
   const todosDoMesmoPote = transactions.every(t => t.pot_id === transactions[0].pot_id)
   const potColor = todosDoMesmoPote ? (transactions[0].potColor ?? Colors.border) : Colors.border
   const potName = todosDoMesmoPote ? (transactions[0].potName ?? '') : ''
-  const payMethod = transactions[0].payment_method
+  const paymentMethods = [...new Set(transactions.map(t => t.payment_method).filter(Boolean))]
+  const paymentLabel = paymentMethods.length > 1
+    ? 'Múltiplos pagamentos'
+    : (PAYMENT_LABEL[paymentMethods[0]] ?? paymentMethods[0] ?? '')
 
   return (
     <View style={{ borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
@@ -239,7 +242,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
               <Text style={{ fontSize: 11, color: Colors.textMuted }}>🫙 Múltiplos potes</Text>
             )}
             <Text style={{ fontSize: 11, color: Colors.textMuted }}>
-              · {PAYMENT_LABEL[payMethod] ?? payMethod}
+              · {paymentLabel}
             </Text>
             <Text style={{ fontSize: 11, color: Colors.textMuted }}>
               · {transactions.length} itens
