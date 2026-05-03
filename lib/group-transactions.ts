@@ -10,8 +10,8 @@ export function groupTransactionsByMerchantAndDate(transactions: any[]): Transac
   const withDisplayDate = transactions.map(t => ({
     ...t,
     _displayDate: t.payment_method === 'credit' && t.billing_date ? t.billing_date : t.date,
-    // minuto de criação no banco — ex: "2026-05-02T14:35" (precisão por minuto)
-    _createdHour: t.created_at ? (t.created_at as string).substring(0, 16) : null,
+    // segundo de criação no banco — ex: "2026-05-02T14:35:22" (precisão por segundo)
+    _createdHour: t.created_at ? (t.created_at as string).substring(0, 19) : null,
   }))
 
   const sorted = [...withDisplayDate].sort((a, b) => {
