@@ -60,11 +60,12 @@ Mensal (`/(tabs)/monthly`) é a tela inicial após login/onboarding. Tabs em ord
 
 ## Arquitetura (resumo)
 
-- **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; autenticado sem perfil → onboarding; perfil OK → tabs.
+- **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; autenticado sem perfil → onboarding; perfil OK → tabs. **Regra crítica**: quando `isAuthenticated=true` mas `user=null` (perfil ainda carregando), o guard aguarda — nunca redireciona para onboarding prematuramente.
 - **Data flow**: React Query (fetch/cache) → Supabase → `onSuccess` atualiza Zustand store. Componentes leem do store. Nunca chamar `supabase` diretamente de componentes (exceto `useAuthStore`, `onboarding/step3.tsx`, `app/(tabs)/index.tsx`).
 - **Cycle sync**: `useCycleStore` sincroniza `cycleOffset` e `viewMode` entre Potes e Mensal. Range −24 a +12.
 - **AI**: `callAI(provider, prompt)` em `lib/ai-provider.ts`. Modelos: `claude-haiku-4-5-20251001`, Gemini 2.5 Flash, Llama 3.3 70B (Groq). Provider padrão: `'claude'`. Limite de tokens por usuário — ver `supabase/scripts/grant_ai_tokens.sql`.
 - **Offline**: `expo-sqlite` (`snapgestao.db`) — sync não implementado.
+- **SecureStore**: `LargeSecureStoreAdapter` em `lib/supabase.ts` tem cache em memória (`memoryCache`) e deduplicação de leituras paralelas (`pendingReads`). Leituras simultâneas da mesma chave reutilizam a mesma Promise — evita contenção e reduz `getSession` de ~8s para <1s.
 
 ## Constraints de plataforma
 
