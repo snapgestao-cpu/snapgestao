@@ -98,6 +98,8 @@ Feature implementada em `lib/scheduled-transactions.ts`.
 
 **Regra**: `getScheduledForMonth` aceita `potId?` opcional — sem ele retorna todos os potes (usado para o badge); com ele filtra client-side (usado no detalhe do pote).
 
+**Vencimento**: `getScheduledForMonth` calcula a data de vencimento de cada parcela (`start_date` + diff de meses) e filtra apenas itens cujo vencimento ≤ hoje. O campo `vencimento` (string `YYYY-MM-DD`) é retornado em cada item e exibido no `ScheduledItem` como "📅 Vencimento: DD/MM/YYYY".
+
 ## Base de Preços Colaborativa
 
 **Tabelas** (migrations):
