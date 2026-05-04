@@ -8,6 +8,8 @@ import { Colors } from '../constants/colors'
 import { IncomeSource } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
+import { getCycle } from '../lib/cycle'
+import { updateIncomeSourceAmount, getIncomeSourcesForMonth } from '../lib/income-history'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { brl } from '../lib/finance'
 
@@ -43,10 +45,13 @@ type Props = {
 
 export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
   const insets = useSafeAreaInsets()
+  const { user } = useAuthStore()
 
   const [sources, setSources] = useState<IncomeSource[]>([])
+  const [historyAmounts, setHistoryAmounts] = useState<Record<string, number>>({})
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [fromOffset, setFromOffset] = useState(0)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -56,9 +61,14 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) return
     setFetching(true)
-    const { data } = await supabase
-      .from('income_sources').select('*').eq('user_id', userId).order('created_at')
+    const [{ data }, historyList] = await Promise.all([
+      supabase.from('income_sources').select('*').eq('user_id', userId).order('created_at'),
+      getIncomeSourcesForMonth(userId, user?.cycle_start ?? 1, 0),
+    ])
     setSources((data as IncomeSource[]) ?? [])
+    const map: Record<string, number> = {}
+    for (const h of historyList) map[h.id] = h.amount
+    setHistoryAmounts(map)
     setFetching(false)
   }
 
@@ -68,12 +78,19 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
     setShowForm(false)
     setEditingId(null)
     setForm(EMPTY_FORM)
+    setFromOffset(0)
     setError(null)
   }, [visible])
+
+  function getMesLabel(offset: number): string {
+    const { start } = getCycle(user?.cycle_start ?? 1, offset)
+    return start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  }
 
   const openAdd = () => {
     setForm(EMPTY_FORM)
     setEditingId(null)
+    setFromOffset(0)
     setError(null)
     setShowForm(true)
   }
@@ -82,11 +99,12 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
     setForm({
       name: src.name,
       type: src.type,
-      amountDigits: String(Math.round(src.amount * 100)),
+      amountDigits: String(Math.round((historyAmounts[src.id] ?? src.amount) * 100)),
       recurrenceDay: String(src.recurrence_day),
       isPrimary: src.is_primary,
     })
     setEditingId(src.id)
+    setFromOffset(0)
     setError(null)
     setShowForm(true)
   }
@@ -126,9 +144,19 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
       }
 
       if (editingId) {
-        await supabase.from('income_sources').update(payload).eq('id', editingId)
+        await supabase.from('income_sources').update({
+          name: payload.name,
+          type: payload.type,
+          recurrence_day: payload.recurrence_day,
+          is_primary: payload.is_primary,
+        }).eq('id', editingId)
+        await updateIncomeSourceAmount(editingId, userId, amount, user?.cycle_start ?? 1, fromOffset)
       } else {
-        await supabase.from('income_sources').insert(payload)
+        const { data: newSource } = await supabase
+          .from('income_sources').insert(payload).select('id').single()
+        if (newSource?.id) {
+          await updateIncomeSourceAmount(newSource.id, userId, amount, user?.cycle_start ?? 1, fromOffset)
+        }
       }
       setShowForm(false)
       loadSources()
@@ -138,7 +166,7 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
     }
   }
 
-  const totalMonthly = sources.reduce((s, src) => s + src.amount, 0)
+  const totalMonthly = sources.reduce((s, src) => s + (historyAmounts[src.id] ?? src.amount), 0)
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -198,6 +226,36 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
                 placeholder="R$ 0,00"
                 placeholderTextColor={Colors.textMuted}
               />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Válido a partir de</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setFromOffset(Math.max(-24, fromOffset - 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 18, color: Colors.textDark }}>‹</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1, backgroundColor: Colors.lightBlue, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary, textTransform: 'capitalize' }}>
+                    {getMesLabel(fromOffset)}
+                  </Text>
+                  {fromOffset === 0 && (
+                    <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 2 }}>Mês atual</Text>
+                  )}
+                  {fromOffset > 0 && (
+                    <Text style={{ fontSize: 11, color: Colors.success, marginTop: 2 }}>Mês futuro</Text>
+                  )}
+                  {fromOffset < 0 && (
+                    <Text style={{ fontSize: 11, color: Colors.danger, marginTop: 2 }}>⚠️ Afetará meses passados</Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  onPress={() => setFromOffset(Math.min(12, fromOffset + 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 18, color: '#fff' }}>›</Text>
+                </TouchableOpacity>
+              </View>
 
               <Text style={styles.label}>Dia de recebimento</Text>
               <TextInput
@@ -268,7 +326,7 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
                         {' · '}dia {src.recurrence_day}
                       </Text>
                     </View>
-                    <Text style={styles.sourceAmount}>{brl(src.amount)}</Text>
+                    <Text style={styles.sourceAmount}>{brl(historyAmounts[src.id] ?? src.amount)}</Text>
                     <TouchableOpacity onPress={() => openEdit(src)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}>
                       <Text style={styles.editBtn}>✏️</Text>
                     </TouchableOpacity>

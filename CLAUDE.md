@@ -120,6 +120,26 @@ Feature implementada em `lib/scheduled-transactions.ts`.
 
 **Preferência de perfil**: toggle "Compartilhar preços anônimos" em `profile.tsx` → grupo Dados.
 
+## Histórico de Fontes de Receita
+
+Feature implementada em `lib/income-history.ts`.
+
+**Tabela** (migration: `supabase/migrations/20240503_income_source_history.sql`):
+- `income_source_history` — 1 row por (fonte × mês); `valid_from` = data de início do ciclo; `UNIQUE(income_source_id, valid_from)`. Seed inicial: `valid_from = '2000-01-01'` copiando `income_sources.amount` para todos os usuários existentes.
+
+**Funções**:
+- `getIncomeAtMonth(sourceId, cycleStart, offset)` → número: valor da fonte no mês. Usa `lte('valid_from', start)` + `order desc limit 1`.
+- `getIncomeSourcesForMonth(userId, cycleStart, offset)` → `{ id, name, amount, type }[]`: todas as fontes com o valor correto para o mês (N queries em paralelo).
+- `getIncomeSourcesBatch(userId, cycleStart, offsets)` → `Record<offset, totalReceita>`: otimizado para projeção — 2 queries totais, processamento local.
+- `updateIncomeSourceAmount(sourceId, userId, newAmount, cycleStart, fromOffset)` → upsert em `income_source_history` + atualiza `income_sources.amount` para compatibilidade.
+
+**Integrações**:
+- **Mensal** (`monthly.tsx`): `getIncomeSourcesForMonth(userId, cycleStart, offset)` substitui a query direta de `income_sources`. Passado para `computeCycleSummaryFromData`.
+- **Projeção** (`projection.tsx`): `getIncomeSourcesBatch(userId, cycleStart, fullOffsets)` substitui a query direta. Cada mês usa `receitasPorMes[offset]`.
+- **Modal de fontes** (`IncomeSourcesModal.tsx`): ao editar, seletor de mês ("Válido a partir de") com `fromOffset` −24 a +12. Salva via `updateIncomeSourceAmount`. Lista mostra valor histórico do mês atual.
+
+**Regra**: alterações valem apenas do mês escolhido para frente. Meses passados sem entrada no histórico caem no registro mais antigo disponível.
+
 ## Roadmap
 
 - [ ] Glossário financeiro

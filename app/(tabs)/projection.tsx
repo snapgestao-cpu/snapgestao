@@ -10,6 +10,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { getPotsHistoryBatch } from '../../lib/pot-history'
+import { getIncomeSourcesBatch } from '../../lib/income-history'
 import { getPotIcon } from '../../lib/potIcons'
 import { SearchBar } from '../../components/SearchBar'
 
@@ -78,12 +79,12 @@ export default function ProjectionScreen() {
 
       // ── 4 queries paralelas + potes batch por offset ──
       const [
-        { data: sources },
+        receitasPorMes,
         { data: txsByDate },
         { data: txsByBilling },
         potsPorMes,
       ] = await Promise.all([
-        supabase.from('income_sources').select('amount').eq('user_id', userId),
+        getIncomeSourcesBatch(userId, cycleStartDay, fullOffsets),
         // Todas as transactions por date (income + non-credit expense + goal_deposit)
         supabase.from('transactions')
           .select('type, amount, payment_method, date, pot_id')
@@ -101,8 +102,7 @@ export default function ProjectionScreen() {
         getPotsHistoryBatch(userId, cycleStartDay, fullOffsets),
       ])
 
-      const base = ((sources ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
-      setMonthlyIncome(base)
+      setMonthlyIncome(receitasPorMes[0] ?? 0)
 
       // Join manual com potes para exibir nome/cor no modal
       const rawCredit = (txsByBilling ?? []) as any[]
@@ -188,7 +188,7 @@ export default function ProjectionScreen() {
             .filter(t => t.type === 'income' && t.date >= cycle.startISO && t.date <= cycle.endISO)
             .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
-          income = base + realIncome
+          income = (receitasPorMes[offset] ?? 0) + realIncome
           expense = totalBudgeted + excedente
         } else {
           // Passado e atual: dados reais (crédito por billing_date, restante por date)
@@ -202,7 +202,7 @@ export default function ProjectionScreen() {
             .filter(t => t.billing_date >= cycle.startISO && t.billing_date <= cycle.endISO)
             .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
-          income = base + incomeActual
+          income = (receitasPorMes[offset] ?? 0) + incomeActual
           expense = expenseNonCredit + expenseCredit
         }
 

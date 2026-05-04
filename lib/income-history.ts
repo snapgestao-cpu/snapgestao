@@ -1,0 +1,138 @@
+import { supabase } from './supabase'
+import { getCycle } from './cycle'
+
+export async function getIncomeAtMonth(
+  incomeSourceId: string,
+  cycleStart: number,
+  offset: number
+): Promise<number> {
+  const { start } = getCycle(cycleStart, offset)
+  const validFrom = start.toISOString().split('T')[0]
+
+  const { data } = await supabase
+    .from('income_source_history')
+    .select('amount')
+    .eq('income_source_id', incomeSourceId)
+    .lte('valid_from', validFrom)
+    .order('valid_from', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return Number(data?.amount || 0)
+}
+
+export async function getIncomeSourcesForMonth(
+  userId: string,
+  cycleStart: number,
+  offset: number
+): Promise<Array<{ id: string; name: string; amount: number; type: string }>> {
+  const { start } = getCycle(cycleStart, offset)
+  const validFrom = start.toISOString().split('T')[0]
+
+  const { data: sources } = await supabase
+    .from('income_sources')
+    .select('id, name, type')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (!sources?.length) return []
+
+  const sourcesWithAmount = await Promise.all(
+    sources.map(async (source) => {
+      const { data: history } = await supabase
+        .from('income_source_history')
+        .select('amount')
+        .eq('income_source_id', source.id)
+        .lte('valid_from', validFrom)
+        .order('valid_from', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      return {
+        ...source,
+        amount: Number(history?.amount || 0),
+      }
+    })
+  )
+
+  return sourcesWithAmount
+}
+
+export async function getIncomeSourcesBatch(
+  userId: string,
+  cycleStart: number,
+  offsets: number[]
+): Promise<Record<number, number>> {
+  const { data: sources } = await supabase
+    .from('income_sources')
+    .select('id')
+    .eq('user_id', userId)
+
+  if (!sources?.length) {
+    return offsets.reduce((acc, o) => { acc[o] = 0; return acc }, {} as Record<number, number>)
+  }
+
+  const { data: allHistory } = await supabase
+    .from('income_source_history')
+    .select('income_source_id, amount, valid_from')
+    .eq('user_id', userId)
+    .order('valid_from', { ascending: true })
+
+  const history = allHistory || []
+  const result: Record<number, number> = {}
+
+  for (const offset of offsets) {
+    const { start } = getCycle(cycleStart, offset)
+    const startStr = start.toISOString().split('T')[0]
+    let totalReceita = 0
+
+    for (const source of sources) {
+      const record = history
+        .filter(h => h.income_source_id === source.id && h.valid_from <= startStr)
+        .sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0]
+
+      totalReceita += Number(record?.amount || 0)
+    }
+
+    result[offset] = totalReceita
+  }
+
+  return result
+}
+
+export async function updateIncomeSourceAmount(
+  incomeSourceId: string,
+  userId: string,
+  newAmount: number,
+  cycleStart: number,
+  fromOffset: number
+): Promise<void> {
+  const { start } = getCycle(cycleStart, fromOffset)
+  const validFrom = start.toISOString().split('T')[0]
+
+  console.log('[Income] Atualizando fonte:', incomeSourceId, '| valor:', newAmount, '| a partir de:', validFrom)
+
+  const { data: existing } = await supabase
+    .from('income_source_history')
+    .select('id')
+    .eq('income_source_id', incomeSourceId)
+    .eq('valid_from', validFrom)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase
+      .from('income_source_history')
+      .update({ amount: newAmount })
+      .eq('id', existing.id)
+  } else {
+    await supabase
+      .from('income_source_history')
+      .insert({ income_source_id: incomeSourceId, user_id: userId, amount: newAmount, valid_from: validFrom })
+  }
+
+  await supabase
+    .from('income_sources')
+    .update({ amount: newAmount })
+    .eq('id', incomeSourceId)
+    .eq('user_id', userId)
+}

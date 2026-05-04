@@ -20,6 +20,7 @@ import { supabase } from '../../lib/supabase'
 import { getCycle, CycleInfo } from '../../lib/cycle'
 import { computeCycleSummaryFromData, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
 import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
+import { getIncomeSourcesForMonth } from '../../lib/income-history'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { Pot, Transaction, Goal } from '../../types'
@@ -75,7 +76,7 @@ export default function MonthlyScreen() {
     if (!user) return
     try {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
-      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, sourcesRes, closedRes, incomingRolloverRes] = await Promise.all([
+      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, incomeSources, closedRes, incomingRolloverRes] = await Promise.all([
         // Non-credit: filter by date (limit prevents extreme edge cases)
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .neq('payment_method', 'credit')
@@ -92,7 +93,7 @@ export default function MonthlyScreen() {
         fetchPotsForCycleWithHistory(user.id, cycle.startISO, cycle.endISO),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
-        supabase.from('income_sources').select('amount').eq('user_id', user.id),
+        getIncomeSourcesForMonth(user.id, user.cycle_start ?? 1, offset),
         // Rollover de saída (verifica se este ciclo foi encerrado — chave = início do próximo)
         supabase.from('cycle_rollovers').select('*')
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
@@ -111,7 +112,7 @@ export default function MonthlyScreen() {
       })
       const pots = allPotsRes as Pot[]
       const ep = epRes.data as Pot | null
-      const income = ((sourcesRes.data ?? []) as any[]).reduce((s, r) => s + Number(r.amount), 0)
+      const income = incomeSources.reduce((s, r) => s + Number(r.amount), 0)
 
       setAllPots(pots)
       setEmergencyPot(ep)
@@ -131,7 +132,7 @@ export default function MonthlyScreen() {
       // Summary computed from already-fetched data — zero extra queries
       const s = computeCycleSummaryFromData(
         pots,
-        (sourcesRes.data ?? []) as any[],
+        incomeSources,
         incomingRolloverRes.data,
         (txNonCreditRes.data ?? []) as any[],
         (txCreditRes.data ?? []) as any[],
