@@ -74,8 +74,11 @@ export default function RootLayout() {
       return
     }
 
-    // Autenticado mas onboarding não concluído
-    if (!user || !user.onboarding_completed) {
+    // isAuthenticated=true mas perfil ainda não carregou — aguardar sem redirecionar
+    if (!user) return
+
+    // Autenticado com perfil carregado — verificar onboarding
+    if (!user.onboarding_completed) {
       if (!inOnboarding) router.replace('/onboarding/step1')
       return
     }

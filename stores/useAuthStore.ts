@@ -149,15 +149,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          console.log('[AuthStore] SIGNED_IN/TOKEN_REFRESHED — aguardando 500ms antes de query...')
-          // Delay para garantir que o cliente Supabase está pronto para queries
-          await new Promise(resolve => setTimeout(resolve, 500))
+          console.log('[AuthStore] SIGNED_IN/TOKEN_REFRESHED — aguardando 300ms antes de query...')
+          await new Promise(resolve => setTimeout(resolve, 300))
 
           console.log('[AuthStore] Iniciando loadUserProfile após delay...')
           try {
             const user = await fetchUserProfile(session.user.id)
+            // user definido ANTES de isLoading=false para evitar render com user=null
             set({ session, user, isAuthenticated: true, isLoading: false })
-            console.log('[AuthStore] setIsLoading(false) após SIGNED_IN — isAuthenticated: true')
+            console.log('[AuthStore] setIsLoading(false) após SIGNED_IN — user:', user?.id?.substring(0, 8) ?? 'null')
           } catch (err) {
             console.error('[AuthStore] Erro no onAuthStateChange:', String(err))
             await supabase.auth.signOut()
