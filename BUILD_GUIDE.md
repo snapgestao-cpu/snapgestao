@@ -144,6 +144,26 @@ Sempre que publicar uma atualização:
    "version": "1.1.0"
 3. Repetir passos 2, 5 e 6 acima
 
+## Ver logs do APK no celular
+
+Com o celular conectado via USB e depuração USB ativada:
+
+```bash
+# Ver todos os logs relevantes do app
+adb logcat | findstr "SecureStore\|AuthStore\|Layout\|ReactNativeJS"
+
+# Filtrar apenas erros
+adb logcat *:E | findstr "ReactNativeJS"
+
+# Salvar tudo em arquivo para análise
+adb logcat > logs.txt
+```
+
+Os logs de diagnóstico cobrem:
+- `[SecureStore]` — leitura/escrita de sessão no armazenamento seguro
+- `[AuthStore]` — fluxo de loadSession, getSession, perfil do usuário
+- `[Layout]` — estado de autenticação no roteamento
+
 ## ⚠️ IMPORTANTE — Guardar com segurança
 
 Fazer backup de:

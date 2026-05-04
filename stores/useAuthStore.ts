@@ -71,35 +71,62 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setUser: (user) => set({ user }),
 
   loadSession: async () => {
+    console.log('[AuthStore] loadSession iniciando...', new Date().toISOString())
     try {
+      const start = Date.now()
       const { data, error } = await supabase.auth.getSession()
-      if (error || !data.session) {
+      console.log(`[AuthStore] getSession completou em ${Date.now() - start}ms`)
+
+      if (error) {
+        console.error('[AuthStore] getSession ERRO:', error.message)
         await supabase.auth.signOut()
         set({ session: null, user: null, isAuthenticated: false, isLoading: false })
         return
       }
+
+      if (!data.session) {
+        console.log('[AuthStore] Nenhuma sessão encontrada — ir para login')
+        await supabase.auth.signOut()
+        set({ session: null, user: null, isAuthenticated: false, isLoading: false })
+        return
+      }
+
+      console.log('[AuthStore] Sessão encontrada! userId:', data.session.user.id.substring(0, 8))
+      console.log('[AuthStore] Token expira em:', new Date(data.session.expires_at! * 1000).toISOString())
+
+      console.log('[AuthStore] Carregando perfil do usuário...')
       const user = await fetchUserProfile(data.session.user.id)
+      console.log('[AuthStore] Perfil carregado:', JSON.stringify({ onboarding_completed: user?.onboarding_completed, cycle_start: user?.cycle_start }))
+
       set({ session: data.session, user, isAuthenticated: true, isLoading: false })
-    } catch {
+      console.log('[AuthStore] loadSession OK — isAuthenticated: true')
+    } catch (err) {
+      console.error('[AuthStore] ERRO CRÍTICO no loadSession:', String(err))
       await supabase.auth.signOut()
       set({ session: null, user: null, isAuthenticated: false, isLoading: false })
     }
   },
 
   init: () => {
+    console.log('[AuthStore] init() chamado', new Date().toISOString())
     get().loadSession()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('[AuthStore] onAuthStateChange evento:', event)
         if (event === 'SIGNED_OUT' || !session) {
+          console.log('[AuthStore] SIGNED_OUT ou sem sessão')
           set({ session: null, user: null, isAuthenticated: false, isLoading: false })
           return
         }
         if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          console.log('[AuthStore] TOKEN_REFRESHED/SIGNED_IN — carregando perfil')
           try {
             const user = await fetchUserProfile(session.user.id)
             set({ session, user, isAuthenticated: true, isLoading: false })
-          } catch {
+            console.log('[AuthStore] Perfil atualizado via onAuthStateChange')
+          } catch (err) {
+            console.error('[AuthStore] Erro no onAuthStateChange:', String(err))
             await supabase.auth.signOut()
             set({ session: null, user: null, isAuthenticated: false, isLoading: false })
           }

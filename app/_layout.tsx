@@ -26,9 +26,9 @@ export default function RootLayout() {
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   useEffect(() => {
+    console.log('[Layout] App iniciando...', new Date().toISOString())
     getDatabase()
     const unsubscribe = init()
-    // init() already calls loadSession() which handles invalid/missing tokens
     return unsubscribe
   }, [])
 
@@ -42,6 +42,7 @@ export default function RootLayout() {
   }, [user?.id])
 
   useEffect(() => {
+    console.log(`[Layout] Estado: isLoading=${isLoading} isAuthenticated=${isAuthenticated} user=${user?.id?.substring(0, 8) ?? 'null'}`)
     if (isLoading) return
 
     const inAuth = segments[0] === '(auth)'
