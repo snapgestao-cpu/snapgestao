@@ -110,29 +110,37 @@ export async function updateIncomeSourceAmount(
   const { start } = getCycle(cycleStart, fromOffset)
   const validFrom = start.toISOString().split('T')[0]
 
-  console.log('[Income] Atualizando fonte:', incomeSourceId, '| valor:', newAmount, '| a partir de:', validFrom)
+  console.log('[Income] Atualizando fonte:', incomeSourceId, '| valor:', newAmount, '| a partir de:', validFrom, '| deletando registros >=', validFrom)
 
-  const { data: existing } = await supabase
+  // PASSO 1 — Deletar todos os registros com valid_from >= validFrom
+  const { error: deleteError } = await supabase
     .from('income_source_history')
-    .select('id')
+    .delete()
     .eq('income_source_id', incomeSourceId)
-    .eq('valid_from', validFrom)
-    .maybeSingle()
+    .eq('user_id', userId)
+    .gte('valid_from', validFrom)
 
-  if (existing) {
-    await supabase
-      .from('income_source_history')
-      .update({ amount: newAmount })
-      .eq('id', existing.id)
-  } else {
-    await supabase
-      .from('income_source_history')
-      .insert({ income_source_id: incomeSourceId, user_id: userId, amount: newAmount, valid_from: validFrom })
+  if (deleteError) {
+    console.error('[Income] Erro ao deletar:', deleteError.message)
+    throw deleteError
   }
 
+  // PASSO 2 — Inserir novo registro
+  const { error: insertError } = await supabase
+    .from('income_source_history')
+    .insert({ income_source_id: incomeSourceId, user_id: userId, amount: newAmount, valid_from: validFrom })
+
+  if (insertError) {
+    console.error('[Income] Erro ao inserir:', insertError.message)
+    throw insertError
+  }
+
+  // PASSO 3 — Atualizar tabela principal para compatibilidade
   await supabase
     .from('income_sources')
     .update({ amount: newAmount })
     .eq('id', incomeSourceId)
     .eq('user_id', userId)
+
+  console.log('[Income] Atualização concluída:', incomeSourceId, validFrom, newAmount)
 }
