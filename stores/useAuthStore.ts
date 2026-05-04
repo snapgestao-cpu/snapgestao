@@ -17,7 +17,7 @@ type AuthState = {
 }
 
 async function fetchUserProfile(userId: string): Promise<User | null> {
-  console.log('[AuthStore] loadUserProfile:', userId.substring(0, 8))
+  console.log('[AuthStore] fetchUserProfile:', userId.substring(0, 8))
   try {
     const profilePromise = supabase
       .from('users')
@@ -44,7 +44,7 @@ async function fetchUserProfile(userId: string): Promise<User | null> {
       return null
     }
 
-    console.log('[AuthStore] Perfil carregado:', JSON.stringify({ onboarding_completed: data?.onboarding_completed, cycle_start: data?.cycle_start }))
+    console.log('[AuthStore] Perfil OK:', JSON.stringify({ onboarding_completed: data?.onboarding_completed, cycle_start: data?.cycle_start }))
     return (data as User) ?? null
   } catch (err) {
     console.error('[AuthStore] ERRO ao carregar perfil:', String(err))
@@ -97,75 +97,107 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setUser: (user) => set({ user }),
 
-  loadSession: async () => {
-    console.log('[AuthStore] loadSession iniciando...', new Date().toISOString())
-    try {
-      const start = Date.now()
-      const { data, error } = await supabase.auth.getSession()
-      console.log(`[AuthStore] getSession completou em ${Date.now() - start}ms`)
-
-      if (error) {
-        console.error('[AuthStore] getSession ERRO:', error.message)
-        await supabase.auth.signOut()
-        set({ session: null, user: null, isAuthenticated: false, isLoading: false })
-        return
-      }
-
-      if (!data.session) {
-        console.log('[AuthStore] Nenhuma sessão encontrada — ir para login')
-        await supabase.auth.signOut()
-        set({ session: null, user: null, isAuthenticated: false, isLoading: false })
-        return
-      }
-
-      console.log('[AuthStore] Sessão encontrada! userId:', data.session.user.id.substring(0, 8))
-      console.log('[AuthStore] Token expira em:', new Date(data.session.expires_at! * 1000).toISOString())
-
-      console.log('[AuthStore] Carregando perfil do usuário...')
-      const user = await fetchUserProfile(data.session.user.id)
-      console.log('[AuthStore] Perfil carregado:', JSON.stringify({ onboarding_completed: user?.onboarding_completed, cycle_start: user?.cycle_start }))
-
-      set({ session: data.session, user, isAuthenticated: true, isLoading: false })
-      console.log('[AuthStore] loadSession OK — isAuthenticated: true')
-    } catch (err) {
-      console.error('[AuthStore] ERRO CRÍTICO no loadSession:', String(err))
-      await supabase.auth.signOut()
-      set({ session: null, user: null, isAuthenticated: false, isLoading: false })
-    }
-  },
+  // Mantido para compatibilidade — delegado ao init
+  loadSession: async () => { },
 
   init: () => {
-    console.log('[AuthStore] init() chamado', new Date().toISOString())
-    get().loadSession()
+    console.log('[AuthStore] init()', new Date().toISOString())
 
+    // Flag para evitar carregar perfil duas vezes quando getSession e
+    // onAuthStateChange disparam quase ao mesmo tempo
+    let profileLoading = false
+
+    const loadProfile = (session: Session) => {
+      if (profileLoading) {
+        console.log('[AuthStore] loadProfile ignorado — já em andamento')
+        return
+      }
+      profileLoading = true
+
+      // Sinalizar autenticado imediatamente para o layout poder reagir
+      set({ session, isAuthenticated: true })
+
+      fetchUserProfile(session.user.id)
+        .then(user => {
+          console.log('[AuthStore] Perfil carregado — isLoading=false, user:', user?.id?.substring(0, 8) ?? 'null')
+          set({ user, isLoading: false })
+        })
+        .catch(err => {
+          console.error('[AuthStore] Erro ao carregar perfil:', String(err))
+          set({ isLoading: false })
+        })
+    }
+
+    // 1. Registrar listener ANTES do getSession para capturar renovação de token
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('[AuthStore] onAuthStateChange evento:', event)
+        console.log('[AuthStore] onAuthStateChange:', event)
+
+        if (event === 'TOKEN_REFRESHED' && session) {
+          // Token renovado em background — atualizar sessão sem recarregar perfil
+          console.log('[AuthStore] Token renovado em background')
+          set({ session })
+          return
+        }
 
         if (event === 'SIGNED_OUT' || !session) {
-          console.log('[AuthStore] SIGNED_OUT ou sem sessão')
+          console.log('[AuthStore] SIGNED_OUT')
           set({ session: null, user: null, isAuthenticated: false, isLoading: false })
           return
         }
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          console.log('[AuthStore] SIGNED_IN/TOKEN_REFRESHED — aguardando 300ms antes de query...')
-          await new Promise(resolve => setTimeout(resolve, 300))
-
-          console.log('[AuthStore] Iniciando loadUserProfile após delay...')
-          try {
-            const user = await fetchUserProfile(session.user.id)
-            // user definido ANTES de isLoading=false para evitar render com user=null
-            set({ session, user, isAuthenticated: true, isLoading: false })
-            console.log('[AuthStore] setIsLoading(false) após SIGNED_IN — user:', user?.id?.substring(0, 8) ?? 'null')
-          } catch (err) {
-            console.error('[AuthStore] Erro no onAuthStateChange:', String(err))
-            await supabase.auth.signOut()
-            set({ session: null, user: null, isAuthenticated: false, isLoading: false })
-          }
+        if (event === 'SIGNED_IN') {
+          // Cobre o caso em que getSession demorou mais de 3s e chegou via listener
+          console.log('[AuthStore] SIGNED_IN via onAuthStateChange')
+          loadProfile(session)
+          return
         }
       }
     )
+
+    // 2. getSession com timeout de 3s — se demorar, onAuthStateChange cuida
+    const sessionPromise = supabase.auth.getSession().then(r => ({ ...r, timedOut: false as const }))
+    const timeoutPromise = new Promise<{ data: { session: null }, timedOut: true }>(
+      resolve => setTimeout(() => {
+        console.warn('[AuthStore] getSession > 3s — aguardando onAuthStateChange...')
+        resolve({ data: { session: null }, timedOut: true })
+      }, 3000)
+    )
+
+    Promise.race([sessionPromise, timeoutPromise])
+      .then(result => {
+        if (result.timedOut) {
+          // getSession ainda rodando; onAuthStateChange vai completar o fluxo.
+          // Safety: se nada acontecer em mais 8s, forçar isLoading=false para login.
+          setTimeout(() => {
+            if (get().isLoading) {
+              console.warn('[AuthStore] Safety 8s — forçando isLoading=false')
+              set({ isLoading: false })
+            }
+          }, 8000)
+          return
+        }
+
+        const { data, error } = result
+        if (error) {
+          console.error('[AuthStore] getSession ERRO:', error.message)
+          set({ session: null, user: null, isAuthenticated: false, isLoading: false })
+          return
+        }
+
+        if (!data.session) {
+          console.log('[AuthStore] Sem sessão — ir para login')
+          set({ session: null, user: null, isAuthenticated: false, isLoading: false })
+          return
+        }
+
+        console.log('[AuthStore] getSession OK em <3s — userId:', data.session.user.id.substring(0, 8))
+        loadProfile(data.session)
+      })
+      .catch(err => {
+        console.error('[AuthStore] ERRO CRÍTICO no init:', String(err))
+        set({ session: null, user: null, isAuthenticated: false, isLoading: false })
+      })
 
     return () => subscription.unsubscribe()
   },

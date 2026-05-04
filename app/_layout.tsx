@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { View, ActivityIndicator, StyleSheet } from 'react-native'
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
@@ -32,9 +32,9 @@ export default function RootLayout() {
     const unsubscribe = init()
 
     const safetyTimeout = setTimeout(() => {
-      console.error('[Layout] SAFETY TIMEOUT 15s! Forçando exibição do app.')
+      console.warn('[Layout] SAFETY TIMEOUT 8s — forçando exibição do app.')
       setSafetyReady(true)
-    }, 15000)
+    }, 8000)
 
     return () => {
       unsubscribe()
@@ -94,6 +94,11 @@ export default function RootLayout() {
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
+      ) : (isAuthenticated && !user) ? (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Carregando perfil...</Text>
+        </View>
       ) : (
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
@@ -120,5 +125,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.background,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textMuted,
   },
 })
