@@ -117,17 +117,13 @@ export async function getScheduledForMonth(
     .eq('reference_month', referenceMonth)
     .eq('status', 'pending')
 
-  const hoje = new Date().toISOString().split('T')[0]
-
-  const rows = (data || [])
-    .map(item => {
-      const startDate = item.scheduled_transactions?.start_date
-      const vencimento = startDate
-        ? getVencimentoForMonth(startDate, item.reference_month)
-        : null
-      return { ...item, vencimento }
-    })
-    .filter(item => !item.vencimento || item.vencimento <= hoje)
+  const rows = (data || []).map(item => {
+    const startDate = item.scheduled_transactions?.start_date
+    const vencimento = startDate
+      ? getVencimentoForMonth(startDate, item.reference_month)
+      : null
+    return { ...item, vencimento }
+  })
 
   if (potId) {
     return rows.filter(r => r.scheduled_transactions?.pot_id === potId)

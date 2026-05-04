@@ -116,12 +116,16 @@ export default function PotsScreen() {
       )
       setPotsPendentes(potIds)
 
-      // Badge do tab sempre reflete o mês atual (offset 0)
+      // Badge do tab sempre reflete o mês atual (offset 0), só conta vencidos
+      const hoje = new Date().toISOString().split('T')[0]
+      const countVencidos = (items: any[]) =>
+        items.filter(i => !i.vencimento || i.vencimento <= hoje).length
+
       if (cycleOffset === 0) {
-        setPendingScheduledCount(pendingCycle.length)
+        setPendingScheduledCount(countVencidos(pendingCycle))
       } else {
         const pendingCurrent = await getScheduledForMonth(user.id, user.cycle_start ?? 1, 0)
-        setPendingScheduledCount(pendingCurrent.length)
+        setPendingScheduledCount(countVencidos(pendingCurrent))
       }
     } finally {
       setLoading(false)
