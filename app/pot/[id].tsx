@@ -283,6 +283,7 @@ export default function PotDetailScreen() {
               <ScheduledItem
                 key={item.id}
                 item={item}
+                vencimento={item.vencimento}
                 onConfirm={() => {
                   const s = item.scheduled_transactions
                   const amountFmt = Number(s?.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })

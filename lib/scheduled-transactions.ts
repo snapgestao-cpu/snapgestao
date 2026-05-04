@@ -80,6 +80,18 @@ export async function createScheduledTransaction(
   if (monthsError) throw monthsError
 }
 
+// Calcula o dia de vencimento de uma parcela:
+// mantém o dia de start_date, aplica o mês/ano de referenceMonth.
+// Ex: start_date=2026-05-01, referenceMonth=2026-06-01 → 2026-06-01
+// Ex: start_date=2026-01-31, referenceMonth=2026-02-01 → 2026-02-28 (clampado)
+function getVencimentoForMonth(startDate: string, referenceMonth: string): string {
+  const startDay = parseInt(startDate.split('-')[2], 10)
+  const [refYear, refMonth] = referenceMonth.split('-')
+  const lastDayOfMonth = new Date(parseInt(refYear, 10), parseInt(refMonth, 10), 0).getDate()
+  const day = Math.min(startDay, lastDayOfMonth)
+  return `${refYear}-${refMonth}-${String(day).padStart(2, '0')}`
+}
+
 // potId opcional: filtra pelo pote se fornecido
 export async function getScheduledForMonth(
   userId: string,
@@ -97,6 +109,7 @@ export async function getScheduledForMonth(
       scheduled_transactions (
         id, description, amount,
         payment_method, merchant, pot_id,
+        start_date,
         pots ( name, color )
       )
     `)
@@ -104,7 +117,18 @@ export async function getScheduledForMonth(
     .eq('reference_month', referenceMonth)
     .eq('status', 'pending')
 
-  const rows = data || []
+  const hoje = new Date().toISOString().split('T')[0]
+
+  const rows = (data || [])
+    .map(item => {
+      const startDate = item.scheduled_transactions?.start_date
+      const vencimento = startDate
+        ? getVencimentoForMonth(startDate, item.reference_month)
+        : null
+      return { ...item, vencimento }
+    })
+    .filter(item => !item.vencimento || item.vencimento <= hoje)
+
   if (potId) {
     return rows.filter(r => r.scheduled_transactions?.pot_id === potId)
   }
