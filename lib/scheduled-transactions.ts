@@ -80,6 +80,17 @@ export async function createScheduledTransaction(
   if (monthsError) throw monthsError
 }
 
+function getVencimentoForMonth(startDate: string, referenceMonth: string): string {
+  const start = new Date(startDate + 'T12:00:00')
+  const ref = new Date(referenceMonth + 'T12:00:00')
+  const diffMonths =
+    (ref.getFullYear() - start.getFullYear()) * 12 +
+    (ref.getMonth() - start.getMonth())
+  const vencimento = new Date(start)
+  vencimento.setMonth(vencimento.getMonth() + diffMonths)
+  return vencimento.toISOString().split('T')[0]
+}
+
 // potId opcional: filtra pelo pote se fornecido
 export async function getScheduledForMonth(
   userId: string,
@@ -97,6 +108,7 @@ export async function getScheduledForMonth(
       scheduled_transactions (
         id, description, amount,
         payment_method, merchant, pot_id,
+        start_date,
         pots ( name, color )
       )
     `)
@@ -104,7 +116,22 @@ export async function getScheduledForMonth(
     .eq('reference_month', referenceMonth)
     .eq('status', 'pending')
 
-  const rows = data || []
+  const hoje = new Date().toISOString().split('T')[0]
+
+  const filtrados = (data || []).filter(item => {
+    const startDate = item.scheduled_transactions?.start_date
+    if (!startDate) return true
+    const vencimento = getVencimentoForMonth(startDate, referenceMonth)
+    return vencimento <= hoje
+  })
+
+  const rows = filtrados.map(item => ({
+    ...item,
+    vencimento: item.scheduled_transactions?.start_date
+      ? getVencimentoForMonth(item.scheduled_transactions.start_date, referenceMonth)
+      : null,
+  }))
+
   if (potId) {
     return rows.filter(r => r.scheduled_transactions?.pot_id === potId)
   }

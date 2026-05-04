@@ -4,8 +4,14 @@ import { Colors } from '../constants/colors'
 
 type Props = {
   item: any
+  vencimento?: string | null
   onConfirm: () => void
   onCancel: () => void
+}
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-')
+  return `${day}/${month}/${year}`
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -22,7 +28,7 @@ function brl(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export default function ScheduledItem({ item, onConfirm, onCancel }: Props) {
+export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }: Props) {
   const scheduled = item.scheduled_transactions
   const potColor = scheduled?.pots?.color || Colors.primary
 
@@ -53,6 +59,15 @@ export default function ScheduledItem({ item, onConfirm, onCancel }: Props) {
           <Text style={styles.badgeText}>A CONFIRMAR</Text>
         </View>
       </View>
+
+      {vencimento ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <Text style={{ fontSize: 11 }}>📅</Text>
+          <Text style={{ fontSize: 11, color: '#92400E', fontWeight: '600' }}>
+            Vencimento: {formatDate(vencimento)}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.actions}>
         <TouchableOpacity onPress={onConfirm} style={styles.confirmBtn}>
