@@ -24,13 +24,28 @@ export default function RootLayout() {
   const { isLoading, isAuthenticated, user, init } = useAuthStore()
   const segments = useSegments()
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+  const [safetyReady, setSafetyReady] = useState(false)
 
   useEffect(() => {
     console.log('[Layout] App iniciando...', new Date().toISOString())
     getDatabase()
     const unsubscribe = init()
-    return unsubscribe
+
+    const safetyTimeout = setTimeout(() => {
+      console.error('[Layout] SAFETY TIMEOUT 15s! Forçando exibição do app.')
+      setSafetyReady(true)
+    }, 15000)
+
+    return () => {
+      unsubscribe()
+      clearTimeout(safetyTimeout)
+    }
   }, [])
+
+  useEffect(() => {
+    if (!safetyReady) return
+    console.log('[Layout] safetyReady=true — app desbloqueado pelo timeout')
+  }, [safetyReady])
 
   useEffect(() => {
     if (!user) return
@@ -42,8 +57,8 @@ export default function RootLayout() {
   }, [user?.id])
 
   useEffect(() => {
-    console.log(`[Layout] Estado: isLoading=${isLoading} isAuthenticated=${isAuthenticated} user=${user?.id?.substring(0, 8) ?? 'null'}`)
-    if (isLoading) return
+    console.log(`[Layout] AuthStore: isLoading=${isLoading} isAuthenticated=${isAuthenticated} user=${user?.id?.substring(0, 8) ?? 'null'}`)
+    if (isLoading && !safetyReady) return
 
     const inAuth = segments[0] === '(auth)'
     const inOnboarding = segments[0] === 'onboarding'
@@ -67,12 +82,12 @@ export default function RootLayout() {
 
     // Autenticado com perfil completo
     if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador) router.replace('/(tabs)/monthly')
-  }, [isLoading, isAuthenticated, user, segments])
+  }, [isLoading, isAuthenticated, user, segments, safetyReady])
 
   return (
     <QueryClientProvider client={queryClient}>
       <StatusBar style="dark" />
-      {isLoading ? (
+      {(isLoading && !safetyReady) ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>

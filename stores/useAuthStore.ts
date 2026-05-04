@@ -17,12 +17,39 @@ type AuthState = {
 }
 
 async function fetchUserProfile(userId: string): Promise<User | null> {
-  const { data } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  return (data as User) ?? null
+  console.log('[AuthStore] loadUserProfile:', userId.substring(0, 8))
+  try {
+    const profilePromise = supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+
+    const timeoutPromise = new Promise<null>(resolve =>
+      setTimeout(() => {
+        console.warn('[AuthStore] TIMEOUT na query de perfil!')
+        resolve(null)
+      }, 8000)
+    )
+
+    const result = await Promise.race([profilePromise, timeoutPromise])
+    if (!result) {
+      console.warn('[AuthStore] Query de perfil retornou null ou timeout')
+      return null
+    }
+
+    const { data, error } = result as any
+    if (error) {
+      console.error('[AuthStore] Erro na query de perfil:', error.message)
+      return null
+    }
+
+    console.log('[AuthStore] Perfil carregado:', JSON.stringify({ onboarding_completed: data?.onboarding_completed, cycle_start: data?.cycle_start }))
+    return (data as User) ?? null
+  } catch (err) {
+    console.error('[AuthStore] ERRO ao carregar perfil:', String(err))
+    return null
+  }
 }
 
 function translateError(msg: string): string {
@@ -114,17 +141,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('[AuthStore] onAuthStateChange evento:', event)
+
         if (event === 'SIGNED_OUT' || !session) {
           console.log('[AuthStore] SIGNED_OUT ou sem sessão')
           set({ session: null, user: null, isAuthenticated: false, isLoading: false })
           return
         }
-        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-          console.log('[AuthStore] TOKEN_REFRESHED/SIGNED_IN — carregando perfil')
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          console.log('[AuthStore] SIGNED_IN/TOKEN_REFRESHED — aguardando 500ms antes de query...')
+          // Delay para garantir que o cliente Supabase está pronto para queries
+          await new Promise(resolve => setTimeout(resolve, 500))
+
+          console.log('[AuthStore] Iniciando loadUserProfile após delay...')
           try {
             const user = await fetchUserProfile(session.user.id)
             set({ session, user, isAuthenticated: true, isLoading: false })
-            console.log('[AuthStore] Perfil atualizado via onAuthStateChange')
+            console.log('[AuthStore] setIsLoading(false) após SIGNED_IN — isAuthenticated: true')
           } catch (err) {
             console.error('[AuthStore] Erro no onAuthStateChange:', String(err))
             await supabase.auth.signOut()
