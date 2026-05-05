@@ -194,7 +194,7 @@ export function NewGoalModal({ visible, onClose, onSuccess, onBadges, editGoal }
               value={formatCents(depositDigits)}
               onChangeText={t => setDepositDigits(digitsOnly(t))}
               keyboardType="numeric"
-              placeholder="R$ 0,00"
+              placeholder="R$ 0,00 (opcional)"
               placeholderTextColor={Colors.textMuted}
             />
 

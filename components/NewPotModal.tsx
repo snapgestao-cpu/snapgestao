@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Alert,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../constants/colors'
@@ -52,8 +52,6 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
   const [limitDigits, setLimitDigits] = useState('')
   const [limitType, setLimitType] = useState<LimitType>('absolute')
   const [percentStr, setPercentStr] = useState('')
-  const [isEmergency, setIsEmergency] = useState(false)
-  const [existingEmergencyName, setExistingEmergencyName] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isDuplicate, setIsDuplicate] = useState(false)
@@ -66,29 +64,15 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
       setLimitType(editPot.limit_type)
       setLimitDigits(editPot.limit_amount ? String(Math.round(editPot.limit_amount * 100)) : '')
       setPercentStr('')
-      setIsEmergency(editPot.is_emergency)
     } else {
       setName('')
       setColor(POT_COLORS[0])
       setLimitDigits('')
       setLimitType('absolute')
       setPercentStr('')
-      setIsEmergency(false)
     }
     setError(null)
     setIsDuplicate(false)
-
-    const userId = useAuthStore.getState().session?.user?.id
-    if (!userId) return
-    supabase.from('pots')
-      .select('name')
-      .eq('user_id', userId)
-      .eq('is_emergency', true)
-      .then(({ data }) => {
-        const found = (data ?? [])[0] as { name: string } | undefined
-        // Don't block toggle if we're editing the emergency pot itself
-        setExistingEmergencyName(editPot?.is_emergency ? null : (found?.name ?? null))
-      })
   }, [visible])
 
   const computedLimit: number =
@@ -234,7 +218,7 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
         color,
         limit_amount: computedLimit,
         limit_type: limitType,
-        is_emergency: isEmergency,
+        is_emergency: false,
       }
 
       const csDay = useAuthStore.getState().user?.cycle_start ?? 1
@@ -383,27 +367,6 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
               ))}
             </View>
 
-            {/* Pote de emergência */}
-            <View style={styles.emergencyRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.emergencyLabel}>Pote de emergência 🛡️</Text>
-                {existingEmergencyName && !isEmergency ? (
-                  <Text style={styles.hint}>Você já tem um: {existingEmergencyName}</Text>
-                ) : null}
-              </View>
-              <Switch
-                value={isEmergency}
-                onValueChange={v => {
-                  if (v && existingEmergencyName) return
-                  setIsEmergency(v)
-                  if (v) setColor('#534AB7')
-                }}
-                trackColor={{ false: Colors.border, true: Colors.primary }}
-                thumbColor={isEmergency ? Colors.primary : '#f4f3f4'}
-                disabled={!!existingEmergencyName && !isEmergency}
-              />
-            </View>
-
             {/* Preview */}
             {name.trim() ? (
               <>
@@ -479,12 +442,6 @@ const styles = StyleSheet.create({
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   colorDot: { width: 36, height: 36, borderRadius: 18 },
   colorDotSelected: { borderWidth: 3, borderColor: Colors.white, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
-  emergencyRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, marginVertical: 4,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  emergencyLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   hint: { fontSize: 12, color: Colors.textMuted, marginTop: 2, marginBottom: 4 },
   duplicateHint: { fontSize: 12, color: Colors.warning, marginTop: 2, marginBottom: 4 },
   retroBanner: {

@@ -140,6 +140,33 @@ Feature implementada em `lib/income-history.ts`.
 
 **Regra**: alterações valem apenas do mês escolhido para frente. Meses passados sem entrada no histórico caem no registro mais antigo disponível.
 
+## Reserva de Emergência
+
+Feature implementada em `lib/emergency-reserve.ts`.
+
+**Tabelas** (migration: `supabase/migrations/20240504_emergency_reserve.sql`):
+- `emergency_reserve` — 1 row por usuário: `current_amount`, `target_amount` (opcional). `UNIQUE(user_id)`.
+- `emergency_reserve_transactions` — histórico de movimentações: `type` (`deposit_external` | `deposit_from_cycle` | `withdrawal_to_cycle`), `amount`, `description`, `reference_month`.
+
+**Funções** (`lib/emergency-reserve.ts`):
+- `getOrCreateReserve(userId)` → cria a row se não existir; retorna sempre o registro atualizado.
+- `getReserveTransactions(userId)` → últimas 50 transações em ordem decrescente.
+- `depositExternal(userId, amount, description?)` → depósito de dinheiro externo (não afeta ciclo).
+- `depositFromCycle(userId, amount, cycleStart, cycleOffset, description?)` → cria `expense` na tabela `transactions` + incrementa reserva.
+- `withdrawToCycle(userId, amount, cycleStart, cycleOffset, description?)` → valida saldo, cria `income` na tabela `transactions` + decrementa reserva.
+- `updateReserveTarget(userId, targetAmount)` → define ou remove meta de valor.
+
+**UI** (`app/(tabs)/goals.tsx`):
+- Card de Reserva de Emergência exibido no topo da tela de Metas.
+- Modal de ação (`showReserveModal`) com 3 tipos: depósito externo, transferência do ciclo, saque para ciclo.
+- Histórico de movimentações via `FlatList` (`showReserveHistory`).
+- Carregado junto com as metas em `loadGoals` via `Promise.all`.
+
+**Regras**:
+- `NewPotModal` não tem mais o toggle `is_emergency` — a reserva agora é gerenciada pela tela de Metas.
+- `withdrawToCycle` lança erro se `current_amount < amount` — validar antes de chamar.
+- `payment_method` das transactions geradas é `'transfer'`.
+
 ## Roadmap
 
 - [ ] Glossário financeiro
