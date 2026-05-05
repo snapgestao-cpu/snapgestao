@@ -140,6 +140,38 @@ Feature implementada em `lib/income-history.ts`.
 
 **Regra**: alterações valem apenas do mês escolhido para frente. Meses passados sem entrada no histórico caem no registro mais antigo disponível.
 
+## Metas Melhoradas
+
+Feature implementada em `lib/goal-transactions.ts`.
+
+**Tabelas** (migration: `supabase/migrations/20240505_goal_transactions.sql`):
+- `goals` (atualizado): novos campos `status` (`active` | `completed` | `cancelled`), `completed_at`, `completion_type`.
+- `goal_transactions` — movimentações por meta: `type` (`deposit_external` | `deposit_from_cycle` | `withdrawal_to_cycle`), `amount`, `description`, `reference_month`. RLS habilitado.
+
+**Funções** (`lib/goal-transactions.ts`):
+- `depositExternalToGoal(goalId, userId, amount, description?)` → depósito externo, não impacta ciclo.
+- `depositFromCycleToGoal(goalId, userId, amount, cycleStart, cycleOffset, goalName, description?)` → cria `expense` no ciclo + incrementa `current_amount`.
+- `withdrawFromGoalToCycle(goalId, userId, amount, cycleStart, cycleOffset, goalName, description?)` → valida saldo, cria `income` + decrementa `current_amount`.
+- `completeGoal(goalId, userId)` → `status='completed'`, `completed_at=now()`, `completion_type='manual'`.
+- `getGoalTransactions(goalId)` → histórico da meta em ordem decrescente.
+- `getCompletedGoals(userId)` → metas com `status != 'active'`.
+
+**UI** (`app/(tabs)/goals.tsx`):
+- `GoalCard` inline (substituiu o componente externo): barra de progresso, valores, botões **Depositar** e **Sacar**, badge "Meta atingida!" quando `current >= target`.
+- Botão **🏆 Concluídas** no header abre modal com histórico de metas concluídas/canceladas.
+- **Modal de Depósito**: tela de seleção (externo vs do ciclo) → formulário com valor, descrição e seletor de mês (se do ciclo).
+- **Modal de Saque**: tela de seleção (para o mês vs concluir meta) → formulário de saque com seletor de mês, ou Alert de confirmação de conclusão.
+- **Modal de Histórico da Meta** (botão 📋 no card): lista movimentações com tipo, data e valor.
+- **Modal de Metas Concluídas**: FlatList com badge de status, valor acumulado e data de conclusão.
+- `loadGoals` filtra por `status = 'active'`, ordena por `created_at`.
+- `GoalDepositModal` externo removido — substituído pelos novos modais inline.
+
+**Regras**:
+- `monthly_deposit` é opcional na criação — salvo como `null` se não preenchido.
+- `withdrawFromGoalToCycle` lança erro se `current_amount < amount`.
+- `completeGoal` não cria transação financeira — apenas muda o status.
+- `payment_method` das transactions geradas é `'transfer'`.
+
 ## Reserva de Emergência
 
 Feature implementada em `lib/emergency-reserve.ts`.

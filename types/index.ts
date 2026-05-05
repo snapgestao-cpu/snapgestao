@@ -54,6 +54,9 @@ export type Goal = {
   target_date: string | null
   interest_rate: number | null
   monthly_deposit: number | null
+  status: 'active' | 'completed' | 'cancelled'
+  completed_at: string | null
+  completion_type: string | null
 }
 
 export type PotLimitHistory = {
