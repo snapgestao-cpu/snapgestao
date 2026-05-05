@@ -159,8 +159,14 @@ Feature implementada em `lib/goal-transactions.ts`.
 **UI** (`app/(tabs)/goals.tsx`):
 - `GoalCard` inline (substituiu o componente externo): barra de progresso, valores, botões **Depositar** e **Sacar**, badge "Meta atingida!" quando `current >= target`.
 - Botão **🏆 Concluídas** no header abre modal com histórico de metas concluídas/canceladas.
-- **Modal de Depósito**: tela de seleção (externo vs do ciclo) → formulário com valor, descrição e seletor de mês (se do ciclo).
-- **Modal de Saque**: tela de seleção (para o mês vs concluir meta) → formulário de saque com seletor de mês, ou Alert de confirmação de conclusão.
+- **GoalCard** restaurado ao design original: imagem JarPot por percentual, borderLeft colorido por prazo, badge de horizonte, aporte e projeção; botão histórico 📋 no header.
+- Botões inline no GoalCard: **+ Depositar** (primary), **− Sacar** (branco/borda), **✅ Concluir** (verde, só quando `current >= target`). Botão Concluir dispara Alert diretamente no card.
+- **Modal de Depósito da meta**: tela de seleção (externo vs do ciclo) → formulário com valor, descrição e seletor de mês (se do ciclo).
+- **Modal de Saque da meta**: tela de seleção (para o mês vs concluir meta) → formulário de saque com seletor de mês, ou Alert de confirmação de conclusão.
+- **Card Reserva**: substituídos os 3 botões antigos pelos mesmos 2 botões (Depositar/Sacar) do estilo GoalCard.
+- **Modal de Depósito da Reserva**: mesmo fluxo 2 etapas (externo ou do ciclo).
+- **Modal de Saque da Reserva**: formulário direto com valor, descrição e seletor de mês.
+- **Validação de saldo** antes de confirmar saque: `Alert.alert` se `valor > saldo` (meta e reserva).
 - **Modal de Histórico da Meta** (botão 📋 no card): lista movimentações com tipo, data e valor.
 - **Modal de Metas Concluídas**: FlatList com badge de status, valor acumulado e data de conclusão.
 - `loadGoals` filtra por `status = 'active'`, ordena por `created_at`.
@@ -168,7 +174,7 @@ Feature implementada em `lib/goal-transactions.ts`.
 
 **Regras**:
 - `monthly_deposit` é opcional na criação — salvo como `null` se não preenchido.
-- `withdrawFromGoalToCycle` lança erro se `current_amount < amount`.
+- `withdrawFromGoalToCycle` lança erro se `current_amount < amount` (validação também na UI antes da chamada).
 - `completeGoal` não cria transação financeira — apenas muda o status.
 - `payment_method` das transactions geradas é `'transfer'`.
 

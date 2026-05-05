@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   TouchableOpacity, RefreshControl, Modal, Alert, FlatList,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,7 +15,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCycleStore } from '../../stores/useCycleStore'
 import { Goal } from '../../types'
-import { brl } from '../../lib/finance'
+import { brl, calcFV } from '../../lib/finance'
 import { getCycle } from '../../lib/cycle'
 import { getGoalIcon } from '../../lib/goalIcons'
 import {
@@ -39,6 +39,33 @@ import {
 
 type TimelineItem = { year: number; label: string }
 
+// ─── GoalCard helpers ────────────────────────────────────────────────────────
+
+function getPotImage(percent: number) {
+  if (percent <= 0) return require('../../assets/potes/Pote_vazio.png')
+  if (percent < 20) return require('../../assets/potes/Pote_10.png')
+  if (percent < 40) return require('../../assets/potes/Pote_30.png')
+  if (percent < 60) return require('../../assets/potes/Pote_50.png')
+  if (percent < 80) return require('../../assets/potes/Pote_70.png')
+  if (percent < 100) return require('../../assets/potes/Pote_90.png')
+  return require('../../assets/potes/Pote_100.png')
+}
+
+function horizonMeta(years: number): { color: string } {
+  if (years <= 5) return { color: Colors.success }
+  if (years <= 10) return { color: Colors.warning }
+  return { color: '#534AB7' }
+}
+
+function horizonLabel(years: number): string {
+  const totalMonths = Math.round(years * 12)
+  const y = Math.floor(totalMonths / 12)
+  const m = totalMonths % 12
+  if (m === 0) return `${y} ano${y !== 1 ? 's' : ''}`
+  if (y === 0) return `${m} mês${m !== 1 ? 'es' : ''}`
+  return `${y}a ${m}m`
+}
+
 // ─── Inline GoalCard ────────────────────────────────────────────────────────
 
 type GoalCardProps = {
@@ -46,138 +73,146 @@ type GoalCardProps = {
   onDeposit: () => void
   onWithdraw: () => void
   onHistory: () => void
+  onComplete: () => void
   onLongPress: () => void
 }
 
-function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onLongPress }: GoalCardProps) {
+function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onLongPress }: GoalCardProps) {
   const progress = goal.target_amount > 0
-    ? Math.min(100, (goal.current_amount / goal.target_amount) * 100)
+    ? Math.min(goal.current_amount / goal.target_amount, 1)
     : 0
+  const percent = Math.round(progress * 100)
   const isComplete = goal.current_amount >= goal.target_amount
+  const meta = horizonMeta(goal.horizon_years)
   const icon = getGoalIcon(goal.name)
+  const projectedFV = goal.monthly_deposit && goal.interest_rate
+    ? calcFV(goal.monthly_deposit, goal.interest_rate, goal.horizon_years)
+    : null
 
   return (
     <TouchableOpacity
       onLongPress={onLongPress}
-      activeOpacity={0.97}
-      style={[
-        gcStyles.card,
-        isComplete && { borderWidth: 2, borderColor: Colors.success },
-      ]}
+      activeOpacity={0.85}
+      style={[gcStyles.card, { borderLeftColor: meta.color }]}
     >
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Text style={{ fontSize: 18 }}>{icon}</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: Colors.textDark }}>
-              {goal.name}
-            </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Text style={gcStyles.icon}>{icon}</Text>
+          <Text style={gcStyles.name}>{goal.name}</Text>
+          <View style={[gcStyles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
+            <Text style={[gcStyles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
           </View>
-          {goal.target_date && (
-            <Text style={{ fontSize: 12, color: Colors.textMuted, marginTop: 2 }}>
-              📅 Até{' '}
-              {new Date(goal.target_date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                month: 'long',
-                year: 'numeric',
-              })}
-            </Text>
-          )}
         </View>
-        <TouchableOpacity
-          onPress={onHistory}
-          style={{ padding: 8, backgroundColor: Colors.background, borderRadius: 10 }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={{ fontSize: 18 }}>📋</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity
+            onPress={onHistory}
+            style={{ padding: 6, backgroundColor: Colors.background, borderRadius: 8 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ fontSize: 16 }}>📋</Text>
+          </TouchableOpacity>
+          <Image source={getPotImage(percent)} style={{ width: 56, height: 68, resizeMode: 'contain', marginLeft: 4 }} />
+        </View>
       </View>
 
-      {/* Valores */}
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 10 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: isComplete ? Colors.success : Colors.primary }}>
-          {Number(goal.current_amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </Text>
-        <Text style={{ fontSize: 14, color: Colors.textMuted, marginLeft: 6 }}>
-          {'de '}
-          {Number(goal.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </Text>
-        <Text style={{
-          fontSize: 13, fontWeight: '700',
-          color: isComplete ? Colors.success : Colors.textMuted,
-          marginLeft: 'auto',
-        }}>
-          {progress.toFixed(0)}%
-        </Text>
+      {/* Amounts */}
+      <View style={gcStyles.amountRow}>
+        <Text style={gcStyles.current}>{brl(goal.current_amount)}</Text>
+        <Text style={gcStyles.target}> de {brl(goal.target_amount)}</Text>
       </View>
 
-      {/* Barra de progresso */}
-      <View style={{ backgroundColor: Colors.border, borderRadius: 8, height: 10, marginBottom: 16 }}>
-        <View style={{
-          backgroundColor: isComplete ? Colors.success : Colors.primary,
-          borderRadius: 8,
-          height: 10,
-          width: `${progress}%` as any,
-        }} />
+      {/* Progress bar */}
+      <View style={gcStyles.progressTrack}>
+        <View style={[gcStyles.progressFill, { width: `${percent}%` as any, backgroundColor: meta.color }]} />
       </View>
+      <Text style={gcStyles.percent}>{percent}% concluído</Text>
 
-      {/* Aporte mensal planejado */}
-      {goal.monthly_deposit ? (
-        <Text style={{ fontSize: 12, color: Colors.textMuted, marginBottom: 12 }}>
-          Aporte planejado: <Text style={{ fontWeight: '700', color: Colors.textDark }}>{brl(goal.monthly_deposit)}/mês</Text>
-        </Text>
+      {/* Monthly deposit + projection */}
+      {(goal.monthly_deposit || projectedFV) ? (
+        <View style={{ gap: 4, marginBottom: 10 }}>
+          {goal.monthly_deposit ? (
+            <Text style={gcStyles.simText}>
+              Aporte: <Text style={gcStyles.simValue}>{brl(goal.monthly_deposit)}/mês</Text>
+            </Text>
+          ) : null}
+          {projectedFV ? (
+            <Text style={gcStyles.simText}>
+              Projeção: <Text style={[gcStyles.simValue, { color: meta.color }]}>{brl(projectedFV)}</Text>
+            </Text>
+          ) : null}
+        </View>
       ) : null}
 
-      {/* Botões */}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
+      {/* Botões menores */}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
         <TouchableOpacity
           onPress={onDeposit}
           style={{
-            flex: 1, backgroundColor: Colors.primary, borderRadius: 14,
-            paddingVertical: 14, flexDirection: 'row',
-            alignItems: 'center', justifyContent: 'center', gap: 6,
+            flex: 1, backgroundColor: Colors.primary, borderRadius: 12,
+            paddingVertical: 10, alignItems: 'center',
+            flexDirection: 'row', justifyContent: 'center', gap: 4,
           }}
         >
-          <Text style={{ fontSize: 18, color: '#fff', fontWeight: '700' }}>+</Text>
-          <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Depositar</Text>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>+ Depositar</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={onWithdraw}
           style={{
-            flex: 1, backgroundColor: Colors.white, borderRadius: 14,
-            paddingVertical: 14, flexDirection: 'row',
-            alignItems: 'center', justifyContent: 'center', gap: 6,
+            flex: 1, backgroundColor: Colors.white, borderRadius: 12,
+            paddingVertical: 10, alignItems: 'center',
+            flexDirection: 'row', justifyContent: 'center', gap: 4,
             borderWidth: 1.5, borderColor: Colors.border,
           }}
         >
-          <Text style={{ fontSize: 18, color: Colors.textDark, fontWeight: '700' }}>−</Text>
-          <Text style={{ color: Colors.textDark, fontSize: 15, fontWeight: '700' }}>Sacar</Text>
+          <Text style={{ color: Colors.textDark, fontSize: 13, fontWeight: '700' }}>− Sacar</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* Badge meta atingida */}
-      {isComplete && (
-        <View style={{
-          marginTop: 12, backgroundColor: '#D1FAE5', borderRadius: 10,
-          padding: 10, flexDirection: 'row', alignItems: 'center',
-          justifyContent: 'center', gap: 6,
-        }}>
-          <Text style={{ fontSize: 16 }}>🎉</Text>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.success }}>Meta atingida!</Text>
-        </View>
-      )}
+        {isComplete && (
+          <TouchableOpacity
+            onPress={onComplete}
+            style={{
+              flex: 1, backgroundColor: '#D1FAE5', borderRadius: 12,
+              paddingVertical: 10, alignItems: 'center',
+              flexDirection: 'row', justifyContent: 'center', gap: 4,
+            }}
+          >
+            <Text style={{ color: Colors.success, fontSize: 13, fontWeight: '700' }}>✅ Concluir</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </TouchableOpacity>
   )
 }
 
 const gcStyles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.white,
-    borderRadius: 20, padding: 20, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    backgroundColor: Colors.cardBg,
+    borderRadius: 12,
+    borderTopLeftRadius: 3,
+    borderBottomLeftRadius: 3,
+    borderLeftWidth: 3,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
+  icon: { fontSize: 22 },
+  name: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  horizonBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  horizonText: { fontSize: 11, fontWeight: '700' },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
+  current: { fontSize: 20, fontWeight: '800', color: Colors.textDark },
+  target: { fontSize: 13, color: Colors.textMuted },
+  progressTrack: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 4 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  percent: { fontSize: 11, color: Colors.textMuted, marginBottom: 10 },
+  simText: { fontSize: 12, color: Colors.textMuted },
+  simValue: { fontWeight: '700', color: Colors.textDark },
 })
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
@@ -196,13 +231,22 @@ export default function GoalsScreen() {
   // Reserva
   const [reserve, setReserve] = useState<EmergencyReserve | null>(null)
   const [reserveTxs, setReserveTxs] = useState<EmergencyTransaction[]>([])
-  const [showReserveModal, setShowReserveModal] = useState(false)
   const [showReserveHistory, setShowReserveHistory] = useState(false)
-  const [reserveAction, setReserveAction] = useState<'deposit_external' | 'deposit_from_cycle' | 'withdrawal_to_cycle'>('deposit_external')
-  const [reserveAmountCents, setReserveAmountCents] = useState(0)
-  const [reserveDesc, setReserveDesc] = useState('')
-  const [reserveMonthOffset, setReserveMonthOffset] = useState(0)
-  const [savingReserve, setSavingReserve] = useState(false)
+
+  // Depósito na reserva
+  const [showReserveDepositModal, setShowReserveDepositModal] = useState(false)
+  const [reserveDepositType, setReserveDepositType] = useState<'external' | 'from_cycle' | null>(null)
+  const [reserveDepositAmountCents, setReserveDepositAmountCents] = useState(0)
+  const [reserveDepositDesc, setReserveDepositDesc] = useState('')
+  const [reserveDepositMonthOffset, setReserveDepositMonthOffset] = useState(0)
+  const [savingReserveDeposit, setSavingReserveDeposit] = useState(false)
+
+  // Saque da reserva
+  const [showReserveWithdrawModal, setShowReserveWithdrawModal] = useState(false)
+  const [reserveWithdrawAmountCents, setReserveWithdrawAmountCents] = useState(0)
+  const [reserveWithdrawDesc, setReserveWithdrawDesc] = useState('')
+  const [reserveWithdrawMonthOffset, setReserveWithdrawMonthOffset] = useState(0)
+  const [savingReserveWithdraw, setSavingReserveWithdraw] = useState(false)
 
   // Metas — modais
   const [showNewGoal, setShowNewGoal] = useState(false)
@@ -326,10 +370,17 @@ export default function GoalsScreen() {
     setWithdrawMonthOffset(0)
   }
 
-  const reserveActionTitle = {
-    deposit_external: '💰 Depósito Externo',
-    deposit_from_cycle: '↓ Transferir do Mês',
-    withdrawal_to_cycle: '↑ Sacar para o Mês',
+  const resetReserveDepositModal = () => {
+    setReserveDepositType(null)
+    setReserveDepositAmountCents(0)
+    setReserveDepositDesc('')
+    setReserveDepositMonthOffset(0)
+  }
+
+  const resetReserveWithdrawModal = () => {
+    setReserveWithdrawAmountCents(0)
+    setReserveWithdrawDesc('')
+    setReserveWithdrawMonthOffset(0)
   }
 
   // ── Ciclo helper ──
@@ -457,27 +508,29 @@ export default function GoalsScreen() {
               </View>
             ) : null}
 
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity
-                onPress={() => { setReserveAction('deposit_external'); setShowReserveModal(true) }}
-                style={[styles.reserveBtn, { backgroundColor: Colors.success }]}
+                onPress={() => { setReserveDepositMonthOffset(cycleOffset); setShowReserveDepositModal(true) }}
+                style={{
+                  flex: 1, backgroundColor: Colors.primary, borderRadius: 14,
+                  paddingVertical: 14, flexDirection: 'row',
+                  alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
               >
-                <Text style={{ fontSize: 16 }}>💰</Text>
-                <Text style={styles.reserveBtnText}>Depósito externo</Text>
+                <Text style={{ fontSize: 18, color: '#fff' }}>+</Text>
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Depositar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { setReserveAction('deposit_from_cycle'); setReserveMonthOffset(cycleOffset); setShowReserveModal(true) }}
-                style={[styles.reserveBtn, { backgroundColor: Colors.primary }]}
+                onPress={() => { setReserveWithdrawMonthOffset(cycleOffset); setShowReserveWithdrawModal(true) }}
+                style={{
+                  flex: 1, backgroundColor: Colors.white, borderRadius: 14,
+                  paddingVertical: 14, flexDirection: 'row',
+                  alignItems: 'center', justifyContent: 'center', gap: 8,
+                  borderWidth: 1.5, borderColor: Colors.border,
+                }}
               >
-                <Text style={{ fontSize: 16 }}>↓</Text>
-                <Text style={styles.reserveBtnText}>Do mês atual</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { setReserveAction('withdrawal_to_cycle'); setReserveMonthOffset(cycleOffset); setShowReserveModal(true) }}
-                style={[styles.reserveBtn, { backgroundColor: Colors.danger }]}
-              >
-                <Text style={{ fontSize: 16 }}>↑</Text>
-                <Text style={styles.reserveBtnText}>Para o mês</Text>
+                <Text style={{ fontSize: 18, color: Colors.textDark }}>−</Text>
+                <Text style={{ color: Colors.textDark, fontSize: 15, fontWeight: '700' }}>Sacar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -499,11 +552,13 @@ export default function GoalsScreen() {
               goal={goal}
               onDeposit={() => {
                 setSelectedGoal(goal)
+                setDepositType(null)
                 setDepositMonthOffset(cycleOffset)
                 setShowDepositModal(true)
               }}
               onWithdraw={() => {
                 setSelectedGoal(goal)
+                setWithdrawType(null)
                 setWithdrawMonthOffset(cycleOffset)
                 setShowWithdrawModal(true)
               }}
@@ -512,6 +567,29 @@ export default function GoalsScreen() {
                 const txs = await getGoalTransactions(goal.id)
                 setGoalTxs(txs)
                 setShowGoalHistory(true)
+              }}
+              onComplete={() => {
+                Alert.alert(
+                  '🎉 Concluir Meta',
+                  `Deseja marcar "${goal.name}" como concluída?\n\nO valor acumulado (${
+                    Number(goal.current_amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  }) permanece guardado.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Concluir ✅',
+                      onPress: async () => {
+                        try {
+                          await completeGoal(goal.id, user!.id)
+                          await loadGoals()
+                          setToast({ message: '🎉 Meta concluída!', color: Colors.success })
+                        } catch (err) {
+                          Alert.alert('Erro', String(err))
+                        }
+                      },
+                    },
+                  ]
+                )
               }}
               onLongPress={() => setActionGoal(goal)}
             />
@@ -841,11 +919,20 @@ export default function GoalsScreen() {
               <TouchableOpacity
                 disabled={savingWithdraw || withdrawAmountCents <= 0}
                 onPress={async () => {
+                  const saldoMeta = Number(selectedGoal?.current_amount || 0)
+                  const valorSaque = withdrawAmountCents / 100
+                  if (valorSaque > saldoMeta) {
+                    Alert.alert(
+                      '⚠️ Saldo insuficiente',
+                      `Você tem apenas ${saldoMeta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disponível nesta meta.`
+                    )
+                    return
+                  }
                   setSavingWithdraw(true)
                   try {
                     await withdrawFromGoalToCycle(
                       selectedGoal!.id, user!.id,
-                      withdrawAmountCents / 100,
+                      valorSaque,
                       user?.cycle_start || 1, withdrawMonthOffset,
                       selectedGoal!.name, withdrawDesc || undefined
                     )
@@ -1010,112 +1097,251 @@ export default function GoalsScreen() {
         </View>
       </Modal>
 
-      {/* ── Modal de ação da reserva ── */}
+      {/* ── Modal de Depósito na Reserva ── */}
       <Modal
-        visible={showReserveModal}
+        visible={showReserveDepositModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowReserveModal(false)}
+        onRequestClose={() => { setShowReserveDepositModal(false); resetReserveDepositModal() }}
       >
-        <View style={{ flex: 1, backgroundColor: Colors.background }}>
-          <View style={[styles.modalHeader, { alignItems: 'center' }]}>
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
-              {reserveActionTitle[reserveAction]}
-            </Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: Colors.background }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => { setShowReserveDepositModal(false); resetReserveDepositModal() }}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>🛡️ Depositar na Reserva</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {!reserveDepositType ? (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <Text style={styles.modalSectionTitle}>Como deseja depositar?</Text>
+
+              <TouchableOpacity onPress={() => setReserveDepositType('external')} style={styles.optionCard}>
+                <View style={[styles.optionIcon, { backgroundColor: '#D1FAE5' }]}>
+                  <Text style={{ fontSize: 24 }}>💰</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Depósito externo</Text>
+                  <Text style={styles.optionSubtitle}>13º, bônus, herança... Não impacta o ciclo mensal</Text>
+                </View>
+                <Text style={styles.optionArrow}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setReserveDepositType('from_cycle')} style={styles.optionCard}>
+                <View style={[styles.optionIcon, { backgroundColor: Colors.lightBlue }]}>
+                  <Text style={{ fontSize: 24 }}>📅</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Do ciclo mensal</Text>
+                  <Text style={styles.optionSubtitle}>Desconta como despesa do mês escolhido</Text>
+                </View>
+                <Text style={styles.optionArrow}>›</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <TouchableOpacity onPress={() => setReserveDepositType(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 }}>
+                <Text style={{ fontSize: 16, color: Colors.primary }}>‹</Text>
+                <Text style={{ fontSize: 14, color: Colors.primary }}>
+                  {reserveDepositType === 'external' ? '💰 Depósito externo' : '📅 Do ciclo mensal'}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.modalLabel}>Valor *</Text>
+              <TextInput
+                value={reserveDepositAmountCents === 0 ? '' : (reserveDepositAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                onChangeText={(text) => {
+                  const digits = text.replace(/\D/g, '')
+                  setReserveDepositAmountCents(parseInt(digits || '0', 10))
+                }}
+                placeholder="R$ 0,00"
+                keyboardType="numeric"
+                style={styles.amountInput}
+              />
+
+              <Text style={styles.modalLabel}>Descrição (opcional)</Text>
+              <TextInput
+                value={reserveDepositDesc}
+                onChangeText={setReserveDepositDesc}
+                placeholder="Ex: 13º salário, bônus..."
+                style={styles.descInput}
+              />
+
+              {reserveDepositType === 'from_cycle' && (
+                <>
+                  <Text style={[styles.modalLabel, { marginTop: 8 }]}>Mês de referência</Text>
+                  <View style={styles.monthPicker}>
+                    <TouchableOpacity
+                      onPress={() => setReserveDepositMonthOffset(reserveDepositMonthOffset - 1)}
+                      style={styles.monthArrow}
+                    >
+                      <Text style={{ fontSize: 18 }}>‹</Text>
+                    </TouchableOpacity>
+                    <View style={styles.monthLabel}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary, textTransform: 'capitalize' }}>
+                        {cycleLabel(reserveDepositMonthOffset)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setReserveDepositMonthOffset(reserveDepositMonthOffset + 1)}
+                      style={[styles.monthArrow, { backgroundColor: Colors.primary }]}
+                    >
+                      <Text style={{ fontSize: 18, color: '#fff' }}>›</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          )}
+
+          {reserveDepositType && (
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                disabled={savingReserveDeposit || reserveDepositAmountCents <= 0}
+                onPress={async () => {
+                  setSavingReserveDeposit(true)
+                  try {
+                    const amount = reserveDepositAmountCents / 100
+                    if (reserveDepositType === 'external') {
+                      await depositExternal(user!.id, amount, reserveDepositDesc)
+                    } else {
+                      await depositFromCycle(user!.id, amount, user?.cycle_start || 1, reserveDepositMonthOffset, reserveDepositDesc)
+                    }
+                    const updated = await getOrCreateReserve(user!.id)
+                    setReserve(updated)
+                    const txs = await getReserveTransactions(user!.id)
+                    setReserveTxs(txs)
+                    setShowReserveDepositModal(false)
+                    resetReserveDepositModal()
+                    setToast({ message: 'Depósito realizado!', color: Colors.success })
+                  } catch (err) {
+                    Alert.alert('Erro', String(err))
+                  } finally {
+                    setSavingReserveDeposit(false)
+                  }
+                }}
+                style={[styles.confirmBtn, { backgroundColor: reserveDepositAmountCents <= 0 ? Colors.border : Colors.primary }]}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                  {savingReserveDeposit ? 'Processando...' : 'Confirmar Depósito'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal de Saque da Reserva ── */}
+      <Modal
+        visible={showReserveWithdrawModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setShowReserveWithdrawModal(false); resetReserveWithdrawModal() }}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: Colors.background }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => { setShowReserveWithdrawModal(false); resetReserveWithdrawModal() }}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>🛡️ Sacar da Reserva</Text>
+            <View style={{ width: 60 }} />
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 20 }}>
             <Text style={styles.modalLabel}>Valor *</Text>
             <TextInput
-              value={reserveAmountCents === 0 ? '' : (reserveAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              value={reserveWithdrawAmountCents === 0 ? '' : (reserveWithdrawAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               onChangeText={(text) => {
                 const digits = text.replace(/\D/g, '')
-                setReserveAmountCents(parseInt(digits || '0', 10))
+                setReserveWithdrawAmountCents(parseInt(digits || '0', 10))
               }}
               placeholder="R$ 0,00"
               keyboardType="numeric"
               style={styles.amountInput}
             />
 
-            <Text style={styles.modalLabel}>Descrição (opcional)</Text>
-            <TextInput
-              value={reserveDesc}
-              onChangeText={setReserveDesc}
-              placeholder="Ex: 13º salário, bônus..."
-              style={styles.descInput}
-            />
-
-            {reserveAction !== 'deposit_external' && (
-              <>
-                <Text style={[styles.modalLabel, { marginTop: 8 }]}>Mês de referência</Text>
-                <View style={styles.monthPicker}>
-                  <TouchableOpacity
-                    onPress={() => setReserveMonthOffset(reserveMonthOffset - 1)}
-                    style={styles.monthArrow}
-                  >
-                    <Text style={{ fontSize: 18 }}>‹</Text>
-                  </TouchableOpacity>
-                  <View style={styles.monthLabel}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary, textTransform: 'capitalize' }}>
-                      {cycleLabel(reserveMonthOffset)}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setReserveMonthOffset(reserveMonthOffset + 1)}
-                    style={[styles.monthArrow, { backgroundColor: Colors.primary }]}
-                  >
-                    <Text style={{ fontSize: 18, color: '#fff' }}>›</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {reserveAction === 'withdrawal_to_cycle' && (reserveAmountCents / 100) > (reserve?.current_amount || 0) && (
+            {(reserveWithdrawAmountCents / 100) > (reserve?.current_amount || 0) && reserveWithdrawAmountCents > 0 && (
               <View style={styles.warningBox}>
                 <Text style={{ fontSize: 13, color: Colors.danger }}>
                   ⚠️ Valor maior que o saldo disponível ({(reserve?.current_amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
                 </Text>
               </View>
             )}
+
+            <Text style={styles.modalLabel}>Descrição (opcional)</Text>
+            <TextInput
+              value={reserveWithdrawDesc}
+              onChangeText={setReserveWithdrawDesc}
+              placeholder="Ex: Emergência médica..."
+              style={styles.descInput}
+            />
+
+            <Text style={[styles.modalLabel, { marginTop: 8 }]}>Mês de referência</Text>
+            <View style={styles.monthPicker}>
+              <TouchableOpacity
+                onPress={() => setReserveWithdrawMonthOffset(reserveWithdrawMonthOffset - 1)}
+                style={styles.monthArrow}
+              >
+                <Text style={{ fontSize: 18 }}>‹</Text>
+              </TouchableOpacity>
+              <View style={styles.monthLabel}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary, textTransform: 'capitalize' }}>
+                  {cycleLabel(reserveWithdrawMonthOffset)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setReserveWithdrawMonthOffset(reserveWithdrawMonthOffset + 1)}
+                style={[styles.monthArrow, { backgroundColor: Colors.primary }]}
+              >
+                <Text style={{ fontSize: 18, color: '#fff' }}>›</Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
 
           <View style={styles.modalFooter}>
             <TouchableOpacity
-              disabled={savingReserve || reserveAmountCents <= 0}
+              disabled={savingReserveWithdraw || reserveWithdrawAmountCents <= 0}
               onPress={async () => {
-                setSavingReserve(true)
+                const saldoReserva = Number(reserve?.current_amount || 0)
+                const valorSaque = reserveWithdrawAmountCents / 100
+                if (valorSaque > saldoReserva) {
+                  Alert.alert(
+                    '⚠️ Saldo insuficiente',
+                    `Você tem apenas ${saldoReserva.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disponível na reserva.`
+                  )
+                  return
+                }
+                setSavingReserveWithdraw(true)
                 try {
-                  const amount = reserveAmountCents / 100
-                  if (reserveAction === 'deposit_external') {
-                    await depositExternal(user!.id, amount, reserveDesc)
-                  } else if (reserveAction === 'deposit_from_cycle') {
-                    await depositFromCycle(user!.id, amount, user?.cycle_start || 1, reserveMonthOffset, reserveDesc)
-                  } else {
-                    await withdrawToCycle(user!.id, amount, user?.cycle_start || 1, reserveMonthOffset, reserveDesc)
-                  }
+                  await withdrawToCycle(user!.id, valorSaque, user?.cycle_start || 1, reserveWithdrawMonthOffset, reserveWithdrawDesc)
                   const updated = await getOrCreateReserve(user!.id)
                   setReserve(updated)
                   const txs = await getReserveTransactions(user!.id)
                   setReserveTxs(txs)
-                  setShowReserveModal(false)
-                  setReserveAmountCents(0)
-                  setReserveDesc('')
-                  setReserveMonthOffset(0)
-                  setToast({ message: 'Operação realizada!', color: Colors.primary })
+                  setShowReserveWithdrawModal(false)
+                  resetReserveWithdrawModal()
+                  setToast({ message: 'Saque realizado!', color: Colors.primary })
                 } catch (err) {
                   Alert.alert('Erro', String(err))
                 } finally {
-                  setSavingReserve(false)
+                  setSavingReserveWithdraw(false)
                 }
               }}
-              style={[styles.confirmBtn, { backgroundColor: reserveAmountCents <= 0 ? Colors.border : Colors.primary }]}
+              style={[styles.confirmBtn, { backgroundColor: reserveWithdrawAmountCents <= 0 ? Colors.border : Colors.danger }]}
             >
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
-                {savingReserve ? 'Processando...' : 'Confirmar'}
+                {savingReserveWithdraw ? 'Processando...' : 'Confirmar Saque'}
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Histórico da reserva ── */}
