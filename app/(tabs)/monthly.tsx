@@ -82,14 +82,14 @@ export default function MonthlyScreen() {
           .neq('payment_method', 'credit')
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false })
-          .limit(200),
+          .limit(2000),
         // Credit: filter by billing_date (captures installments from prior months)
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .eq('payment_method', 'credit')
           .not('billing_date', 'is', null)
           .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO)
           .order('billing_date', { ascending: false })
-          .limit(200),
+          .limit(2000),
         fetchPotsForCycleWithHistory(user.id, cycle.startISO, cycle.endISO),
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
         supabase.from('goals').select('*').eq('user_id', user.id),
