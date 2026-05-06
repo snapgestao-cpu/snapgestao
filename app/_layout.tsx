@@ -47,6 +47,13 @@ export default function RootLayout() {
     console.log('[Layout] safetyReady=true — app desbloqueado pelo timeout')
   }, [safetyReady])
 
+  // Garantir safetyReady=true após logout (isLoading=false sem timeout de 8s)
+  useEffect(() => {
+    if (!isLoading && !safetyReady) {
+      setSafetyReady(true)
+    }
+  }, [isLoading])
+
   useEffect(() => {
     if (!user) return
 

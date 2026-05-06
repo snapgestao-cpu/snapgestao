@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
+import { supabase, clearSecureStoreCache } from '../lib/supabase'
 import { User } from '../types'
 
 type AuthState = {
@@ -16,8 +16,16 @@ type AuthState = {
   init: () => () => void
 }
 
+let isLoadingProfile = false
+
 async function fetchUserProfile(userId: string): Promise<User | null> {
+  if (isLoadingProfile) {
+    console.log('[AuthStore] loadProfile ignorado — já em andamento')
+    return null
+  }
+  isLoadingProfile = true
   console.log('[AuthStore] fetchUserProfile:', userId.substring(0, 8))
+
   try {
     const profilePromise = supabase
       .from('users')
@@ -49,6 +57,9 @@ async function fetchUserProfile(userId: string): Promise<User | null> {
   } catch (err) {
     console.error('[AuthStore] ERRO ao carregar perfil:', String(err))
     return null
+  } finally {
+    isLoadingProfile = false
+    console.log('[AuthStore] isLoadingProfile resetado')
   }
 }
 
@@ -103,17 +114,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   init: () => {
     console.log('[AuthStore] init()', new Date().toISOString())
 
-    // Flag para evitar carregar perfil duas vezes quando getSession e
-    // onAuthStateChange disparam quase ao mesmo tempo
-    let profileLoading = false
-
     const loadProfile = (session: Session) => {
-      if (profileLoading) {
-        console.log('[AuthStore] loadProfile ignorado — já em andamento')
-        return
-      }
-      profileLoading = true
-
       // Sinalizar autenticado imediatamente para o layout poder reagir
       set({ session, isAuthenticated: true })
 
@@ -142,6 +143,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         if (event === 'SIGNED_OUT' || !session) {
           console.log('[AuthStore] SIGNED_OUT')
+          clearSecureStoreCache()
+          isLoadingProfile = false
           set({ session: null, user: null, isAuthenticated: false, isLoading: false })
           return
         }

@@ -110,6 +110,13 @@ const LargeSecureStoreAdapter = {
   },
 }
 
+export function clearSecureStoreCache() {
+  Object.keys(memoryCache).forEach(key => {
+    delete memoryCache[key]
+  })
+  console.log('[SecureStore] Cache limpo')
+}
+
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
