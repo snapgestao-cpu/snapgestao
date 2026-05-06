@@ -57,13 +57,20 @@ function horizonMeta(years: number): { color: string } {
   return { color: '#534AB7' }
 }
 
-function horizonLabel(years: number): string {
-  const totalMonths = Math.round(years * 12)
-  const y = Math.floor(totalMonths / 12)
-  const m = totalMonths % 12
-  if (m === 0) return `${y} ano${y !== 1 ? 's' : ''}`
-  if (y === 0) return `${m} mês${m !== 1 ? 'es' : ''}`
-  return `${y}a ${m}m`
+function formatPrazo(horizonYears: number, targetDate: string | null | undefined): string {
+  if (targetDate) {
+    const hoje = new Date()
+    const alvo = new Date(targetDate + 'T12:00:00')
+    const totalMeses = (alvo.getFullYear() - hoje.getFullYear()) * 12 + (alvo.getMonth() - hoje.getMonth())
+    if (totalMeses <= 0) return 'Vencida'
+    const anos = Math.floor(totalMeses / 12)
+    const meses = totalMeses % 12
+    if (anos === 0) return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
+    if (meses === 0) return `${anos} ${anos === 1 ? 'ano' : 'anos'}`
+    return `${anos}a ${meses}m`
+  }
+  const y = horizonYears
+  return `${y} ${y === 1 ? 'ano' : 'anos'}`
 }
 
 // ─── Inline GoalCard ────────────────────────────────────────────────────────
@@ -74,10 +81,11 @@ type GoalCardProps = {
   onWithdraw: () => void
   onHistory: () => void
   onComplete: () => void
+  onDelete: () => void
   onLongPress: () => void
 }
 
-function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onLongPress }: GoalCardProps) {
+function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete, onLongPress }: GoalCardProps) {
   const progress = goal.target_amount > 0
     ? Math.min(goal.current_amount / goal.target_amount, 1)
     : 0
@@ -101,7 +109,7 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onLongPr
           <Text style={gcStyles.icon}>{icon}</Text>
           <Text style={gcStyles.name}>{goal.name}</Text>
           <View style={[gcStyles.horizonBadge, { backgroundColor: meta.color + '22' }]}>
-            <Text style={[gcStyles.horizonText, { color: meta.color }]}>{horizonLabel(goal.horizon_years)}</Text>
+            <Text style={[gcStyles.horizonText, { color: meta.color }]}>{formatPrazo(goal.horizon_years, goal.target_date)}</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -111,6 +119,13 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onLongPr
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={{ fontSize: 16 }}>📋</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onDelete}
+            style={{ padding: 6, backgroundColor: '#FEF2F2', borderRadius: 8, marginLeft: 2 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ fontSize: 16 }}>🗑️</Text>
           </TouchableOpacity>
           <Image source={getPotImage(percent)} style={{ width: 56, height: 68, resizeMode: 'contain', marginLeft: 4 }} />
         </View>
@@ -567,6 +582,28 @@ export default function GoalsScreen() {
                 const txs = await getGoalTransactions(goal.id)
                 setGoalTxs(txs)
                 setShowGoalHistory(true)
+              }}
+              onDelete={() => {
+                Alert.alert(
+                  '🗑️ Excluir meta',
+                  `Deseja excluir a meta "${goal.name}"?\n\nTodos os dados serão removidos permanentemente.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Excluir',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await supabase.from('goal_transactions').delete().eq('goal_id', goal.id)
+                          await supabase.from('goals').delete().eq('id', goal.id).eq('user_id', user!.id)
+                          await loadGoals()
+                        } catch (err) {
+                          Alert.alert('Erro', String(err))
+                        }
+                      },
+                    },
+                  ]
+                )
               }}
               onComplete={() => {
                 Alert.alert(
