@@ -51,6 +51,8 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 - **Onboarding guard**: nunca usar `initial_balance === 0` — saldo zero é válido
 - **payment_method**: nunca usar `'other'` — não é válido no DB; fallback: `'cash'`
 - **PDF**: nunca usar `documentDirectory` para salvar — usar `MediaLibrary` + Downloads
+- **PDF logo**: `lib/gerar-pdf.ts` usa `assets/icon.png` (não `logo_SpapGestao.png`). Função `gerarPDF(relatorio, userName, provider)` — passar `provider` para mostrar ícone da IA no header
+- **AIProviderSelector**: sem badge "GRÁTIS" no Groq — descrição é `'Groq — Leve e eficiente'`
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
 

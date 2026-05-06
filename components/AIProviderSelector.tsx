@@ -58,15 +58,6 @@ export default function AIProviderSelector({ selected, onSelect }: Props) {
               </Text>
             </View>
 
-            {/* Badge gratuito para Groq */}
-            {provider.id === 'groq' && (
-              <View style={{
-                backgroundColor: '#DCFCE7', borderRadius: 8,
-                paddingHorizontal: 8, paddingVertical: 3,
-              }}>
-                <Text style={{ fontSize: 10, color: '#166534', fontWeight: '700' }}>GRÁTIS</Text>
-              </View>
-            )}
           </TouchableOpacity>
         ))}
       </View>

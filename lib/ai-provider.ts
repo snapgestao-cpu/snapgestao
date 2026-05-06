@@ -19,7 +19,7 @@ export const AI_PROVIDERS = [
     id: 'groq' as AIProvider,
     label: 'Llama',
     emoji: '🦙',
-    description: 'Groq — Gratuito',
+    description: 'Groq — Leve e eficiente',
     envKey: 'EXPO_PUBLIC_GROQ_API_KEY',
   },
 ]

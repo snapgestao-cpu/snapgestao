@@ -32,12 +32,23 @@ function markdownToHtml(texto: string): string {
     .replace(/^(.)/, '<p>$1') + '</p>'
 }
 
-function buildHtml(relatorio: string, userName: string, dataGeracao: string, logoBase64?: string): string {
+function getProviderInfo(provider: string): { icon: string; name: string } {
+  switch (provider) {
+    case 'claude':  return { icon: '🤖', name: 'Claude' }
+    case 'gemini':  return { icon: '✨', name: 'Gemini' }
+    case 'groq':    return { icon: '🦙', name: 'Llama' }
+    default:        return { icon: '🤖', name: 'IA' }
+  }
+}
+
+function buildHtml(relatorio: string, userName: string, dataGeracao: string, logoBase64?: string, provider: string = 'claude'): string {
   const conteudoHTML = markdownToHtml(relatorio)
   const safeUser = escapeHtml(userName)
-  const logoTag = logoBase64
-    ? `<img src="data:image/png;base64,${logoBase64}" style="width:44px;height:44px;border-radius:12px;object-fit:contain;" />`
-    : `<div class="brand-icon">🫙</div>`
+  const providerInfo = getProviderInfo(provider)
+
+  const logoImg = logoBase64
+    ? `<img src="data:image/png;base64,${logoBase64}" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.15);padding:4px;object-fit:contain;" />`
+    : `<div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;">🫙</div>`
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -61,52 +72,6 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, log
     margin: 0 auto;
     background: #fff;
     min-height: 100vh;
-  }
-
-  .header {
-    background: #0F5EA8;
-    padding: 32px 32px 24px;
-    color: #fff;
-  }
-  .header-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-  .brand-icon {
-    width: 44px;
-    height: 44px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-  }
-  .brand-name {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -0.3px;
-  }
-  .brand-sub {
-    font-size: 12px;
-    opacity: 0.7;
-    margin-top: 2px;
-  }
-  .report-title {
-    font-size: 28px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    letter-spacing: -0.5px;
-  }
-  .report-meta {
-    font-size: 13px;
-    opacity: 0.75;
-  }
-  .report-meta span {
-    font-weight: 600;
-    opacity: 1;
   }
 
   .accent-bar {
@@ -191,17 +156,21 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, log
 </head>
 <body>
 <div class="page">
-  <div class="header">
-    <div class="header-brand">
-      ${logoTag}
+  <div style="background:linear-gradient(135deg,#0F5EA8 0%,#1a7fd4 100%);padding:24px 32px;display:flex;align-items:center;justify-content:space-between;">
+    <!-- Logo e título -->
+    <div style="display:flex;align-items:center;gap:16px;">
+      ${logoImg}
       <div>
-        <div class="brand-name">SnapGestão</div>
-        <div class="brand-sub">Controle Financeiro Pessoal</div>
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;border:none;padding:0;">Mentor Financeiro</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;margin-bottom:0;">
+          Relatório personalizado para <strong>${safeUser}</strong> · ${escapeHtml(dataGeracao)}
+        </p>
       </div>
     </div>
-    <div class="report-title">Mentor Financeiro</div>
-    <div class="report-meta">
-      Relatório personalizado para <span>${safeUser}</span> · ${escapeHtml(dataGeracao)}
+    <!-- Ícone da IA usada -->
+    <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;text-align:center;min-width:80px;">
+      <div style="font-size:28px;line-height:1;">${providerInfo.icon}</div>
+      <div style="color:#fff;font-size:10px;font-weight:600;margin-top:4px;opacity:0.9;">${providerInfo.name}</div>
     </div>
   </div>
   <div class="accent-bar"></div>
@@ -222,11 +191,9 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, log
 
 async function loadLogoBase64(): Promise<string | undefined> {
   try {
-    // expo-asset has no @types — use require
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { Asset } = require('expo-asset')
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const asset = Asset.fromModule(require('../assets/potes/logo_SpapGestao.png'))
+    const asset = Asset.fromModule(require('../assets/icon.png'))
     await asset.downloadAsync()
     const localUri: string | null = asset.localUri ?? asset.uri
     if (!localUri) return undefined
@@ -236,12 +203,12 @@ async function loadLogoBase64(): Promise<string | undefined> {
   }
 }
 
-export async function gerarPDF(relatorio: string, userName: string): Promise<string> {
+export async function gerarPDF(relatorio: string, userName: string, provider: string = 'claude'): Promise<string> {
   const dataGeracao = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'long', year: 'numeric',
   })
   const logoBase64 = await loadLogoBase64()
-  const html = buildHtml(relatorio, userName, dataGeracao, logoBase64)
+  const html = buildHtml(relatorio, userName, dataGeracao, logoBase64, provider)
   const { uri } = await Print.printToFileAsync({
     html,
     base64: false,

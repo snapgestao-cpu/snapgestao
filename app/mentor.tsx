@@ -210,7 +210,7 @@ export default function MentorScreen() {
       setRelatorio(texto)
 
       try {
-        const uri = await gerarPDF(texto, user?.name ?? 'Usuário')
+        const uri = await gerarPDF(texto, user?.name ?? 'Usuário', aiProvider)
         setPdfUri(uri)
       } catch {
         // PDF failure is non-fatal
