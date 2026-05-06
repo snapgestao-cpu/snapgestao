@@ -47,8 +47,8 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, tit
   const providerInfo = getProviderInfo(provider)
 
   const logoImg = logoBase64
-    ? `<img src="data:image/png;base64,${logoBase64}" style="width:52px;height:52px;border-radius:0;background:none;padding:0;object-fit:contain;" />`
-    : `<div style="width:52px;height:52px;font-size:28px;line-height:52px;text-align:center;">🫙</div>`
+    ? `<img src="data:image/png;base64,${logoBase64}" style="width:96px;height:96px;border-radius:0;background:none;padding:0;object-fit:contain;" />`
+    : `<div style="width:96px;height:96px;font-size:28px;line-height:96px;text-align:center;">🫙</div>`
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -156,20 +156,20 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, tit
 </head>
 <body>
 <div class="page">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 32px;background:linear-gradient(135deg,#0F5EA8 0%,#1a7fd4 100%);">
+  <div style="position:relative;display:flex;align-items:center;padding:24px 32px;background:linear-gradient(135deg,#0F5EA8 0%,#1a7fd4 100%);min-height:110px;">
     <div style="display:flex;align-items:center;gap:16px;">
       ${logoImg}
       <div>
-        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;border:none;padding:0;">${escapeHtml(titulo)}</h1>
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">${escapeHtml(titulo)}</h1>
         <p style="color:rgba(255,255,255,0.75);margin:2px 0 0;font-size:11px;letter-spacing:0.5px;">Controle Financeiro Pessoal</p>
         <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;">
-          Relatório personalizado para <strong>${safeUser}</strong> · ${escapeHtml(dataGeracao)}
+          Relatório personalizado para <strong style="color:#fff;">${safeUser}</strong> · ${escapeHtml(dataGeracao)}
         </p>
       </div>
     </div>
-    <div style="padding:0;text-align:center;min-width:60px;">
-      <div style="font-size:22px;line-height:1;">${providerInfo.icon}</div>
-      <div style="color:#fff;font-size:10px;font-weight:600;margin-top:4px;opacity:0.9;">${providerInfo.name}</div>
+    <div style="position:absolute;bottom:12px;right:20px;text-align:center;min-width:50px;">
+      <div style="font-size:20px;line-height:1;">${providerInfo.icon}</div>
+      <div style="color:rgba(255,255,255,0.85);font-size:9px;font-weight:600;margin-top:3px;">${providerInfo.name}</div>
     </div>
   </div>
   <div class="accent-bar"></div>
@@ -192,7 +192,7 @@ async function loadLogoBase64(): Promise<string | undefined> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { Asset } = require('expo-asset')
-    const asset = Asset.fromModule(require('../assets/icon_v1.png'))
+    const asset = Asset.fromModule(require('../assets/carteira png.png'))
     await asset.downloadAsync()
     const localUri: string | null = asset.localUri ?? asset.uri
     if (!localUri) return undefined
