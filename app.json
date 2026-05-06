@@ -24,6 +24,7 @@
       },
       "package": "com.snapgestao.app",
       "versionCode": 8,
+      "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [

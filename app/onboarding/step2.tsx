@@ -130,6 +130,11 @@ export default function Step2() {
         <View style={[styles.progressFill, { width: '66%' }]} />
       </View>
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -228,6 +233,7 @@ export default function Step2() {
           <Text style={styles.btnText}>Continuar</Text>
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Modal de adição de receita */}
       <Modal
