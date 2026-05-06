@@ -41,21 +41,21 @@ function getProviderInfo(provider: string): { icon: string; name: string } {
   }
 }
 
-function buildHtml(relatorio: string, userName: string, dataGeracao: string, logoBase64?: string, provider: string = 'claude'): string {
+function buildHtml(relatorio: string, userName: string, dataGeracao: string, titulo: string, logoBase64?: string, provider: string = 'claude'): string {
   const conteudoHTML = markdownToHtml(relatorio)
   const safeUser = escapeHtml(userName)
   const providerInfo = getProviderInfo(provider)
 
   const logoImg = logoBase64
-    ? `<img src="data:image/png;base64,${logoBase64}" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.15);padding:4px;object-fit:contain;" />`
-    : `<div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;">🫙</div>`
+    ? `<img src="data:image/png;base64,${logoBase64}" style="width:52px;height:52px;border-radius:0;background:none;padding:0;object-fit:contain;" />`
+    : `<div style="width:52px;height:52px;font-size:28px;line-height:52px;text-align:center;">🫙</div>`
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Relatório Mentor Financeiro — SnapGestão</title>
+<title>${escapeHtml(titulo)} — SnapGestão</title>
 <style>
   @page { margin: 2cm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -156,20 +156,19 @@ function buildHtml(relatorio: string, userName: string, dataGeracao: string, log
 </head>
 <body>
 <div class="page">
-  <div style="background:linear-gradient(135deg,#0F5EA8 0%,#1a7fd4 100%);padding:24px 32px;display:flex;align-items:center;justify-content:space-between;">
-    <!-- Logo e título -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 32px;background:linear-gradient(135deg,#0F5EA8 0%,#1a7fd4 100%);">
     <div style="display:flex;align-items:center;gap:16px;">
       ${logoImg}
       <div>
-        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;border:none;padding:0;">Mentor Financeiro</h1>
-        <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;margin-bottom:0;">
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;border:none;padding:0;">${escapeHtml(titulo)}</h1>
+        <p style="color:rgba(255,255,255,0.75);margin:2px 0 0;font-size:11px;letter-spacing:0.5px;">Controle Financeiro Pessoal</p>
+        <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;">
           Relatório personalizado para <strong>${safeUser}</strong> · ${escapeHtml(dataGeracao)}
         </p>
       </div>
     </div>
-    <!-- Ícone da IA usada -->
-    <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 14px;text-align:center;min-width:80px;">
-      <div style="font-size:28px;line-height:1;">${providerInfo.icon}</div>
+    <div style="padding:0;text-align:center;min-width:60px;">
+      <div style="font-size:22px;line-height:1;">${providerInfo.icon}</div>
       <div style="color:#fff;font-size:10px;font-weight:600;margin-top:4px;opacity:0.9;">${providerInfo.name}</div>
     </div>
   </div>
@@ -193,7 +192,7 @@ async function loadLogoBase64(): Promise<string | undefined> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { Asset } = require('expo-asset')
-    const asset = Asset.fromModule(require('../assets/icon.png'))
+    const asset = Asset.fromModule(require('../assets/icon_v1.png'))
     await asset.downloadAsync()
     const localUri: string | null = asset.localUri ?? asset.uri
     if (!localUri) return undefined
@@ -203,18 +202,26 @@ async function loadLogoBase64(): Promise<string | undefined> {
   }
 }
 
-export async function gerarPDF(relatorio: string, userName: string, provider: string = 'claude'): Promise<string> {
+async function buildAndPrint(relatorio: string, userName: string, titulo: string, provider: string): Promise<string> {
   const dataGeracao = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'long', year: 'numeric',
   })
   const logoBase64 = await loadLogoBase64()
-  const html = buildHtml(relatorio, userName, dataGeracao, logoBase64, provider)
+  const html = buildHtml(relatorio, userName, dataGeracao, titulo, logoBase64, provider)
   const { uri } = await Print.printToFileAsync({
     html,
     base64: false,
     margins: { left: 20, top: 20, right: 20, bottom: 20 },
   })
   return uri
+}
+
+export async function gerarPDF(relatorio: string, userName: string, provider: string = 'claude'): Promise<string> {
+  return buildAndPrint(relatorio, userName, 'Mentor Financeiro', provider)
+}
+
+export async function gerarAnalisadorPDF(relatorio: string, userName: string, provider: string = 'claude'): Promise<string> {
+  return buildAndPrint(relatorio, userName, 'Analisador de Preços', provider)
 }
 
 export async function compartilharPDF(uri: string): Promise<void> {

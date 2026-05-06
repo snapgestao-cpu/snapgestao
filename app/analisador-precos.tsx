@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { buscarDadosParaAnalise, analisarPrecos } from '../lib/analisador-precos'
 import { useCycleStore } from '../stores/useCycleStore'
 import AIProviderSelector from '../components/AIProviderSelector'
+import { gerarAnalisadorPDF, compartilharPDF } from '../lib/gerar-pdf'
 
 // ── Perguntas ─────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ export default function AnalisadorPrecosScreen() {
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [relatorio, setRelatorio] = useState<string | null>(null)
+  const [pdfUri, setPdfUri] = useState<string | null>(null)
   const [aiTokens, setAiTokens] = useState<number | null>(null)
 
   const slideAnim = useRef(new Animated.Value(0)).current
@@ -194,6 +196,12 @@ export default function AnalisadorPrecosScreen() {
 
       setRelatorio(textoRelatorio)
       setLoading(false)
+      try {
+        const uri = await gerarAnalisadorPDF(textoRelatorio, user?.name ?? 'Usuário', aiProvider)
+        setPdfUri(uri)
+      } catch {
+        // PDF failure is non-fatal
+      }
     } catch (err: any) {
       setLoading(false)
       const msg = String(err).replace('Error: ', '')
@@ -254,8 +262,28 @@ export default function AnalisadorPrecosScreen() {
             </Text>
           </View>
 
+          {pdfUri && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await compartilharPDF(pdfUri)
+                } catch (err) {
+                  Alert.alert('Erro', 'Não foi possível compartilhar o PDF.')
+                }
+              }}
+              style={{
+                backgroundColor: Colors.primary, borderRadius: 16, padding: 16,
+                alignItems: 'center', marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
+                📄 Exportar PDF
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            onPress={() => { setRelatorio(null); setPerguntaAtual(0); setRespostas({}) }}
+            onPress={() => { setRelatorio(null); setPdfUri(null); setPerguntaAtual(0); setRespostas({}) }}
             style={{
               backgroundColor: Colors.white, borderRadius: 16, padding: 16,
               alignItems: 'center', borderWidth: 1.5, borderColor: Colors.primary,
