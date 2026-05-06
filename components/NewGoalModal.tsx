@@ -88,7 +88,7 @@ export function NewGoalModal({ visible, onClose, onSuccess, onBadges, editGoal }
         user_id: userId,
         name: name.trim(),
         target_amount: target,
-        horizon_years: horizonDecimal,
+        horizon_years: yrs,
         monthly_deposit: monthlyDeposit > 0 ? monthlyDeposit : null,
         interest_rate: annualRate > 0 ? annualRate : null,
         target_date: targetDate.toISOString().split('T')[0],

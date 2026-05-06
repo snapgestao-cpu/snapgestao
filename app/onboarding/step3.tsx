@@ -124,7 +124,7 @@ export default function Step3() {
 
       // 3. Inserir fontes de receita (se houver)
       if (draft.incomeSources.length > 0) {
-        const { error: incomeError } = await supabase
+        const { data: insertedSources, error: incomeError } = await supabase
           .from('income_sources')
           .insert(draft.incomeSources.map((s) => ({
             user_id: userId,
@@ -134,10 +134,26 @@ export default function Step3() {
             recurrence_day: s.recurrence_day,
             is_primary: s.is_primary,
           })))
+          .select('id, amount')
         if (incomeError) {
           console.error('Erro ao salvar income_sources:', incomeError)
           setError('Erro ao salvar receitas: ' + incomeError.message)
           return
+        }
+
+        // Criar seed em income_source_history para que Mensal leia os valores corretamente
+        if (insertedSources && insertedSources.length > 0) {
+          const { error: historyError } = await supabase
+            .from('income_source_history')
+            .insert(insertedSources.map((s) => ({
+              income_source_id: s.id,
+              user_id: userId,
+              amount: s.amount,
+              valid_from: '2000-01-01',
+            })))
+          if (historyError) {
+            console.error('Erro ao salvar income_source_history:', historyError)
+          }
         }
       }
 
