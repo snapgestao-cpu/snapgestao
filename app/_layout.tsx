@@ -86,6 +86,7 @@ export default function RootLayout() {
     const inAchievements = segments[0] === 'achievements'
     const inMentor = segments[0] === 'mentor'
     const inAnalisador = segments[0] === 'analisador-precos'
+    const inTerms = segments[0] === 'terms'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -95,7 +96,13 @@ export default function RootLayout() {
     // isAuthenticated=true mas perfil ainda não carregou — aguardar sem redirecionar
     if (!user) return
 
-    // Autenticado com perfil carregado — verificar onboarding
+    // Autenticado com perfil carregado — verificar aceite de termos
+    if (!user.terms_accepted_at || user.terms_version !== '1.0') {
+      if (!inTerms) router.replace('/terms')
+      return
+    }
+
+    // Autenticado com termos aceitos — verificar onboarding
     if (!user.onboarding_completed) {
       if (!inOnboarding) router.replace('/onboarding/step1')
       return
@@ -128,6 +135,7 @@ export default function RootLayout() {
           <Stack.Screen name="achievements" options={{ headerShown: false }} />
           <Stack.Screen name="mentor" options={{ headerShown: false }} />
           <Stack.Screen name="analisador-precos" options={{ headerShown: false }} />
+          <Stack.Screen name="terms" options={{ headerShown: false, gestureEnabled: false }} />
         </Stack>
       )}
       {pendingBadges.length > 0 && (

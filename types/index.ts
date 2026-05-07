@@ -7,6 +7,8 @@ export type User = {
   onboarding_completed: boolean
   ai_tokens: number
   created_at: string
+  terms_accepted_at: string | null
+  terms_version: string | null
 }
 
 export type Pot = {

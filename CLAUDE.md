@@ -62,7 +62,7 @@ Mensal (`/(tabs)/monthly`) é a tela inicial após login/onboarding. Tabs em ord
 
 ## Arquitetura (resumo)
 
-- **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; autenticado sem perfil → onboarding; perfil OK → tabs. **Regra crítica**: quando `isAuthenticated=true` mas `user=null` (perfil ainda carregando), o guard aguarda — nunca redireciona para onboarding prematuramente.
+- **Routing**: file-based via Expo Router. Guard em `app/_layout.tsx`: não-autenticado → login; termos não aceitos → `/terms`; sem onboarding → onboarding; perfil OK → tabs. **Regra crítica**: quando `isAuthenticated=true` mas `user=null` (perfil ainda carregando), o guard aguarda — nunca redireciona para onboarding prematuramente.
 - **Data flow**: React Query (fetch/cache) → Supabase → `onSuccess` atualiza Zustand store. Componentes leem do store. Nunca chamar `supabase` diretamente de componentes (exceto `useAuthStore`, `onboarding/step3.tsx`, `app/(tabs)/index.tsx`).
 - **Cycle sync**: `useCycleStore` sincroniza `cycleOffset` e `viewMode` entre Potes e Mensal. Range −24 a +12.
 - **AI**: `callAI(provider, prompt)` em `lib/ai-provider.ts`. Modelos: `claude-haiku-4-5-20251001`, Gemini 2.5 Flash, Llama 3.3 70B (Groq). Provider padrão: `'claude'`. Limite de tokens por usuário — ver `supabase/scripts/grant_ai_tokens.sql`.
@@ -206,6 +206,30 @@ Feature implementada em `lib/emergency-reserve.ts`.
 - `NewPotModal` não tem mais o toggle `is_emergency` — a reserva agora é gerenciada pela tela de Metas.
 - `withdrawToCycle` lança erro se `current_amount < amount` — validar antes de chamar.
 - `payment_method` das transactions geradas é `'transfer'`.
+
+## Termos de Uso e LGPD
+
+Feature implementada em `app/terms.tsx`.
+
+**Tabela** (migration: `supabase/migrations/20240506_terms.sql`):
+- `users.terms_accepted_at` — TIMESTAMPTZ: data/hora do aceite; `null` = nunca aceitou.
+- `users.terms_version` — TEXT DEFAULT '1.0': versão dos termos aceita.
+
+**Guard** (`app/_layout.tsx`):
+- Ordem de verificação: não-autenticado → `/login`; termos não aceitos (`terms_accepted_at IS NULL` ou `terms_version != '1.0'`) → `/terms`; onboarding incompleto → `/onboarding/step1`; OK → `/(tabs)/monthly`.
+- Tela `/terms` registrada com `gestureEnabled: false` — não pode ser dispensada com swipe.
+
+**Tela** (`app/terms.tsx`):
+- Dois links para documentos externos: `https://snapgestao.app/termos` e `https://snapgestao.app/privacidade`.
+- Dois checkboxes independentes (Termos de Uso + Política de Privacidade).
+- Botão "Aceitar e continuar" só habilitado quando ambos marcados.
+- Ao confirmar: `UPDATE users SET terms_accepted_at = now(), terms_version = '1.0'` + atualiza store + navega para onboarding (se incompleto) ou monthly.
+
+**Versão atual dos termos**: `'1.0'` — para forçar re-aceite em versão futura, incrementar a constante `TERMS_VERSION` em `app/terms.tsx`.
+
+**Perfil** (`app/(tabs)/profile.tsx`):
+- Grupo "Legal" com links para Termos de Uso e Política de Privacidade.
+- Texto abaixo dos grupos mostrando data do aceite e versão.
 
 ## Roadmap
 

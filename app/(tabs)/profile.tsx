@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, Switch, RefreshControl, Modal, TextInput,
+  Alert, Switch, RefreshControl, Modal, TextInput, Linking,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -293,6 +293,21 @@ export default function ProfileScreen() {
       ],
     },
     {
+      title: 'Legal',
+      items: [
+        {
+          label: 'Termos de Uso',
+          icon: '📋',
+          onPress: () => Linking.openURL('https://snapgestao.app/termos'),
+        },
+        {
+          label: 'Política de Privacidade',
+          icon: '🔒',
+          onPress: () => Linking.openURL('https://snapgestao.app/privacidade'),
+        },
+      ],
+    },
+    {
       title: 'Sobre',
       items: [
         { label: 'Versão 1.0.0', icon: 'ℹ️', onPress: () => {} },
@@ -449,6 +464,13 @@ export default function ProfileScreen() {
             </View>
           </View>
         ))}
+
+        {/* Aceite LGPD */}
+        <Text style={styles.lgpdAccepted}>
+          {user?.terms_accepted_at
+            ? `Termos aceitos em ${new Date(user.terms_accepted_at).toLocaleDateString('pt-BR')} (v${user.terms_version ?? '1.0'})`
+            : 'Termos ainda não registrados'}
+        </Text>
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -630,4 +652,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, alignItems: 'center',
   },
   dialogConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  lgpdAccepted: {
+    fontSize: 11, color: Colors.textMuted,
+    textAlign: 'center', marginBottom: 8,
+  },
 })
