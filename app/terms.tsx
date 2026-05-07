@@ -58,7 +58,7 @@ export default function TermsScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
-        <Image source={require('../assets/carteira png.png')} style={{ width: 72, height: 72, marginBottom: 8, borderRadius: 16 }} resizeMode="contain" />
+        <Image source={require('../assets/carteira png.png')} style={{ width: 128, height: 128, marginBottom: 8, borderRadius: 28 }} resizeMode="contain" />
         <Text style={styles.headerTitle}>Bem-vindo ao SnapGestão</Text>
         <Text style={styles.headerSub}>
           Antes de continuar, leia e aceite nossos termos
