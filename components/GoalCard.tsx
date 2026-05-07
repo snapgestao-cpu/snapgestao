@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Componente externo de card de meta — versão legada, mantida
+ * para compatibilidade. A implementação principal está inline
+ * em app/(tabs)/goals.tsx. Não é importado por nenhuma tela ativa.
+ */
+
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native'
 import { Colors } from '../constants/colors'

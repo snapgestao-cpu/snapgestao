@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de criação de lançamento agendado — descrição, valor,
+ * data de início, total de meses e forma de pagamento. Cria as
+ * rows em scheduled_transactions e scheduled_transaction_months.
+ */
+
 import React, { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,

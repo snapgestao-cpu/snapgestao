@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * OCR de cupons fiscais — extrai dados de notas fiscais via
+ * Gemini Vision (base64). Suporta NFC-e (QR Code) e DANFe.
+ * Normaliza itens, detecta forma de pagamento e calcula
+ * billing_date para compras no crédito conforme o cartão.
+ */
+
 import { supabase } from './supabase'
 import * as ImagePicker from 'expo-image-picker'
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy'

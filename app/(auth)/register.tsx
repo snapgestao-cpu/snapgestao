@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de cadastro — criação de conta por nome, e-mail e senha
+ * via Supabase Auth. Após o signUp bem-sucedido, redireciona
+ * automaticamente para o onboarding.
+ */
+
 import React, { useState } from 'react'
 import {
   View,

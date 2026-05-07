@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * WebView para exibição de cupom NFC-e — recebe URL já sanitizada
+ * pelo caller e injeta script para extrair dados estruturados do
+ * documento fiscal. Nunca chama sanitizeNFCeUrl internamente.
+ */
+
 import React, { useRef, useState, useEffect } from 'react'
 import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'

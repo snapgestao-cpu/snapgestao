@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Configurações dos portais estaduais de consulta de NFC-e.
+ * Define URLs, paths de QR Code e funções de detecção de
+ * página de resultado para cada UF suportada (RJ, SP, MG).
+ */
+
 export type NFCeState = {
   code: string
   uf: string

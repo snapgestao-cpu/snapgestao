@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Seletor de provedor de IA — radio group com Claude, Gemini
+ * e Llama (Groq). Usado no Mentor Financeiro e Analisador de
+ * Preços para escolher qual modelo processar a análise.
+ */
+
 import React from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de Perfil — exibe e edita dados do usuário, cartões de
+ * crédito, fontes de receita e preferências. Contém opções de
+ * exportação Excel, importação de dados e logout.
+ */
+
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,

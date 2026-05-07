@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Scanner de QR Code via câmera — captura e decodifica QR codes de
+ * cupons NFC-e para obter a URL do documento fiscal. Usa expo-camera.
+ */
+
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'

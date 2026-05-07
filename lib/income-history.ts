@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Histórico de fontes de receita por mês. Alterações de valor
+ * valem apenas do mês escolhido em diante — dissídios e reajustes
+ * não afetam meses passados. Usa valid_from para lookup histórico
+ * com lte + order desc limit 1.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 

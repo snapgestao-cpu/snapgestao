@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Lógica de encerramento de ciclo financeiro. Calcula o resumo
+ * do mês (receitas, despesas, saldo), processa o rollover para
+ * o próximo ciclo e distribui sobras para metas ou reserva.
+ * computeCycleSummaryFromData é a versão síncrona usada pela tela Mensal.
+ */
+
 import { supabase } from './supabase'
 import { getCycle, CycleInfo } from './cycle'
 import { fetchPotsForCycleWithHistory } from './pot-history'

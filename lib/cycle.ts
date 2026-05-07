@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Funções de cálculo do ciclo financeiro mensal. O ciclo começa
+ * no dia configurado pelo usuário (cycle_start) e pode ser
+ * navegado com offsets: 0 = mês atual, -1 = anterior, +1 = próximo.
+ * Range suportado: −24 a +12 meses.
+ */
+
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 export type CycleInfo = {

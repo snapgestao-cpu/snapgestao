@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de OCR — escaneia cupons fiscais por câmera ou galeria.
+ * Suporta NFC-e via QR Code (WebView SEFAZ) e DANFe via imagem.
+ * Detecta forma de pagamento, calcula billing_date para crédito
+ * e oferece opt-in para a base colaborativa de preços.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,

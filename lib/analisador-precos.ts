@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Analisador de Preços com IA — coleta itens de cupons fiscais
+ * escaneados pelo usuário, consulta a base colaborativa anônima
+ * e gera análise comparativa com oportunidades de economia.
+ */
+
 import { supabase } from './supabase'
 import { getMesesValidos } from './getMesesValidos'
 import { AIProvider, callAI } from './ai-provider'

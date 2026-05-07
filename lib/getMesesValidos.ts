@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Retorna os ciclos disponíveis para seleção no seletor de mês.
+ * Inclui o mês atual e os últimos 6 meses que possuem rollover
+ * processado (ciclo encerrado) na tabela cycle_rollovers.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 

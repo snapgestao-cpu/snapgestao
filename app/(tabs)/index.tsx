@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de Potes — lista todos os potes ativos do ciclo visualizado
+ * com saldos, limites, indicadores de pendência e badge de
+ * lançamentos agendados. Ponto de entrada para criar e gerenciar
+ * despesas por categoria de orçamento.
+ */
+
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator,

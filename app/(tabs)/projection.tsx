@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de Projeção — exibe previsão de saldo para os próximos
+ * meses combinando receitas históricas, gastos recorrentes e
+ * parcelas de crédito futuras. Dados passados são reais;
+ * dados futuros são estimados com base no histórico.
+ */
+
 import React, { useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,

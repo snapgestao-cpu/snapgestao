@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de criação de meta financeira — nome, valor alvo, prazo
+ * (anos+meses), aporte mensal e taxa de juros. Persiste horizon_years
+ * como inteiro e target_date para precisão de meses.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,

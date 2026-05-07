@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal seletor de mês — exibe grade de meses navegáveis por ano
+ * para seleção de período em modais de depósito/saque de metas.
+ */
+
 import React from 'react'
 import { View, Text, TouchableOpacity, Modal, ScrollView, Dimensions } from 'react-native'
 import { Colors } from '../constants/colors'

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Store de transações com Zustand. Cache local da lista de
+ * lançamentos do ciclo visualizado. Atualizado via React Query
+ * após criação, edição ou exclusão de transações.
+ */
+
 import { create } from 'zustand'
 import { Transaction } from '../types'
 

@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Reserva de emergência — fundo separado do ciclo mensal.
+ * Suporta depósito externo (não afeta ciclo), depósito do ciclo
+ * (gera despesa no mês) e saque para o ciclo (gera receita).
+ * Cada usuário tem exatamente 1 row na tabela emergency_reserve.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 

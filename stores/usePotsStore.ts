@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Store de potes com Zustand. Cache local da lista de potes
+ * do usuário para evitar refetch desnecessário. Atualizado
+ * via React Query após mutações (criação, edição, exclusão).
+ */
+
 import { create } from 'zustand'
 import { Pot } from '../types'
 

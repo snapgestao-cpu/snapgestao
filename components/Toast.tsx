@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Componente de notificação toast — exibe mensagem animada no topo
+ * da tela por ~2,5s com fade-in/out. Respeita safe area insets.
+ */
+
 import React, { useEffect, useRef } from 'react'
 import { Animated, Text, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'

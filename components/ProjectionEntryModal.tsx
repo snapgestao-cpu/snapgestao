@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de entrada de dados para projeção financeira — arquivo morto,
+ * não importado em nenhuma tela ativa. Mantido para referência.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity,

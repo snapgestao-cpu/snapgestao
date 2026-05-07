@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de Conquistas — exibe todas as badges disponíveis com
+ * status de desbloqueio, data de conquista e descrição.
+ * Badges bloqueadas aparecem em cinza com cadeado.
+ */
+
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de cadastro e edição de cartões de crédito. Coleta
+ * nome, banco, dia de fechamento e dia de vencimento.
+ * Usado na tela de Perfil para gerenciar cartões do usuário.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,

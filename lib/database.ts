@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Banco de dados SQLite local (expo-sqlite) — snapgestao.db.
+ * Mantém cópia local dos potes e transações para suporte offline.
+ * A sincronização com o Supabase não está implementada nesta versão.
+ */
+
 import * as SQLite from 'expo-sqlite'
 
 const DB_NAME = 'snapgestao.db'

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de login — autenticação por e-mail e senha via Supabase Auth.
+ * Inclui toggle de visibilidade de senha, feedback de erro traduzido
+ * e KeyboardAvoidingView para não cobrir campos no Android.
+ */
+
 import React, { useState } from 'react'
 import {
   View,

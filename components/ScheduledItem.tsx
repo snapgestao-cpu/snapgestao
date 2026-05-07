@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Item de lançamento agendado pendente — exibe descrição, valor e
+ * botões de confirmar/cancelar para o mês corrente do pote.
+ */
+
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'

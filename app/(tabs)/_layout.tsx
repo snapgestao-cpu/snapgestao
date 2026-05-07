@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Layout das tabs principais — Mensal, Potes, Projeção, Metas
+ * e Perfil. Exibe badge no tab Potes quando há lançamentos
+ * agendados pendentes no mês atual.
+ */
+
 import React from 'react'
 import { Text } from 'react-native'
 import { Tabs } from 'expo-router'

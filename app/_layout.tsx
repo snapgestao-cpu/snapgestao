@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Layout raiz do app — guard de autenticação e onboarding.
+ * Redireciona para login, onboarding ou tabs conforme o estado.
+ * Safety timeout de 8s desbloqueia o app se o Supabase não responder.
+ * Não-autenticado → login; sem perfil → onboarding; perfil OK → tabs.
+ */
+
 import React, { useEffect, useState } from 'react'
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'

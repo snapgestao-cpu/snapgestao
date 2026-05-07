@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela do Analisador de Preços — interface do usuário para
+ * análise de itens de cupons fiscais com IA. Exibe resultado
+ * em Markdown, permite exportar PDF e selecionar provedor de IA.
+ */
+
 import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, TextInput,

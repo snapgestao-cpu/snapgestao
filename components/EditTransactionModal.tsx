@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de edição de lançamento — permite alterar descrição,
+ * valor, data, pote, forma de pagamento e necessidade (is_need).
+ * Suporta lançamentos parcelados com billing_date no crédito.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,

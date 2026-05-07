@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Exportação de lançamentos para Excel (.xlsx). Suporta presets
+ * de período (mês atual, últimos 3/6/12 meses) e intervalo
+ * personalizado. Crédito é filtrado por billing_date; demais
+ * por date. Arquivo gerado no cache e compartilhado via sistema.
+ */
+
 import * as XLSX from 'xlsx'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'

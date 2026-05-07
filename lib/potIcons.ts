@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Mapeamento de palavras-chave para emojis de potes de orçamento.
+ * getPotIcon detecta o ícone mais adequado pelo nome do pote,
+ * sem diferenciar maiúsculas/minúsculas ou acentuação.
+ */
+
 const POT_ICONS: Record<string, string> = {
   // Alimentação
   'alimentação': '🍽️', 'alimentacao': '🍽️',

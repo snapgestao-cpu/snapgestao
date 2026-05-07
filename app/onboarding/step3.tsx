@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Onboarding passo 3 — criação do primeiro pote de orçamento.
+ * Persiste perfil, saldo inicial, fontes de receita (com seed
+ * em income_source_history) e o pote no Supabase. Após salvar,
+ * atualiza o store e navega para a tela Mensal.
+ */
+
 import React, { useState } from 'react'
 import {
   View,

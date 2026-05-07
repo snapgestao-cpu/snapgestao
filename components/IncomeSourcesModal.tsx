@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de gerenciamento de fontes de receita — criação, edição
+ * (com seletor de mês válido) e exclusão. Usa income_source_history
+ * para preservar histórico mensal sem alterar meses passados.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,

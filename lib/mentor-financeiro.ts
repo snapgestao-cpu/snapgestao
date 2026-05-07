@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Mentor Financeiro com IA — coleta dados do usuário (potes,
+ * receitas, gastos, metas, reserva) e gera diagnóstico
+ * personalizado com alertas e plano de ação em Markdown,
+ * exportável como PDF.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 import { AIProvider, callAI } from './ai-provider'

@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Store global do ciclo financeiro com Zustand. Sincroniza
+ * cycleOffset e viewMode entre as telas Mensal e Potes.
+ * Também armazena o provedor de IA ativo e o contador de
+ * lançamentos pendentes para o badge do tab Potes.
+ */
+
 import { create } from 'zustand'
 import { AIProvider } from '../lib/ai-provider'
 

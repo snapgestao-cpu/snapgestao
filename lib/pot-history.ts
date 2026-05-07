@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Histórico de potes — alterações de nome e limite valem apenas
+ * do mês da modificação em diante, sem afetar dados históricos.
+ * fetchPotsForCycleWithHistory aplica os valores corretos de cada
+ * pote para o ciclo visualizado via pot_history.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 import { Pot } from '../types'

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de exportação Excel — seleção de período (presets ou
+ * intervalo customizado) e geração do arquivo .xlsx via
+ * lib/export-excel.ts. Compartilha o arquivo pelo sistema.
+ */
+
 import React, { useState } from 'react'
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet,

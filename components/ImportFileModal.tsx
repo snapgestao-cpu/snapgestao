@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de importação de dados — lê arquivos .xlsx via
+ * DocumentPicker e importa lançamentos históricos para o Supabase.
+ * Exibe preview com validação antes de confirmar a importação.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity,

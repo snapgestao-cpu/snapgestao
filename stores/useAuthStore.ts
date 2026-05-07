@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Store de autenticação com Zustand. Gerencia sessão, perfil
+ * do usuário e estado de carregamento. init() registra o listener
+ * onAuthStateChange antes do getSession para evitar race condition.
+ * Safety timeout de 8s garante que o app nunca trava na tela de loading.
+ */
+
 import { create } from 'zustand'
 import { Session } from '@supabase/supabase-js'
 import { supabase, clearSecureStoreCache } from '../lib/supabase'

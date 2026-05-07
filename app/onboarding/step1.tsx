@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Onboarding passo 1 — saldo inicial e moeda. O saldo é opcional;
+ * zero é válido. Dados salvos no onboardingDraft em memória
+ * e persistidos no Supabase apenas ao concluir o passo 3.
+ */
+
 import React, { useState } from 'react'
 import {
   View,

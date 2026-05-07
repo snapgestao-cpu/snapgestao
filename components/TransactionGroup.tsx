@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Grupo de transações agrupadas por data — cabeçalho colapsável com
+ * total do dia e lista de TransactionItem. Suporta edição inline de
+ * descrição e exclusão de lançamentos.
+ */
+
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native'
 import { Colors } from '../constants/colors'

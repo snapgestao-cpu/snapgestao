@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Movimentações de metas financeiras — depósito externo,
+ * depósito do ciclo (gera despesa no mês), saque para o ciclo
+ * (gera receita) e conclusão de meta. Histórico completo
+ * armazenado em goal_transactions com tipo e referência de mês.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 

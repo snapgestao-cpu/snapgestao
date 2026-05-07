@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de detalhes do pote — exibe lançamentos do ciclo,
+ * resumo de gastos vs limite, lançamentos agendados pendentes
+ * e permite adicionar despesas, receitas ou agendar lançamentos.
+ */
+
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,

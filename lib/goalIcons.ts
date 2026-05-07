@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Mapeamento de palavras-chave para emojis de metas financeiras.
+ * Detecta o ícone mais adequado com base no nome da meta,
+ * sem diferenciar maiúsculas/minúsculas ou acentuação.
+ */
+
 const GOAL_ICONS: Record<string, string> = {
   viagem: '✈️', viagens: '✈️', europa: '✈️', eua: '✈️', japão: '✈️',
   férias: '🏖️', ferias: '🏖️', praia: '🏖️',

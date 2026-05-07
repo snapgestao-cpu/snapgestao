@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Queries de potes — busca potes ativos e deletados durante
+ * um determinado ciclo. Inclui potes soft-deleted que existiam
+ * dentro do período para não distorcer dados históricos.
+ */
+
 import { supabase } from './supabase'
 import { Pot } from '../types'
 

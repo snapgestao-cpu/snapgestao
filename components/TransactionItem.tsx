@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Item individual de transação — exibe ícone do pote, descrição,
+ * forma de pagamento e valor colorido por tipo (receita/despesa).
+ */
+
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'

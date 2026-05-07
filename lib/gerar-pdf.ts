@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Geração de PDFs — converte relatórios em Markdown para HTML
+ * estilizado e gera arquivo PDF via expo-print. Suporta Mentor
+ * Financeiro e Analisador de Preços com header gradiente, logo
+ * do app e ícone do provedor de IA utilizado.
+ */
+
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'

@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Abstração de provedores de IA — Claude (Anthropic), Gemini (Google)
+ * e Llama (Groq). Expõe callAI() como ponto único de chamada,
+ * independente do provedor selecionado pelo usuário.
+ */
+
 export type AIProvider = 'claude' | 'gemini' | 'groq'
 
 export const AI_PROVIDERS = [

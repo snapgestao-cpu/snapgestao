@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Toast animado para exibição de badges desbloqueadas. Exibe
+ * uma conquista por vez com animação de entrada/saída. Dispara
+ * onDone ao processar todas as badges da fila.
+ */
+
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Text, View, StyleSheet } from 'react-native'
 import { Badge } from '../lib/badges'

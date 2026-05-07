@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Sistema de gamificação — define as conquistas disponíveis
+ * (badges) e as regras de concessão por comportamento financeiro.
+ * Badges são verificados no startup e ao encerrar ciclos.
+ */
+
 import { supabase } from './supabase'
 import * as SecureStore from 'expo-secure-store'
 

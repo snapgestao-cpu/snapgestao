@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de lançamento de despesa — formulário completo com valor,
+ * descrição, categoria (necessidade/desejo), pote, cartão de crédito,
+ * forma de pagamento e data. Suporta débito em pote e cartão.
+ */
+
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,

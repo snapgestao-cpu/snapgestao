@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela do Mentor Financeiro — questionário guiado com IA para
+ * diagnóstico financeiro personalizado. Gera relatório em
+ * Markdown exportável como PDF. Suporta Claude, Gemini e Llama.
+ */
+
 import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,

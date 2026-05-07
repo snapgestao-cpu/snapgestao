@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Modal de opt-in para base de preços colaborativa — exibido uma
+ * vez após salvar cupom NFC-e quando user_preferences.share_price_data
+ * é null. Persiste decisão em user_preferences.
+ */
+
 import React from 'react'
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'

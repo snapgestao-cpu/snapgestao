@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Agrupa lançamentos por estabelecimento e data para exibição
+ * na tela de potes. Transações de crédito usam billing_date
+ * como data de exibição. Grupos com mesmo merchant e data
+ * são apresentados como item expandível com total.
+ */
+
 export type TransactionGroup = {
   key: string
   merchant: string | null

@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Barra de busca reutilizável — campo de texto com ícone de lupa
+ * e botão limpar. Usada nas telas de potes e transações.
+ */
+
 import React from 'react'
 import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'

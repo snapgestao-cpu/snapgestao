@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Base colaborativa de preços anônimos — coleta dados de cupons
+ * fiscais NFC-e com opt-in explícito. Nunca armazena user_id
+ * ou dados pessoais. Permite comparar preços por estabelecimento
+ * e cidade nos últimos 30 dias.
+ */
+
 import { supabase } from './supabase'
 
 // null = nunca respondeu, true = aceitou, false = recusou

@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela de Metas — exibe reserva de emergência e metas financeiras
+ * ativas. Permite depósito (externo ou do ciclo), saque, conclusão
+ * e exclusão de metas. Histórico de movimentações e metas
+ * concluídas acessíveis via modais inline.
+ */
+
 import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,

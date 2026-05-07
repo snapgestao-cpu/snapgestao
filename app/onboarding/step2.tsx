@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Onboarding passo 2 — dia de início do ciclo financeiro e fontes
+ * de receita. Suporta ciclo padrão (dia 1) ou personalizado.
+ * Fontes são adicionadas via modal bottom sheet com tipo, valor
+ * e dia de recebimento.
+ */
+
 import React, { useState } from 'react'
 import {
   View,

@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Cliente Supabase com LargeSecureStoreAdapter — armazena tokens
+ * em chunks de 1800 chars no SecureStore do dispositivo. Cache
+ * em memória evita I/O repetido (getSession de ~8s → <1s).
+ * Leituras paralelas da mesma chave reutilizam a mesma Promise.
+ */
+
 import { createClient } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
 

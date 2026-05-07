@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Estado temporário do onboarding — armazena em memória os dados
+ * coletados nos 3 passos (saldo inicial, fontes de receita, pote)
+ * antes de persistir tudo no Supabase ao finalizar o step3.
+ */
+
 import { IncomeSource } from '../types'
 
 export type IncomeSourceDraft = Omit<IncomeSource, 'id' | 'user_id'>

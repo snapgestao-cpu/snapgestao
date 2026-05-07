@@ -1,3 +1,13 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Rota raiz ("/") — exibe spinner enquanto o _layout.tsx
+ * determina para qual tela redirecionar. Visível por frações
+ * de segundo durante a inicialização do app.
+ */
+
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'
 

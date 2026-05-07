@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Tela Mensal — exibe resumo financeiro do ciclo, lista de potes
+ * com gastos, lançamentos agrupados e fluxo de encerramento de mês.
+ * Usa computeCycleSummaryFromData (síncrono) a partir dos dados
+ * já buscados. É a tela inicial do app após login.
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,

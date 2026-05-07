@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Card de pote na tela de Potes — exibe nome, saldo atual, limite
+ * mensal e barra de progresso de consumo. Ícone derivado do nome.
+ */
+
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'

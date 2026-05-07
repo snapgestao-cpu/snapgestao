@@ -1,3 +1,14 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Lançamentos a confirmar — transações recorrentes agendadas
+ * dentro de um pote. O usuário confirma mês a mês para gerar
+ * o lançamento real. Status: pending → confirmed | cancelled.
+ * Badge no tab Potes indica quantos estão pendentes no mês atual.
+ */
+
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 

@@ -1,3 +1,12 @@
+/**
+ * Criador: Diego Manhães
+ * Data: 07/05/2026
+ * Modificado em: 07/05/2026
+ *
+ * Gráfico de barras simples — arquivo morto, não importado em
+ * nenhuma tela ativa. Mantido para referência.
+ */
+
 import React from 'react'
 import { View, Text, StyleSheet, Dimensions } from 'react-native'
 import { Colors } from '../../constants/colors'
