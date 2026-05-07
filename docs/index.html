@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SnapGestão — Controle Financeiro Pessoal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      background: #F4F6F9;
+      color: #1A2030;
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, #0F5EA8, #1a7fd4);
+      color: white;
+      padding: 48px 24px;
+      text-align: center;
+    }
+    header h1 { font-size: 28px; font-weight: 800; }
+    header p { opacity: 0.85; margin-top: 6px; font-size: 16px; }
+    .nav {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .nav a {
+      color: rgba(255,255,255,0.9);
+      text-decoration: none;
+      font-size: 14px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.15);
+    }
+    .nav a:hover { background: rgba(255,255,255,0.25); }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-top: 32px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-align: center;
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow 0.2s;
+    }
+    .card:hover { box-shadow: 0 4px 16px rgba(15,94,168,0.12); }
+    .card .icon { font-size: 40px; margin-bottom: 12px; }
+    .card h2 { color: #0F5EA8; font-size: 17px; margin-bottom: 8px; }
+    .card p { color: #666; font-size: 14px; }
+    .intro {
+      background: white;
+      border-radius: 16px;
+      padding: 28px;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 8px;
+    }
+    .intro h2 { color: #0F5EA8; font-size: 20px; margin-bottom: 12px; }
+    .intro p { color: #444; font-size: 15px; }
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: #999;
+      font-size: 13px;
+      border-top: 1px solid #e0e0e0;
+      margin-top: 48px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🫙 SnapGestão</h1>
+    <p>Controle Financeiro Pessoal</p>
+    <nav class="nav">
+      <a href="index.html">Início</a>
+      <a href="termos.html">Termos de Uso</a>
+      <a href="privacidade.html">Privacidade</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="intro">
+      <h2>Bem-vindo ao SnapGestão</h2>
+      <p>
+        O SnapGestão é um aplicativo de controle financeiro pessoal que usa o método dos potes
+        para organizar suas finanças de forma simples e visual. Transparência e privacidade são
+        valores fundamentais do nosso produto.
+      </p>
+    </div>
+    <div class="cards">
+      <a href="termos.html" class="card">
+        <div class="icon">📋</div>
+        <h2>Termos de Uso</h2>
+        <p>Regras e condições para uso do aplicativo SnapGestão.</p>
+      </a>
+      <a href="privacidade.html" class="card">
+        <div class="icon">🔒</div>
+        <h2>Política de Privacidade</h2>
+        <p>Como coletamos, usamos e protegemos seus dados pessoais.</p>
+      </a>
+      <a href="email-confirmado.html" class="card">
+        <div class="icon">✅</div>
+        <h2>Confirmação de Email</h2>
+        <p>Página de confirmação após verificação do seu endereço de email.</p>
+      </a>
+    </div>
+  </div>
+  <footer>
+    SnapGestão · Controle que transforma · privacidade@snapgestao.app
+  </footer>
+</body>
+</html>
