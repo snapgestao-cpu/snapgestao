@@ -298,12 +298,12 @@ export default function ProfileScreen() {
         {
           label: 'Termos de Uso',
           icon: '📋',
-          onPress: () => Linking.openURL('https://snapgestao.app/termos'),
+          onPress: () => Linking.openURL('https://snapgestao-cpu.github.io/snapgestao/termos.html'),
         },
         {
           label: 'Política de Privacidade',
           icon: '🔒',
-          onPress: () => Linking.openURL('https://snapgestao.app/privacidade'),
+          onPress: () => Linking.openURL('https://snapgestao-cpu.github.io/snapgestao/privacidade.html'),
         },
       ],
     },

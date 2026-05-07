@@ -75,7 +75,7 @@ export default function TermsScreen() {
         {/* Card Termos de Uso */}
         <TouchableOpacity
           style={styles.docCard}
-          onPress={() => Linking.openURL('https://snapgestao.app/termos')}
+          onPress={() => Linking.openURL('https://snapgestao-cpu.github.io/snapgestao/termos.html')}
           activeOpacity={0.7}
         >
           <Text style={styles.docIcon}>📋</Text>
@@ -88,7 +88,7 @@ export default function TermsScreen() {
         {/* Card Política de Privacidade */}
         <TouchableOpacity
           style={styles.docCard}
-          onPress={() => Linking.openURL('https://snapgestao.app/privacidade')}
+          onPress={() => Linking.openURL('https://snapgestao-cpu.github.io/snapgestao/privacidade.html')}
           activeOpacity={0.7}
         >
           <Text style={styles.docIcon}>🔒</Text>
