@@ -11,7 +11,7 @@
 import React, { useState } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Alert, Linking,
+  StyleSheet, ActivityIndicator, Alert, Linking, Image,
 } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -58,7 +58,7 @@ export default function TermsScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerEmoji}>🫙</Text>
+        <Image source={require('../assets/carteira png.png')} style={{ width: 72, height: 72, marginBottom: 8, borderRadius: 16 }} resizeMode="contain" />
         <Text style={styles.headerTitle}>Bem-vindo ao SnapGestão</Text>
         <Text style={styles.headerSub}>
           Antes de continuar, leia e aceite nossos termos
@@ -170,7 +170,6 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     alignItems: 'center',
   },
-  headerEmoji: { fontSize: 36, marginBottom: 8 },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 4 },
   headerSub: {
     fontSize: 13, color: 'rgba(255,255,255,0.8)',
