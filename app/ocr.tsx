@@ -12,7 +12,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
-  ScrollView, TextInput, Alert, Image,
+  ScrollView, TextInput, Alert, Image, Switch,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -27,7 +27,8 @@ import { getCycle } from '../lib/cycle'
 import { getPotIcon } from '../lib/potIcons'
 import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
-import { Pot, CreditCard } from '../types'
+import { Pot, CreditCard, IRCategory } from '../types'
+import { IR_CATEGORY_LABELS } from '../lib/ir'
 import QRCameraScanner from '../components/QRCameraScanner'
 import NFCeWebView, { sanitizeNFCeUrl } from '../components/NFCeWebView'
 import {
@@ -146,6 +147,13 @@ export default function OCRScreen() {
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [globalPotId, setGlobalPotId] = useState<string | null>(defaultPotId ?? null)
   const [globalPotName, setGlobalPotName] = useState<string>(defaultPotName ?? '')
+
+  // IR deduction
+  const irModuleEnabled = user?.ir_module_enabled ?? false
+  const [isIrDeductible, setIsIrDeductible] = useState(false)
+  const [irCategory, setIrCategory] = useState<IRCategory>('saude')
+  const [irProviderName, setIrProviderName] = useState('')
+  const [irProviderDocument, setIrProviderDocument] = useState('')
 
   // Price database
   const [nfceMeta, setNfceMeta] = useState<{ cnpj: string | null } | null>(null)
@@ -268,6 +276,8 @@ export default function OCRScreen() {
     setNfceState(null)
     setNfceChave(null)
     setNfceMeta({ cnpj: result.cnpj ?? null })
+    setIrProviderDocument(result.cnpj ?? '')
+    setIrProviderName(result.merchant ?? '')
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(result.emission_date ?? initialDate)
@@ -309,6 +319,13 @@ export default function OCRScreen() {
     const isCredit = paymentMethod === 'credit'
     const card = cards.find(c => c.id === selectedCardId) ?? null
 
+    const irFields = isIrDeductible ? {
+      is_ir_deductible: true,
+      ir_category: irCategory,
+      ir_provider_name: irProviderName.trim() || null,
+      ir_provider_document: irProviderDocument.trim() || null,
+    } : {}
+
     try {
       const rows: any[] = []
 
@@ -331,6 +348,7 @@ export default function OCRScreen() {
                 billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
                 installment_total: installments, installment_number: i + 1,
                 installment_group_id: groupId,
+                ...irFields,
               })
             }
           } else {
@@ -341,6 +359,7 @@ export default function OCRScreen() {
               payment_method: paymentMethod, is_need: true,
               card_id: isCredit ? (selectedCardId ?? null) : null,
               billing_date: billingDate,
+              ...irFields,
             })
           }
         }
@@ -361,6 +380,7 @@ export default function OCRScreen() {
                 billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
                 installment_total: installments, installment_number: i + 1,
                 installment_group_id: groupId,
+                ...irFields,
               })
             }
           } else {
@@ -373,6 +393,7 @@ export default function OCRScreen() {
               billing_date: isCredit
                 ? (card ? calcBillingDate(today, card, 0) : calcBillingDateNoCard(today, 0))
                 : null,
+              ...irFields,
             })
           }
         }
@@ -639,6 +660,56 @@ export default function OCRScreen() {
             </>
           )}
         </View>
+
+        {irModuleEnabled && (
+          <View style={styles.card}>
+            <View style={styles.irToggleRow}>
+              <View>
+                <Text style={styles.irToggleLabel}>Dedutível no IR</Text>
+                <Text style={styles.irToggleHint}>Aplica a todos os itens do cupom</Text>
+              </View>
+              <Switch
+                value={isIrDeductible}
+                onValueChange={setIsIrDeductible}
+                trackColor={{ false: Colors.border, true: Colors.primary + '60' }}
+                thumbColor={isIrDeductible ? Colors.primary : Colors.textMuted}
+              />
+            </View>
+            {isIrDeductible && (
+              <>
+                <Text style={[styles.fieldLabel, { marginTop: 8 }]}>Categoria IR</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  {(Object.entries(IR_CATEGORY_LABELS) as [IRCategory, string][]).map(([key, label]) => (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => setIrCategory(key)}
+                      style={[styles.payChip, irCategory === key && styles.payChipActive]}
+                    >
+                      <Text style={[styles.payChipText, irCategory === key && styles.payChipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.fieldLabel}>Prestador</Text>
+                <TextInput
+                  style={[styles.fieldInput, { marginBottom: 8 }]}
+                  value={irProviderName}
+                  onChangeText={setIrProviderName}
+                  placeholder="Ex: Hospital, escola…"
+                  placeholderTextColor={Colors.textMuted}
+                />
+                <Text style={styles.fieldLabel}>CPF/CNPJ do prestador</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={irProviderDocument}
+                  onChangeText={setIrProviderDocument}
+                  placeholder="000.000.000-00"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="numeric"
+                />
+              </>
+            )}
+          </View>
+        )}
 
         <TouchableOpacity style={styles.toggleRow} onPress={() => setSimplified(v => !v)}>
           <Text style={styles.toggleLabel}>
@@ -961,4 +1032,7 @@ const styles = StyleSheet.create({
     shadowColor: Colors.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
   confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  irToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  irToggleHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
 })

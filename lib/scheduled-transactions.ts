@@ -11,6 +11,7 @@
 
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
+import type { IRCategory } from '../types'
 
 export type ScheduledTransaction = {
   id: string
@@ -23,6 +24,10 @@ export type ScheduledTransaction = {
   start_date: string
   total_months: number
   created_at: string
+  is_ir_deductible: boolean | null
+  ir_category: IRCategory | null
+  ir_provider_name: string | null
+  ir_provider_document: string | null
 }
 
 export type ScheduledTransactionMonth = {
@@ -45,6 +50,10 @@ export async function createScheduledTransaction(
     merchant?: string
     start_date: string
     total_months: number
+    is_ir_deductible?: boolean
+    ir_category?: IRCategory | null
+    ir_provider_name?: string | null
+    ir_provider_document?: string | null
   }
 ): Promise<void> {
   const { data: scheduled, error } = await supabase
@@ -58,6 +67,10 @@ export async function createScheduledTransaction(
       merchant: data.merchant || null,
       start_date: data.start_date,
       total_months: data.total_months,
+      is_ir_deductible: data.is_ir_deductible ?? false,
+      ir_category: data.is_ir_deductible ? (data.ir_category ?? null) : null,
+      ir_provider_name: data.is_ir_deductible ? (data.ir_provider_name ?? null) : null,
+      ir_provider_document: data.is_ir_deductible ? (data.ir_provider_document ?? null) : null,
     })
     .select()
     .single()
@@ -153,6 +166,10 @@ export async function confirmScheduled(
     payment_method: string
     merchant: string | null
     date: string
+    is_ir_deductible?: boolean | null
+    ir_category?: IRCategory | null
+    ir_provider_name?: string | null
+    ir_provider_document?: string | null
   }
 ): Promise<void> {
   const { data: transaction, error } = await supabase
@@ -167,6 +184,10 @@ export async function confirmScheduled(
       date: data.date,
       payment_method: data.payment_method,
       billing_date: null,
+      is_ir_deductible: data.is_ir_deductible ?? false,
+      ir_category: data.is_ir_deductible ? (data.ir_category ?? null) : null,
+      ir_provider_name: data.is_ir_deductible ? (data.ir_provider_name ?? null) : null,
+      ir_provider_document: data.is_ir_deductible ? (data.ir_provider_document ?? null) : null,
     })
     .select()
     .single()

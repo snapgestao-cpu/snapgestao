@@ -314,6 +314,10 @@ export default function PotDetailScreen() {
                                 payment_method: s.payment_method,
                                 merchant: s.merchant,
                                 date: new Date().toISOString().split('T')[0],
+                                is_ir_deductible: s.is_ir_deductible,
+                                ir_category: s.ir_category,
+                                ir_provider_name: s.ir_provider_name,
+                                ir_provider_document: s.ir_provider_document,
                               }
                             )
                             await Promise.all([loadScheduled(), loadData()])

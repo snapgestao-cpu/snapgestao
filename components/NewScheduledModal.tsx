@@ -11,13 +11,15 @@
 import React, { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
-  Modal, ScrollView, Alert, StyleSheet,
+  Modal, ScrollView, Alert, StyleSheet, Switch,
 } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Colors } from '../constants/colors'
 import { createScheduledTransaction } from '../lib/scheduled-transactions'
 import { useAuthStore } from '../stores/useAuthStore'
 import { getCycle } from '../lib/cycle'
+import { IRCategory } from '../types'
+import { IR_CATEGORY_LABELS } from '../lib/ir'
 
 type Props = {
   visible: boolean
@@ -48,12 +50,17 @@ export default function NewScheduledModal({
   visible, potId, potName, cycleStart, cycleOffset, onClose, onSuccess,
 }: Props) {
   const user = useAuthStore(s => s.user)
+  const irModuleEnabled = user?.ir_module_enabled ?? false
   const [description, setDescription] = useState('')
   const [amountCents, setAmountCents] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState('debit')
   const [merchant, setMerchant] = useState('')
   const [totalMonths, setTotalMonths] = useState(1)
   const [saving, setSaving] = useState(false)
+  const [isIrDeductible, setIsIrDeductible] = useState(false)
+  const [irCategory, setIrCategory] = useState<IRCategory>('saude')
+  const [irProviderName, setIrProviderName] = useState('')
+  const [irProviderDocument, setIrProviderDocument] = useState('')
 
   const { start, end } = getCycle(cycleStart, cycleOffset)
   const [selectedDate, setSelectedDate] = useState<Date>(
@@ -68,6 +75,10 @@ export default function NewScheduledModal({
     setMerchant('')
     setTotalMonths(1)
     setSelectedDate(cycleOffset === 0 ? new Date() : start)
+    setIsIrDeductible(false)
+    setIrCategory('saude')
+    setIrProviderName('')
+    setIrProviderDocument('')
   }
 
   async function handleSave() {
@@ -89,6 +100,10 @@ export default function NewScheduledModal({
         merchant: merchant.trim() || undefined,
         start_date: selectedDate.toISOString().split('T')[0],
         total_months: totalMonths,
+        is_ir_deductible: isIrDeductible,
+        ir_category: isIrDeductible ? irCategory : null,
+        ir_provider_name: isIrDeductible ? (irProviderName.trim() || null) : null,
+        ir_provider_document: isIrDeductible ? (irProviderDocument.trim() || null) : null,
       })
       reset()
       onSuccess()
@@ -226,6 +241,56 @@ export default function NewScheduledModal({
                 })()})`
             }
           </Text>
+
+          {irModuleEnabled && (
+            <View style={styles.irCard}>
+              <View style={styles.irToggleRow}>
+                <View>
+                  <Text style={styles.irToggleLabel}>Dedutível no IR</Text>
+                  <Text style={styles.irToggleHint}>Saúde, educação, previdência…</Text>
+                </View>
+                <Switch
+                  value={isIrDeductible}
+                  onValueChange={setIsIrDeductible}
+                  trackColor={{ false: Colors.border, true: Colors.primary + '60' }}
+                  thumbColor={isIrDeductible ? Colors.primary : Colors.textMuted}
+                />
+              </View>
+              {isIrDeductible && (
+                <>
+                  <Text style={[styles.label, { marginTop: 12 }]}>Categoria IR</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {(Object.entries(IR_CATEGORY_LABELS) as [IRCategory, string][]).map(([key, label]) => (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setIrCategory(key)}
+                        style={[styles.chip, irCategory === key && styles.chipActive]}
+                      >
+                        <Text style={[styles.chipLabel, irCategory === key && styles.chipLabelActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.label}>Prestador <Text style={{ fontWeight: '400', color: Colors.textMuted }}>(opcional)</Text></Text>
+                  <TextInput
+                    value={irProviderName}
+                    onChangeText={setIrProviderName}
+                    placeholder="Ex: Hospital, escola…"
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.input}
+                  />
+                  <Text style={styles.label}>CPF/CNPJ do prestador <Text style={{ fontWeight: '400', color: Colors.textMuted }}>(opcional)</Text></Text>
+                  <TextInput
+                    value={irProviderDocument}
+                    onChangeText={setIrProviderDocument}
+                    placeholder="000.000.000-00"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </>
+              )}
+            </View>
+          )}
 
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>📋 Resumo</Text>
@@ -430,4 +495,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
   },
+  irCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  irToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  irToggleHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
 })
