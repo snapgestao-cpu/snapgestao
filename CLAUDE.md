@@ -231,6 +231,21 @@ Feature implementada em `app/terms.tsx`.
 - Grupo "Legal" com links para Termos de Uso e Política de Privacidade.
 - Texto abaixo dos grupos mostrando data do aceite e versão.
 
+## Exclusão de Conta
+
+Feature implementada via Edge Function + botão no Perfil.
+
+**Edge Function** (`supabase/functions/delete-account/index.ts`) — deployada em `cvyissbkfwphtmvvcvop`:
+- Apenas POST; exige JWT válido no header `Authorization`
+- Deleta dados em ordem: `goal_transactions`, `goals`, `emergency_reserve_transactions`, `emergency_reserve`, `scheduled_transaction_months`, `scheduled_transactions`, `cycle_rollovers`, `transactions`, `pot_history`, `pots`, `income_source_history`, `income_sources`, `users`
+- Após dados: `supabaseAdmin.auth.admin.deleteUser(user.id)` — remove de `auth.users`
+
+**UI** (`app/(tabs)/profile.tsx`):
+- Seção "⚠️ Zona de Perigo" no final da tela, abaixo do texto de aceite LGPD
+- Dois níveis de Alert antes de executar (dupla confirmação)
+- `handleDeleteAccount`: chama a Edge Function, depois `clearSecureStoreCache()` + `signOut()` + redirect para `/login`
+- Botão fica desabilitado e mostra "Excluindo conta..." durante a operação
+
 ## Roadmap
 
 - [ ] Glossário financeiro

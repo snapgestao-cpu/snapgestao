@@ -25,6 +25,7 @@ import { Toast } from '../../components/Toast'
 import { brl } from '../../lib/finance'
 import { getCycle } from '../../lib/cycle'
 import { getUserPriceShareOptIn, setUserPriceShareOptIn } from '../../lib/price-database'
+import { clearSecureStoreCache } from '../../lib/supabase'
 import { calculateCycleSummary } from '../../lib/cycleClose'
 import { Goal } from '../../types'
 import { BadgeToast } from '../../components/BadgeToast'
@@ -49,6 +50,7 @@ export default function ProfileScreen() {
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
 
   const [sharePrices, setSharePrices] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
   // Notification toggles (local state only)
   const [notifGasto, setNotifGasto] = useState(false)
@@ -216,6 +218,39 @@ export default function ProfileScreen() {
         },
       ]
     )
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sessão inválida')
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/delete-account`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Erro ao excluir conta')
+
+      clearSecureStoreCache()
+      await supabase.auth.signOut()
+      router.replace('/(auth)/login')
+    } catch (err) {
+      Alert.alert(
+        'Erro',
+        `Não foi possível excluir a conta: ${String(err)}\n\nTente novamente ou entre em contato com privacidade@snapgestao.app`
+      )
+    } finally {
+      setDeletingAccount(false)
+    }
   }
 
   const cycleEnd = user?.cycle_start
@@ -471,6 +506,61 @@ export default function ProfileScreen() {
             ? `Termos aceitos em ${new Date(user.terms_accepted_at).toLocaleDateString('pt-BR')} (v${user.terms_version ?? '1.0'})`
             : 'Termos ainda não registrados'}
         </Text>
+
+        {/* Zona de Perigo */}
+        <View style={{
+          marginTop: 32, marginBottom: 16,
+          borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 24,
+        }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.danger, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+            ⚠️ Zona de Perigo
+          </Text>
+          <Text style={{ fontSize: 12, color: Colors.textMuted, marginBottom: 16 }}>
+            Ações irreversíveis
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              Alert.alert(
+                '🗑️ Excluir conta',
+                'Tem certeza? Esta ação é IRREVERSÍVEL.\n\nTodos os seus dados financeiros, histórico, metas e configurações serão permanentemente deletados.\n\nSeu acesso será encerrado imediatamente.',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Excluir minha conta',
+                    style: 'destructive',
+                    onPress: () => {
+                      Alert.alert(
+                        '⚠️ Confirmar exclusão',
+                        'Você tem ABSOLUTA certeza?\n\nNão é possível recuperar os dados após a exclusão.',
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'SIM, EXCLUIR TUDO', style: 'destructive', onPress: handleDeleteAccount },
+                        ]
+                      )
+                    },
+                  },
+                ]
+              )
+            }}
+            disabled={deletingAccount}
+            style={{
+              backgroundColor: '#FEF2F2', borderRadius: 14, padding: 16,
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              borderWidth: 1.5, borderColor: '#FCA5A5',
+              opacity: deletingAccount ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ fontSize: 20 }}>🗑️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.danger }}>
+                {deletingAccount ? 'Excluindo conta...' : 'Excluir minha conta'}
+              </Text>
+              <Text style={{ fontSize: 12, color: Colors.danger, opacity: 0.7, marginTop: 2 }}>
+                Remove todos os dados permanentemente
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: 32 }} />
       </ScrollView>
