@@ -288,7 +288,7 @@ export default function ProfileScreen() {
         {
           label: 'Deduções de IR',
           icon: '',
-          iconImage: require('../../assets/receita-federal.ico'),
+          iconImage: require('../../assets/receita-federal.png'),
           value: user?.ir_module_enabled ? undefined : 'Premium',
           onPress: () => router.push('/ir'),
         },
