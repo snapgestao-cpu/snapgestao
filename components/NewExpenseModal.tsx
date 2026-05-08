@@ -11,19 +11,21 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image,
 } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
+import * as ImagePicker from 'expo-image-picker'
 import { Colors } from '../constants/colors'
-import { Pot, CreditCard } from '../types'
+import { Pot, CreditCard, IRCategory } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
 import { checkCriticalPots } from '../lib/notifications'
 import { brl } from '../lib/finance'
+import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'voucher_alimentacao' | 'voucher_refeicao'
 
@@ -42,6 +44,7 @@ type Props = {
   onSuccess: () => void
   pots: Pot[]
   initialDate?: string
+  initialIrProviderDocument?: string
 }
 
 function todayISO(): string {
@@ -73,7 +76,7 @@ function genUUID(): string {
   })
 }
 
-export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate }: Props) {
+export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate, initialIrProviderDocument }: Props) {
   const insets = useSafeAreaInsets()
 
   const [amountDigits, setAmountDigits] = useState('')
@@ -91,6 +94,15 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // IR
+  const [isIrDeductible, setIsIrDeductible] = useState(false)
+  const [irCategory, setIrCategory] = useState<IRCategory>('saude')
+  const [irProviderName, setIrProviderName] = useState('')
+  const [irProviderDocument, setIrProviderDocument] = useState('')
+  const [irReceiptNumber, setIrReceiptNumber] = useState('')
+  const [irReceiptImageUri, setIrReceiptImageUri] = useState<string | null>(null)
+  const irModuleEnabled = useAuthStore.getState().user?.ir_module_enabled ?? false
+
   useEffect(() => {
     if (!visible) return
     setAmountDigits('')
@@ -107,6 +119,12 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setIsInstallment(false)
     setInstallments(2)
     setError(null)
+    setIsIrDeductible(false)
+    setIrCategory('saude')
+    setIrProviderName('')
+    setIrProviderDocument(initialIrProviderDocument ?? '')
+    setIrReceiptNumber('')
+    setIrReceiptImageUri(null)
   }, [visible])
 
   useEffect(() => {
@@ -149,6 +167,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
       const totalParcelas = isInstallment ? installments : 1
       const installmentValue = totalAmount / totalParcelas
 
+      const irValidated = isIrDeductible && irCategory && irProviderName.trim()
       const rows = Array.from({ length: totalParcelas }, (_, i) => ({
         user_id: userId,
         pot_id: selectedPotId,
@@ -166,10 +185,26 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
         installment_total: isInstallment ? totalParcelas : null,
         installment_number: isInstallment ? i + 1 : null,
         installment_group_id: groupId,
+        is_ir_deductible: irValidated ? true : null,
+        ir_category: irValidated ? irCategory : null,
+        ir_provider_name: irValidated ? (irProviderName.trim() || null) : null,
+        ir_provider_document: irValidated ? (irProviderDocument.trim() || null) : null,
+        ir_receipt_number: irValidated ? (irReceiptNumber.trim() || null) : null,
+        ir_receipt_image_path: null,
       }))
 
-      const { error: txErr } = await supabase.from('transactions').insert(rows)
+      const { data: inserted, error: txErr } = await supabase.from('transactions').insert(rows).select('id')
       if (txErr) { setError('Erro ao salvar: ' + txErr.message); return }
+
+      // Upload de imagem de recibo IR (só para a primeira row)
+      if (irValidated && irReceiptImageUri && inserted?.[0]?.id) {
+        try {
+          const path = await uploadIRReceiptImage(userId, inserted[0].id, irReceiptImageUri)
+          await supabase.from('transactions').update({ ir_receipt_image_path: path }).eq('id', inserted[0].id)
+        } catch {
+          // Upload falhou silenciosamente — lançamento já salvo
+        }
+      }
 
       if (merchant.trim()) {
         void supabase.from('smart_merchants').upsert({
@@ -384,6 +419,96 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
               </TouchableOpacity>
             </View>
 
+            {/* Seção IR */}
+            {irModuleEnabled && (
+              <View style={styles.irSection}>
+                <View style={styles.irToggleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.irToggleLabel}>Dedutível no IR</Text>
+                    <Text style={styles.irToggleSub}>Saúde, educação, previdência…</Text>
+                  </View>
+                  <Switch
+                    value={isIrDeductible}
+                    onValueChange={setIsIrDeductible}
+                    trackColor={{ false: Colors.border, true: Colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                {isIrDeductible && (
+                  <>
+                    <Text style={styles.label}>Categoria IR <Text style={styles.labelRequired}>*</Text></Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                      {(Object.keys(IR_CATEGORY_LABELS) as IRCategory[]).map(cat => (
+                        <TouchableOpacity
+                          key={cat}
+                          style={[styles.chip, irCategory === cat && styles.chipActive]}
+                          onPress={() => setIrCategory(cat)}
+                        >
+                          <Text style={[styles.chipText, irCategory === cat && styles.chipTextActive]}>
+                            {IR_CATEGORY_LABELS[cat]}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+
+                    <Text style={styles.label}>Nome do prestador <Text style={styles.labelRequired}>*</Text></Text>
+                    <TextInput
+                      style={styles.input}
+                      value={irProviderName}
+                      onChangeText={setIrProviderName}
+                      placeholder="Ex: Dr. João Silva, Escola ABC…"
+                      placeholderTextColor={Colors.textMuted}
+                    />
+
+                    <Text style={styles.label}>CPF/CNPJ <Text style={styles.optional}>(opcional)</Text></Text>
+                    <TextInput
+                      style={styles.input}
+                      value={irProviderDocument}
+                      onChangeText={setIrProviderDocument}
+                      placeholder="000.000.000-00 ou 00.000.000/0001-00"
+                      placeholderTextColor={Colors.textMuted}
+                      keyboardType="numeric"
+                    />
+
+                    <Text style={styles.label}>Número do recibo <Text style={styles.optional}>(opcional)</Text></Text>
+                    <TextInput
+                      style={styles.input}
+                      value={irReceiptNumber}
+                      onChangeText={setIrReceiptNumber}
+                      placeholder="Ex: 00123"
+                      placeholderTextColor={Colors.textMuted}
+                    />
+
+                    <Text style={styles.label}>Foto do recibo <Text style={styles.optional}>(opcional)</Text></Text>
+                    <TouchableOpacity
+                      style={styles.irImageBtn}
+                      onPress={async () => {
+                        const result = await ImagePicker.launchImageLibraryAsync({
+                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          quality: 0.8,
+                        })
+                        if (!result.canceled && result.assets[0]) {
+                          setIrReceiptImageUri(result.assets[0].uri)
+                        }
+                      }}
+                    >
+                      {irReceiptImageUri ? (
+                        <Image source={{ uri: irReceiptImageUri }} style={styles.irImageThumb} />
+                      ) : (
+                        <Text style={styles.irImageBtnText}>📎 Escolher imagem</Text>
+                      )}
+                    </TouchableOpacity>
+                    {irReceiptImageUri && (
+                      <TouchableOpacity onPress={() => setIrReceiptImageUri(null)}>
+                        <Text style={styles.irImageRemove}>Remover imagem</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+
             {error && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>⚠ {error}</Text>
@@ -502,6 +627,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8,
   },
   errorText: { fontSize: 13, color: Colors.danger, fontWeight: '500' },
+  irSection: {
+    backgroundColor: Colors.background, borderRadius: 14,
+    borderWidth: 1.5, borderColor: Colors.border,
+    padding: 14, marginTop: 8, marginBottom: 8,
+  },
+  irToggleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  irToggleSub: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
+  irImageBtn: {
+    backgroundColor: Colors.white, borderRadius: 10, borderWidth: 1.5,
+    borderColor: Colors.border, borderStyle: 'dashed',
+    padding: 14, alignItems: 'center', marginBottom: 4,
+  },
+  irImageBtnText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+  irImageThumb: { width: '100%', height: 120, borderRadius: 8, resizeMode: 'cover' },
+  irImageRemove: { fontSize: 12, color: Colors.danger, textAlign: 'center', marginBottom: 8 },
   saveBtn: {
     backgroundColor: Colors.danger, borderRadius: 14,
     paddingVertical: 16, alignItems: 'center', marginTop: 12,

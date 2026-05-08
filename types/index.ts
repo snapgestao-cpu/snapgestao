@@ -1,3 +1,5 @@
+export type IRCategory = 'saude' | 'educacao' | 'previdencia_pgbl' | 'previdencia_social' | 'doacao' | 'pensao' | 'outros'
+
 export type User = {
   id: string
   name: string
@@ -9,6 +11,7 @@ export type User = {
   created_at: string
   terms_accepted_at: string | null
   terms_version: string | null
+  ir_module_enabled: boolean
 }
 
 export type Pot = {
@@ -44,6 +47,12 @@ export type Transaction = {
   installment_number: number | null
   installment_group_id: string | null
   created_at: string
+  is_ir_deductible: boolean | null
+  ir_category: IRCategory | null
+  ir_provider_name: string | null
+  ir_provider_document: string | null
+  ir_receipt_number: string | null
+  ir_receipt_image_path: string | null
 }
 
 export type Goal = {

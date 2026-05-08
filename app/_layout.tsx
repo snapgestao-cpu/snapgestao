@@ -87,6 +87,7 @@ export default function RootLayout() {
     const inMentor = segments[0] === 'mentor'
     const inAnalisador = segments[0] === 'analisador-precos'
     const inTerms = segments[0] === 'terms'
+    const inIR = segments[0] === 'ir'
 
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
@@ -109,7 +110,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador) router.replace('/(tabs)/monthly')
+    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador && !inIR) router.replace('/(tabs)/monthly')
   }, [isLoading, isAuthenticated, user, segments, safetyReady])
 
   return (
@@ -136,6 +137,7 @@ export default function RootLayout() {
           <Stack.Screen name="mentor" options={{ headerShown: false }} />
           <Stack.Screen name="analisador-precos" options={{ headerShown: false }} />
           <Stack.Screen name="terms" options={{ headerShown: false, gestureEnabled: false }} />
+          <Stack.Screen name="ir" options={{ headerShown: false }} />
         </Stack>
       )}
       {pendingBadges.length > 0 && (

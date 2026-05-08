@@ -328,6 +328,17 @@ export default function ProfileScreen() {
       ],
     },
     {
+      title: 'Financeiro',
+      items: [
+        {
+          label: 'Deduções IR',
+          icon: '📋',
+          value: user?.ir_module_enabled ? undefined : 'Premium',
+          onPress: () => router.push('/ir'),
+        },
+      ],
+    },
+    {
       title: 'Legal',
       items: [
         {
