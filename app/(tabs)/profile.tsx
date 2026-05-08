@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, Switch, RefreshControl, Modal, TextInput, Linking,
+  Alert, Switch, RefreshControl, Modal, TextInput, Linking, Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -30,8 +30,6 @@ import { calculateCycleSummary } from '../../lib/cycleClose'
 import { Goal } from '../../types'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, getEarnedBadgeKeys, ALL_BADGES, Badge } from '../../lib/badges'
-import * as FileSystem from 'expo-file-system/legacy'
-import * as Sharing from 'expo-sharing'
 
 function initials(name: string): string {
   return name.trim().split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -139,45 +137,7 @@ export default function ProfileScreen() {
     setToast({ message: 'Ciclo atualizado!', color: Colors.success })
   }
 
-  const handleExportarIR = async () => {
-    if (!user) return
-    try {
-      const ano = new Date().getFullYear() - 1
-      const { data: txs } = await supabase
-        .from('transactions')
-        .select('date, description, merchant, amount, type, pot_id')
-        .eq('user_id', user.id)
-        .gte('date', `${ano}-01-01`)
-        .lte('date', `${ano}-12-31`)
-        .order('date', { ascending: true })
 
-      const { data: pots } = await supabase.from('pots').select('id, name').eq('user_id', user.id)
-      const potMap = Object.fromEntries(((pots ?? []) as any[]).map((p: any) => [p.id, p.name]))
-
-      const header = 'Data,Descrição,Estabelecimento,Pote,Tipo,Valor (R$)\n'
-      const lines = ((txs ?? []) as any[]).map((t: any) => {
-        const desc = (t.description ?? '').replace(/,/g, ';')
-        const merchant = (t.merchant ?? '').replace(/,/g, ';')
-        const potName = t.pot_id ? (potMap[t.pot_id] ?? '') : ''
-        const tipo = t.type === 'income' ? 'Receita' : 'Despesa'
-        const valor = t.type === 'income' ? t.amount : -t.amount
-        return `${t.date},"${desc}","${merchant}","${potName}",${tipo},${Number(valor).toFixed(2)}`
-      }).join('\n')
-
-      const csv = header + lines
-      const path = FileSystem.cacheDirectory + `IR_${ano}_SnapGestao.csv`
-      await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 })
-
-      const canShare = await Sharing.isAvailableAsync()
-      if (canShare) {
-        await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: `Exportar IR ${ano}` })
-      } else {
-        Alert.alert('Exportado', `Arquivo salvo em:\n${path}`)
-      }
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message ?? 'Não foi possível exportar.')
-    }
-  }
 
   const handleLimparDados = () => {
     Alert.alert(
@@ -257,7 +217,7 @@ export default function ProfileScreen() {
     ? (user.cycle_start === 1 ? 'fim do mês' : `dia ${user.cycle_start - 1}`)
     : '—'
 
-  type Group = { title: string; items: { label: string; icon: string; value?: string; onPress: () => void; danger?: boolean; toggle?: boolean; toggleValue?: boolean; onToggle?: (v: boolean) => void }[] }
+  type Group = { title: string; items: { label: string; icon: string; iconImage?: ReturnType<typeof require>; value?: string; onPress: () => void; danger?: boolean; toggle?: boolean; toggleValue?: boolean; onToggle?: (v: boolean) => void }[] }
 
   const groups: Group[] = [
     {
@@ -319,11 +279,6 @@ export default function ProfileScreen() {
           icon: '📋',
           onPress: () => setShowExportExcel(true),
         },
-        {
-          label: `Exportar IR ${new Date().getFullYear() - 1} (CSV)`,
-          icon: '📊',
-          onPress: handleExportarIR,
-        },
         { label: 'Limpar dados de teste', icon: '🗑', onPress: handleLimparDados, danger: true },
       ],
     },
@@ -331,8 +286,9 @@ export default function ProfileScreen() {
       title: 'Financeiro',
       items: [
         {
-          label: 'Deduções IR',
-          icon: '📋',
+          label: 'Deduções de IR',
+          icon: '',
+          iconImage: require('../../assets/receita-federal.ico'),
           value: user?.ir_module_enabled ? undefined : 'Premium',
           onPress: () => router.push('/ir'),
         },
@@ -492,7 +448,10 @@ export default function ProfileScreen() {
                   onPress={item.toggle ? undefined : item.onPress}
                   activeOpacity={item.toggle ? 1 : 0.7}
                 >
-                  <Text style={styles.menuIcon}>{item.icon}</Text>
+                  {item.iconImage
+                    ? <Image source={item.iconImage} style={styles.menuIconImage} />
+                    : <Text style={styles.menuIcon}>{item.icon}</Text>
+                  }
                   <Text style={[styles.menuLabel, item.danger && styles.danger]}>{item.label}</Text>
                   {item.value ? <Text style={styles.menuValue}>{item.value}</Text> : null}
                   {item.toggle ? (
@@ -723,6 +682,7 @@ const styles = StyleSheet.create({
   },
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
   menuIcon: { fontSize: 20, marginRight: 14, width: 28, textAlign: 'center' },
+  menuIconImage: { width: 28, height: 28, marginRight: 14, resizeMode: 'contain' },
   menuLabel: { flex: 1, fontSize: 15, color: Colors.textDark },
   menuValue: { fontSize: 13, color: Colors.textMuted, marginRight: 8 },
   danger: { color: Colors.danger },
