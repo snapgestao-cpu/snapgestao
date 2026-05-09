@@ -25,7 +25,6 @@ import { getIncomeSourcesBatch } from '../../lib/income-history'
 import { getPotIcon } from '../../lib/potIcons'
 import { SearchBar } from '../../components/SearchBar'
 
-const COL = { month: 52, value: 108 }
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 function brl(v: number) {
@@ -289,82 +288,78 @@ export default function ProjectionScreen() {
 
             {/* Table */}
             <View style={styles.table}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View>
-                  {/* Header */}
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.tableHCell, { width: COL.month, paddingLeft: 8 }]}>Mês</Text>
-                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
-                      💰 Receita
-                    </Text>
-                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', color: Colors.danger }]}>
-                      📊 Despesa
-                    </Text>
-                    <Text style={[styles.tableHCell, { width: COL.value, textAlign: 'right', paddingRight: 12 }]}>
-                      💹 Saldo
-                    </Text>
-                  </View>
+              {/* Header */}
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHCell, { flex: 1.4, paddingLeft: 8 }]}>Mês</Text>
+                <Text style={[styles.tableHCell, { flex: 1.2, textAlign: 'right', color: Colors.success }]}>
+                  💰 Receita
+                </Text>
+                <Text style={[styles.tableHCell, { flex: 1.2, textAlign: 'right', color: Colors.danger }]}>
+                  📊 Despesa
+                </Text>
+                <Text style={[styles.tableHCell, { flex: 1.2, textAlign: 'right', paddingRight: 8 }]}>
+                  💹 Saldo
+                </Text>
+              </View>
 
-                  {rows.map((row, i) => {
-                    const isFuture = row.offset > 0
-                    const hasCredit = row.installmentsTotal > 0
-                    return (
-                      <TouchableOpacity
-                        key={i}
-                        activeOpacity={hasCredit ? 0.7 : 1}
-                        onPress={() => { if (hasCredit) setSelectedCreditMonth(row) }}
-                      >
-                        <View style={[
-                          styles.tableRow,
-                          isFuture && styles.futureRow,
-                          { borderLeftWidth: hasCredit ? 3 : 0, borderLeftColor: Colors.warning },
-                        ]}>
-                          <Text style={[
-                            styles.tableCell,
-                            { width: COL.month, paddingLeft: 8, fontWeight: row.isCurrent ? '700' : '400' },
-                            isFuture && styles.futureCellText,
-                          ]}>
-                            {row.label}
-                          </Text>
-                          <Text style={[styles.tableCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>
-                            {brl(row.income)}
-                          </Text>
-                          <View style={{ width: COL.value, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
-                            <Text style={[styles.tableCell, { color: row.expense > 0 ? Colors.danger : Colors.textMuted }]}>
-                              {brl(row.expense)}
-                            </Text>
-                            {hasCredit && (
-                              <Text style={{ fontSize: 9, color: Colors.warning, marginLeft: 2 }}>💳</Text>
-                            )}
-                          </View>
-                          <View style={{ width: COL.value, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 12 }}>
-                            <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]}>
-                              {brl(row.saldo)}
-                            </Text>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    )
-                  })}
-
-                  {/* Totals */}
-                  {rows.length > 0 && (() => {
-                    const totalInc = rows.reduce((s, r) => s + r.income, 0)
-                    const totalExp = rows.reduce((s, r) => s + r.expense, 0)
-                    const totalSaldo = totalInc - totalExp
-                    return (
-                      <View style={styles.totalRow}>
-                        <Text style={[styles.totalCell, { width: COL.month, paddingLeft: 8 }]}>TOTAL</Text>
-                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.success }]}>{brl(totalInc)}</Text>
-                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', color: Colors.danger }]}>{brl(totalExp)}</Text>
-                        <Text style={[styles.totalCell, { width: COL.value, textAlign: 'right', paddingRight: 12, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]}>
-                          {brl(totalSaldo)}
+              {rows.map((row, i) => {
+                const isFuture = row.offset > 0
+                const hasCredit = row.installmentsTotal > 0
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    activeOpacity={hasCredit ? 0.7 : 1}
+                    onPress={() => { if (hasCredit) setSelectedCreditMonth(row) }}
+                  >
+                    <View style={[
+                      styles.tableRow,
+                      isFuture && styles.futureRow,
+                      { borderLeftWidth: hasCredit ? 3 : 0, borderLeftColor: Colors.warning },
+                    ]}>
+                      <Text style={[
+                        styles.tableCell,
+                        { flex: 1.4, paddingLeft: 8, fontWeight: row.isCurrent ? '700' : '400' },
+                        isFuture && styles.futureCellText,
+                      ]} numberOfLines={1}>
+                        {row.label}
+                      </Text>
+                      <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: Colors.success }]} numberOfLines={1}>
+                        {brl(row.income)}
+                      </Text>
+                      <View style={{ flex: 1.2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <Text style={[styles.tableCell, { color: row.expense > 0 ? Colors.danger : Colors.textMuted }]} numberOfLines={1}>
+                          {brl(row.expense)}
+                        </Text>
+                        {hasCredit && (
+                          <Text style={{ fontSize: 9, color: Colors.warning, marginLeft: 2 }}>💳</Text>
+                        )}
+                      </View>
+                      <View style={{ flex: 1.2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 8 }}>
+                        <Text style={[styles.tableCell, { color: row.saldo >= 0 ? Colors.success : Colors.danger }]} numberOfLines={1}>
+                          {brl(row.saldo)}
                         </Text>
                       </View>
-                    )
-                  })()}
-                </View>
-              </ScrollView>
+                    </View>
+                  </TouchableOpacity>
+                )
+              })}
+
+              {/* Totals */}
+              {rows.length > 0 && (() => {
+                const totalInc = rows.reduce((s, r) => s + r.income, 0)
+                const totalExp = rows.reduce((s, r) => s + r.expense, 0)
+                const totalSaldo = totalInc - totalExp
+                return (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalCell, { flex: 1.4, paddingLeft: 8 }]}>TOTAL</Text>
+                    <Text style={[styles.totalCell, { flex: 1.2, textAlign: 'right', color: Colors.success }]} numberOfLines={1}>{brl(totalInc)}</Text>
+                    <Text style={[styles.totalCell, { flex: 1.2, textAlign: 'right', color: Colors.danger }]} numberOfLines={1}>{brl(totalExp)}</Text>
+                    <Text style={[styles.totalCell, { flex: 1.2, textAlign: 'right', paddingRight: 8, color: totalSaldo >= 0 ? Colors.success : Colors.danger }]} numberOfLines={1}>
+                      {brl(totalSaldo)}
+                    </Text>
+                  </View>
+                )
+              })()}
             </View>
 
             {/* Card informativo */}
