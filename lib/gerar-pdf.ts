@@ -356,7 +356,12 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
 export async function salvarPDFnoDownloads(uri: string, fileName: string): Promise<void> {
   const { status } = await MediaLibrary.requestPermissionsAsync()
   if (status !== 'granted') throw new Error('Permissão de armazenamento negada')
-  const asset = await MediaLibrary.createAssetAsync(uri)
+
+  // Android exige que o arquivo esteja em cacheDirectory para createAssetAsync aceitar
+  const cachedUri = FileSystem.cacheDirectory + fileName
+  await FileSystem.copyAsync({ from: uri, to: cachedUri })
+
+  const asset = await MediaLibrary.createAssetAsync(cachedUri)
   await MediaLibrary.createAlbumAsync('Download', asset, false)
 }
 
