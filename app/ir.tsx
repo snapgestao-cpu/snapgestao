@@ -16,6 +16,7 @@ import { Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import * as Sharing from 'expo-sharing'
+import * as FileSystem from 'expo-file-system/legacy'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
 import { getIRDeductibles, groupByCategory, getIRReceiptImageUrl, IRCategoryGroup, IRDeductible } from '../lib/ir'
@@ -273,7 +274,16 @@ export default function IRScreen() {
             )}
             <TouchableOpacity
               style={styles.shareImageBtn}
-              onPress={() => receiptImage && Sharing.shareAsync(receiptImage.uri)}
+              onPress={async () => {
+                if (!receiptImage) return
+                try {
+                  const localUri = (FileSystem.cacheDirectory ?? '') + 'recibo_ir.jpg'
+                  await FileSystem.downloadAsync(receiptImage.uri, localUri)
+                  await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', dialogTitle: 'Compartilhar recibo' })
+                } catch {
+                  Alert.alert('Erro', 'Não foi possível compartilhar a imagem.')
+                }
+              }}
             >
               <Text style={styles.shareImageBtnText}>Compartilhar imagem</Text>
             </TouchableOpacity>
