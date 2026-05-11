@@ -553,15 +553,41 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
                     ) : (
                       <TouchableOpacity
                         style={styles.irImagePickerBtn}
-                        onPress={async () => {
-                          const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            quality: 0.8,
-                          })
-                          if (!result.canceled && result.assets[0]) {
-                            setIrReceiptImageUri(result.assets[0].uri)
-                            setIrReceiptImageChanged(true)
-                          }
+                        onPress={() => {
+                          Alert.alert('Foto do recibo', 'Como deseja adicionar?', [
+                            {
+                              text: '📷 Fotografar',
+                              onPress: async () => {
+                                const perm = await ImagePicker.requestCameraPermissionsAsync()
+                                if (perm.status !== 'granted') {
+                                  Alert.alert('Permissão necessária', 'Permita o acesso à câmera nas configurações.')
+                                  return
+                                }
+                                const result = await ImagePicker.launchCameraAsync({
+                                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                  quality: 0.8,
+                                })
+                                if (!result.canceled && result.assets[0]) {
+                                  setIrReceiptImageUri(result.assets[0].uri)
+                                  setIrReceiptImageChanged(true)
+                                }
+                              },
+                            },
+                            {
+                              text: '🖼️ Galeria',
+                              onPress: async () => {
+                                const result = await ImagePicker.launchImageLibraryAsync({
+                                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                  quality: 0.8,
+                                })
+                                if (!result.canceled && result.assets[0]) {
+                                  setIrReceiptImageUri(result.assets[0].uri)
+                                  setIrReceiptImageChanged(true)
+                                }
+                              },
+                            },
+                            { text: 'Cancelar', style: 'cancel' },
+                          ])
                         }}
                       >
                         <Text style={styles.irImagePickerText}>+ Anexar foto do recibo</Text>

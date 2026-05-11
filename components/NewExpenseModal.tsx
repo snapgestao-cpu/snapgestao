@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image, Alert,
 } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -483,20 +483,41 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
                     <Text style={styles.label}>Foto do recibo <Text style={styles.optional}>(opcional)</Text></Text>
                     <TouchableOpacity
                       style={styles.irImageBtn}
-                      onPress={async () => {
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                          quality: 0.8,
-                        })
-                        if (!result.canceled && result.assets[0]) {
-                          setIrReceiptImageUri(result.assets[0].uri)
-                        }
+                      onPress={() => {
+                        Alert.alert('Foto do recibo', 'Como deseja adicionar?', [
+                          {
+                            text: '📷 Fotografar',
+                            onPress: async () => {
+                              const perm = await ImagePicker.requestCameraPermissionsAsync()
+                              if (perm.status !== 'granted') {
+                                Alert.alert('Permissão necessária', 'Permita o acesso à câmera nas configurações.')
+                                return
+                              }
+                              const result = await ImagePicker.launchCameraAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                quality: 0.8,
+                              })
+                              if (!result.canceled && result.assets[0]) setIrReceiptImageUri(result.assets[0].uri)
+                            },
+                          },
+                          {
+                            text: '🖼️ Galeria',
+                            onPress: async () => {
+                              const result = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                quality: 0.8,
+                              })
+                              if (!result.canceled && result.assets[0]) setIrReceiptImageUri(result.assets[0].uri)
+                            },
+                          },
+                          { text: 'Cancelar', style: 'cancel' },
+                        ])
                       }}
                     >
                       {irReceiptImageUri ? (
                         <Image source={{ uri: irReceiptImageUri }} style={styles.irImageThumb} />
                       ) : (
-                        <Text style={styles.irImageBtnText}>📎 Escolher imagem</Text>
+                        <Text style={styles.irImageBtnText}>📎 Anexar recibo</Text>
                       )}
                     </TouchableOpacity>
                     {irReceiptImageUri && (

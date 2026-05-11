@@ -7,6 +7,7 @@
  */
 
 import * as ImageManipulator from 'expo-image-manipulator'
+import * as FileSystem from 'expo-file-system/legacy'
 import { supabase } from './supabase'
 import { IRCategory, Transaction } from '../types'
 
@@ -89,15 +90,21 @@ export async function uploadIRReceiptImage(
     { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
   )
 
-  const response = await fetch(compressed.uri)
-  const blob = await response.blob()
-  const arrayBuffer = await blob.arrayBuffer()
+  // blob.arrayBuffer() não existe no Hermes/React Native — ler como base64 e decodificar
+  const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  })
+  const binaryStr = atob(base64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i)
+  }
 
   const path = `${userId}/ir/${transactionId}.jpg`
 
   const { error } = await supabase.storage
     .from('receipts')
-    .upload(path, arrayBuffer, {
+    .upload(path, bytes, {
       contentType: 'image/jpeg',
       upsert: true,
     })
