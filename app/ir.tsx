@@ -60,10 +60,6 @@ export default function IRScreen() {
     try {
       const uri = await gerarRelatorioIR(user.id, year, user.name)
       await salvarPDFnoDownloads(uri, `IR_${year}_SnapGestao.pdf`)
-      Alert.alert('PDF salvo!', `Relatório IR ${year} salvo em Downloads.`, [
-        { text: 'Compartilhar', onPress: () => Sharing.shareAsync(uri, { mimeType: 'application/pdf' }) },
-        { text: 'OK' },
-      ])
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Não foi possível gerar o PDF.')
     } finally {

@@ -16,8 +16,6 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import * as FileSystem from 'expo-file-system/legacy'
-import * as MediaLibrary from 'expo-media-library'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
@@ -135,7 +133,6 @@ export default function MentorScreen() {
   const [errorMsg, setErrorMsg] = useState('')
   const [pdfUri, setPdfUri] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
-  const [savingPdf, setSavingPdf] = useState(false)
   const [aiTokens, setAiTokens] = useState<number | null>(null)
 
   const fadeAnim = useRef(new Animated.Value(1)).current
@@ -242,48 +239,6 @@ export default function MentorScreen() {
       Alert.alert('Erro', e?.message ?? 'Não foi possível compartilhar o PDF.')
     } finally {
       setSharingPdf(false)
-    }
-  }
-
-  const handleSalvarPDF = async () => {
-    if (!pdfUri) return
-    setSavingPdf(true)
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync()
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permissão necessária',
-          'Precisamos de permissão para salvar o PDF na pasta Downloads.',
-          [{ text: 'OK' }]
-        )
-        return
-      }
-
-      const dataHoje = new Date().toISOString().split('T')[0]
-      const nomeArquivo = `SnapGestao_Mentor_${dataHoje}.pdf`
-      const tempUri = FileSystem.cacheDirectory + nomeArquivo
-
-      await FileSystem.copyAsync({ from: pdfUri, to: tempUri })
-
-      const asset = await MediaLibrary.createAssetAsync(tempUri)
-      await MediaLibrary.createAlbumAsync('Download', asset, false)
-
-      await FileSystem.deleteAsync(tempUri, { idempotent: true })
-
-      Alert.alert(
-        '✅ PDF salvo!',
-        `O arquivo "${nomeArquivo}" foi salvo na pasta Downloads do seu celular.`,
-        [{ text: 'OK' }]
-      )
-    } catch (err: any) {
-      console.error('Erro ao salvar PDF:', err)
-      Alert.alert(
-        'Erro ao salvar',
-        'Não foi possível salvar o PDF.\nTente usar "Compartilhar PDF" e salvar manualmente.',
-        [{ text: 'OK' }]
-      )
-    } finally {
-      setSavingPdf(false)
     }
   }
 
@@ -532,34 +487,16 @@ export default function MentorScreen() {
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {pdfUri ? (
           <>
-            {/* Salvar PDF */}
+            {/* Exportar PDF (compartilhar / salvar) */}
             <TouchableOpacity
-              style={styles.salvarBtn}
-              onPress={handleSalvarPDF}
-              disabled={savingPdf}
-              activeOpacity={0.85}
-            >
-              {savingPdf
-                ? <ActivityIndicator color={Colors.accent} />
-                : (
-                  <>
-                    <Text style={styles.salvarBtnIcon}>💾</Text>
-                    <Text style={styles.salvarBtnText}>Salvar PDF</Text>
-                  </>
-                )
-              }
-            </TouchableOpacity>
-
-            {/* Compartilhar PDF */}
-            <TouchableOpacity
-              style={[styles.primaryBtn, sharingPdf && styles.btnDisabled, { marginTop: 10 }]}
+              style={[styles.primaryBtn, sharingPdf && styles.btnDisabled]}
               onPress={handleCompartilharPDF}
               disabled={sharingPdf}
               activeOpacity={0.85}
             >
               {sharingPdf
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.primaryBtnText}>📄 Compartilhar PDF</Text>
+                : <Text style={styles.primaryBtnText}>📤 Exportar PDF</Text>
               }
             </TouchableOpacity>
 

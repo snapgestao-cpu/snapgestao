@@ -12,7 +12,6 @@
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'
-import * as MediaLibrary from 'expo-media-library'
 import { getIRDeductibles, groupByCategory, IR_LIMITS, IR_CATEGORY_LABELS } from './ir'
 import { brl } from './finance'
 
@@ -353,16 +352,19 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
   return uri
 }
 
+// Copia o PDF para cacheDirectory (nome legível) e abre o share sheet.
+// MediaLibrary.createAssetAsync não aceita PDFs no Android 10+ (restrição do MediaStore).
+// O share sheet permite ao usuário salvar em Downloads, Drive, enviar por e-mail, etc.
 export async function salvarPDFnoDownloads(uri: string, fileName: string): Promise<void> {
-  const { status } = await MediaLibrary.requestPermissionsAsync()
-  if (status !== 'granted') throw new Error('Permissão de armazenamento negada')
-
-  // Android exige que o arquivo esteja em cacheDirectory para createAssetAsync aceitar
-  const cachedUri = FileSystem.cacheDirectory + fileName
+  const cachedUri = (FileSystem.cacheDirectory ?? '') + fileName
   await FileSystem.copyAsync({ from: uri, to: cachedUri })
-
-  const asset = await MediaLibrary.createAssetAsync(cachedUri)
-  await MediaLibrary.createAlbumAsync('Download', asset, false)
+  const canShare = await Sharing.isAvailableAsync()
+  if (!canShare) throw new Error('Compartilhamento não disponível neste dispositivo')
+  await Sharing.shareAsync(cachedUri, {
+    mimeType: 'application/pdf',
+    dialogTitle: fileName,
+    UTI: 'com.adobe.pdf',
+  })
 }
 
 export async function compartilharPDF(uri: string): Promise<void> {

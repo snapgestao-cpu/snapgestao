@@ -178,13 +178,12 @@ export async function exportTransactionsToExcel(
   })
 
   const canShare = await Sharing.isAvailableAsync()
-  if (canShare) {
-    await Sharing.shareAsync(path, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: `Exportar ${filenameLabel}`,
-      UTI: 'com.microsoft.excel.xlsx',
-    })
-  }
+  if (!canShare) throw new Error('Compartilhamento não disponível neste dispositivo')
+  await Sharing.shareAsync(path, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: `Exportar ${filenameLabel}`,
+    UTI: 'com.microsoft.excel.xlsx',
+  })
 }
 
 // ── Period helpers (used by modal) ──
