@@ -290,16 +290,16 @@ Para promover: `UPDATE public.users SET plan = 'premium' WHERE id = '...'`.
 
 ## Gráficos Financeiros
 
-Feature implementada em `app/charts.tsx` e `lib/charts-data.ts`.
+Feature implementada em `app/(tabs)/charts.tsx` e `lib/charts-data.ts`.
 
 **Biblioteca**: `react-native-gifted-charts` (PieChart, BarChart, LineChart) + `react-native-svg` (radar chart customizado). Instaladas com `--legacy-peer-deps`.
 
-**Acesso**: Perfil → grupo "Dados" → "📊 Gráficos financeiros" → `router.push('/charts')`. Rota `/charts` está na allowlist do guard em `_layout.tsx`.
+**Acesso**: Aba "📊 Gráficos" na tab bar (entre Metas e Perfil). Rota coberta por `inTabs` no guard de `_layout.tsx`.
 
 **Estrutura**: header fixo + seletor de ciclo + 5 abas horizontais (ScrollView). Conteúdo: `FlatList` horizontal paginada com `pagingEnabled`. `onMomentumScrollEnd` sincroniza a aba ativa.
 
 **Tópicos e gráficos**:
-1. 📊 Gastos — donut por pote, barras gasto vs orçado, pizza necessidade/desejo
+1. 📊 Gastos — donut por pote, pizza necessidade/desejo, donut distribuição por forma de pagamento
 2. 💰 Receita e Saldo — LineChart duplo receita vs despesa (7 ciclos), BarChart saldo por ciclo
 3. 🎯 Metas e Reserva — barras horizontais de progresso por meta, AreaChart reserva de emergência
 4. 💳 Crédito — barras compromisso futuro por mês (com tooltip), donut distribuição por forma de pagamento

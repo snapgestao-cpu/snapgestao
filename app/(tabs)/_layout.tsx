@@ -68,6 +68,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="charts"
+        options={{
+          title: 'Gráficos',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📊" active={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',

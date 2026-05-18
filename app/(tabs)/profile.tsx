@@ -264,11 +264,6 @@ export default function ProfileScreen() {
       title: 'Dados',
       items: [
         {
-          label: 'Gráficos financeiros',
-          icon: '📊',
-          onPress: () => router.push('/charts' as any),
-        },
-        {
           label: 'Compartilhar preços anônimos',
           icon: '🤝',
           onPress: () => {},

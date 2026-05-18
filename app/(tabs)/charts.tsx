@@ -4,14 +4,13 @@ import {
   Dimensions, FlatList,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
-import { Colors } from '../constants/colors'
-import { useAuthStore } from '../stores/useAuthStore'
-import { supabase } from '../lib/supabase'
-import { getCycle } from '../lib/cycle'
-import { brl } from '../lib/finance'
+import { Colors } from '../../constants/colors'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { supabase } from '../../lib/supabase'
+import { getCycle } from '../../lib/cycle'
+import { brl } from '../../lib/finance'
 import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
@@ -19,7 +18,7 @@ import {
   getCreditByCard,
   PotExpense, MonthlyTotal, CreditCommitment, PaymentMethodShare,
   GoalProgress, ReservePoint, NecessityShare, FinancialScore, CreditByCard,
-} from '../lib/charts-data'
+} from '../../lib/charts-data'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 const CHART_W = SCREEN_W - 32
@@ -169,28 +168,6 @@ function ChartCard({ title, description, children }: {
   )
 }
 
-// ── Horizontal budget bar ──────────────────────────────────────────────────
-function BudgetRow({ name, color, spent, limit }: {
-  name: string; color: string; spent: number; limit: number | null
-}) {
-  const pct = limit && limit > 0 ? Math.min(1, spent / limit) : 1
-  const overBudget = limit !== null && spent > limit
-  return (
-    <View style={s.budgetRow}>
-      <Text style={s.budgetName} numberOfLines={1}>{name}</Text>
-      <View style={s.budgetBarBg}>
-        <View style={[s.budgetBarFill, {
-          width: `${Math.min(100, pct * 100)}%` as any,
-          backgroundColor: overBudget ? Colors.danger : color,
-        }]} />
-      </View>
-      <Text style={[s.budgetValue, overBudget && { color: Colors.danger }]}>
-        {brl(spent)}{limit !== null ? ` / ${brl(limit)}` : ''}
-      </Text>
-    </View>
-  )
-}
-
 // ── Topic 1: Gastos ────────────────────────────────────────────────────────
 function TopicGastos({ userId, cycleStart, cycleEnd }: {
   userId: string; cycleStart: string; cycleEnd: string
@@ -226,7 +203,6 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
 
   const ns = necessity ?? { necessity: 0, desire: 0, unclassified: 0 }
   const needTotal   = ns.necessity + ns.desire + ns.unclassified
-  const classified  = ns.necessity + ns.desire
   const needPie = needTotal > 0 ? [
     ...(ns.necessity > 0 ? [{ value: ns.necessity, color: Colors.success, text: Math.round((ns.necessity / needTotal) * 100) + '%' }] : []),
     ...(ns.desire > 0    ? [{ value: ns.desire,    color: Colors.warning,  text: Math.round((ns.desire / needTotal) * 100) + '%' }] : []),
@@ -269,26 +245,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
         )}
       </ChartCard>
 
-      {/* Gráfico 2: barras horizontais gasto vs orçado */}
-      <ChartCard title="Gasto vs. Orçado por pote" description="Compare o que você gastou com o limite definido em cada pote.">
-        {potExpenses.length === 0 ? (
-          <Empty icon="📊" text="Nenhum dado disponível" />
-        ) : (
-          <View style={{ gap: 10 }}>
-            {potExpenses.slice(0, 8).map(p => (
-              <BudgetRow key={p.potId} name={p.potName} color={p.potColor} spent={p.total} limit={p.limit} />
-            ))}
-            <View style={s.budgetLegend}>
-              <View style={[s.legendDot, { backgroundColor: Colors.primary }]} />
-              <Text style={s.cardDesc}>Dentro do limite</Text>
-              <View style={[s.legendDot, { backgroundColor: Colors.danger, marginLeft: 12 }]} />
-              <Text style={s.cardDesc}>Acima do limite</Text>
-            </View>
-          </View>
-        )}
-      </ChartCard>
-
-      {/* Gráfico 3: necessidade vs desejo */}
+      {/* Gráfico 2: necessidade vs desejo */}
       <ChartCard title="Necessidade vs. Desejo" description="Proporção dos seus gastos entre necessidades e desejos.">
         <Text style={s.noteText}>
           Baseado na classificação que você faz ao registrar cada gasto. Ao lançar uma despesa, o toggle "Necessidade/Desejo" define esta categorização.
@@ -338,7 +295,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
         )}
       </ChartCard>
 
-      {/* Gráfico 4: distribuição por forma de pagamento */}
+      {/* Gráfico 3: distribuição por forma de pagamento */}
       <ChartCard title="Distribuição por forma de pagamento" description="Como você está pagando suas despesas — cartão, pix, dinheiro, etc.">
         {pieDist.length === 0 ? (
           <Empty icon="💰" text="Nenhum gasto registrado neste ciclo" />
@@ -780,11 +737,7 @@ export default function ChartsScreen() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={s.backText}>‹</Text>
-        </TouchableOpacity>
         <Text style={s.headerTitle}>Gráficos</Text>
-        <View style={{ width: 32 }} />
       </View>
 
       <View style={s.cycleRow}>
@@ -853,12 +806,10 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  backBtn:     { width: 32, alignItems: 'flex-start' },
-  backText:    { fontSize: 26, color: Colors.primary, fontWeight: '400', lineHeight: 30 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark },
 
   cycleRow: {
@@ -926,14 +877,6 @@ const s = StyleSheet.create({
   legendPct:  { fontSize: 11, color: Colors.textMuted, width: 36, textAlign: 'right' },
 
   donutCenter: { fontSize: 11, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
-
-  // Budget bars (Gasto vs. Orçado)
-  budgetRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  budgetName: { width: 80, fontSize: 11, color: Colors.textDark },
-  budgetBarBg: { flex: 1, height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden' },
-  budgetBarFill: { height: 8, borderRadius: 4 },
-  budgetValue: { fontSize: 10, color: Colors.textMuted, width: 90, textAlign: 'right' },
-  budgetLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
 
   // Necessity/Desire hint
   classifyHint: {
