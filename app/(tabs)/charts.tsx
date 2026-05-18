@@ -343,18 +343,19 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
   const incomeLineData = monthly.map(m => ({ value: m.income }))
   const expLineData    = monthly.map(m => ({ value: m.expense }))
   const labels         = monthly.map(m => m.label.slice(0, 3))
+  const lineMaxValue   = Math.ceil(Math.max(...monthly.map(m => Math.max(m.income, m.expense))) * 1.2) || 100
 
-  const balances = monthly.map(m => m.income - m.expense)
-  const balanceBarData = balances.map((saldo, i) => ({
-    value: Math.abs(saldo),
-    label: monthly[i].label.slice(0, 3),
-    frontColor: saldo >= 0 ? Colors.success : Colors.danger,
+  const balanceBarData = monthly.map(m => ({
+    value: Math.abs(m.balance),
+    label: m.label.slice(0, 3),
+    frontColor: m.balance >= 0 ? Colors.success : Colors.danger,
     topLabelComponent: () => (
-      <Text style={{ fontSize: 8, color: saldo >= 0 ? Colors.success : Colors.danger, marginBottom: 2, textAlign: 'center' }}>
-        {saldo >= 0 ? '' : '−'}{fmtShort(Math.abs(saldo))}
+      <Text style={{ fontSize: 8, color: m.balance >= 0 ? Colors.success : Colors.danger, marginBottom: 2, textAlign: 'center' }}>
+        {m.balance >= 0 ? '' : '−'}{fmtShort(Math.abs(m.balance))}
       </Text>
     ),
   }))
+  const balanceMaxValue = Math.ceil(Math.max(...balanceBarData.map(b => b.value)) * 1.2) || 100
 
   return (
     <>
@@ -368,7 +369,8 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
                 data={incomeLineData}
                 data2={expLineData}
                 width={CHART_W - 32}
-                height={160}
+                height={280}
+                maxValue={lineMaxValue}
                 color1={Colors.primary}
                 color2={Colors.danger}
                 dataPointsColor1={Colors.primary}
@@ -419,6 +421,7 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
               width={CHART_W - 32}
               barWidth={28}
               spacing={14}
+              maxValue={balanceMaxValue}
               noOfSections={4}
               yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
               xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
