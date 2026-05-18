@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Dimensions, FlatList, ActivityIndicator,
+  Dimensions, FlatList,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -9,6 +9,7 @@ import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
+import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
 import { brl } from '../lib/finance'
 import {
@@ -23,68 +24,69 @@ const { width: SCREEN_W } = Dimensions.get('window')
 const CHART_W = SCREEN_W - 32
 
 const TOPICS = [
-  { id: 'gastos', label: '📊 Gastos' },
+  { id: 'gastos',  label: '📊 Gastos' },
   { id: 'receita', label: '💰 Receita e Saldo' },
-  { id: 'metas', label: '🎯 Metas e Reserva' },
+  { id: 'metas',   label: '🎯 Metas e Reserva' },
   { id: 'credito', label: '💳 Crédito' },
-  { id: 'ia', label: '🤖 IA' },
+  { id: 'ia',      label: '🤖 IA' },
 ]
+
+const AXIS_INFO = [
+  { emoji: '🎯', key: 'controle',    name: 'Controle',     desc: '% de potes que ficaram dentro do limite',        tip: 'Reduza gastos nos potes que estouraram' },
+  { emoji: '💰', key: 'poupanca',    name: 'Poupança',     desc: '% da renda que sobrou nos últimos 3 ciclos',      tip: 'Tente guardar pelo menos 10% da renda' },
+  { emoji: '📋', key: 'planejamento',name: 'Planejamento', desc: '% de agendados confirmados no prazo',            tip: 'Confirme seus lançamentos agendados regularmente' },
+  { emoji: '⚖️', key: 'equilibrio',  name: 'Equilíbrio',   desc: 'Proporção de necessidades vs. desejos',          tip: 'Ideal: 70% necessidades, 30% desejos' },
+  { emoji: '📈', key: 'consistencia',name: 'Consistência', desc: 'Quantos dos últimos 6 ciclos foram positivos',    tip: 'Feche mais ciclos no azul para melhorar' },
+]
+
+function getMotivation(score: number): string {
+  if (score <= 40) return 'Você está começando sua jornada financeira. Cada passo conta! 💪'
+  if (score <= 70) return 'Bom progresso! Continue monitorando seus gastos. 📊'
+  if (score <= 90) return 'Ótima gestão financeira! Você está no caminho certo. ⭐'
+  return 'Excelente! Você é um exemplo de controle financeiro! 🏆'
+}
 
 // ── Radar Chart ────────────────────────────────────────────────────────────
 function RadarChart({ scores }: { scores: number[] }) {
-  const SIZE = 200
+  const SIZE = 220
   const CENTER = SIZE / 2
-  const RADIUS = 80
-  const AXES = ['Controle', 'Poupança', 'Planejamento', 'Equilíbrio', 'Consistência']
-  const N = AXES.length
+  const RADIUS = 78
+  const N = scores.length
 
-  function getPoint(index: number, value: number, maxVal = 100) {
+  function getPoint(index: number, value: number) {
     const angle = (Math.PI * 2 * index) / N - Math.PI / 2
-    const r = RADIUS * (value / maxVal)
+    const r = RADIUS * (value / 100)
     return { x: CENTER + r * Math.cos(angle), y: CENTER + r * Math.sin(angle) }
   }
 
   function getLabelPoint(index: number) {
     const angle = (Math.PI * 2 * index) / N - Math.PI / 2
-    const r = RADIUS + 22
-    return { x: CENTER + r * Math.cos(angle), y: CENTER + r * Math.sin(angle) }
+    return { x: CENTER + (RADIUS + 24) * Math.cos(angle), y: CENTER + (RADIUS + 24) * Math.sin(angle) }
   }
 
+  const LABELS = ['Controle', 'Poupança', 'Planej.', 'Equilíbrio', 'Consistência']
   const rings = [25, 50, 75, 100]
   const dataPoints = scores.map((v, i) => getPoint(i, v))
   const polygonPoints = dataPoints.map(p => `${p.x},${p.y}`).join(' ')
-  const outerPoints = rings[3] / 100
-  const gridLines = AXES.map((_, i) => {
-    const pt = getPoint(i, 100)
-    return { x1: CENTER, y1: CENTER, x2: pt.x, y2: pt.y }
-  })
 
   return (
     <Svg width={SIZE} height={SIZE}>
-      {/* Grid rings */}
       {rings.map(r => {
         const pts = Array.from({ length: N }, (_, i) => getPoint(i, r)).map(p => `${p.x},${p.y}`).join(' ')
         return <Polygon key={r} points={pts} fill="none" stroke={Colors.border} strokeWidth={0.8} />
       })}
-      {/* Axis lines */}
-      {gridLines.map((l, i) => (
-        <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={Colors.border} strokeWidth={0.8} />
-      ))}
-      {/* Data polygon */}
-      <Polygon points={polygonPoints} fill={Colors.primary + '40'} stroke={Colors.primary} strokeWidth={2} />
-      {/* Data points */}
+      {Array.from({ length: N }, (_, i) => {
+        const pt = getPoint(i, 100)
+        return <Line key={i} x1={CENTER} y1={CENTER} x2={pt.x} y2={pt.y} stroke={Colors.border} strokeWidth={0.8} />
+      })}
+      <Polygon points={polygonPoints} fill={Colors.primary + '35'} stroke={Colors.primary} strokeWidth={2} />
       {dataPoints.map((p, i) => (
         <Circle key={i} cx={p.x} cy={p.y} r={4} fill={Colors.primary} />
       ))}
-      {/* Labels */}
-      {AXES.map((label, i) => {
+      {LABELS.map((label, i) => {
         const lp = getLabelPoint(i)
         return (
-          <SvgText
-            key={i} x={lp.x} y={lp.y}
-            fontSize={9} fill={Colors.textMuted}
-            textAnchor="middle" alignmentBaseline="middle"
-          >
+          <SvgText key={i} x={lp.x} y={lp.y} fontSize={8.5} fill={Colors.textMuted} textAnchor="middle" alignmentBaseline="middle">
             {label}
           </SvgText>
         )
@@ -109,10 +111,11 @@ function Empty({ icon, text }: { icon: string; text: string }) {
 }
 
 // ── Chart Card ─────────────────────────────────────────────────────────────
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <View style={s.card}>
       <Text style={s.cardTitle}>{title}</Text>
+      {description ? <Text style={s.cardDesc}>{description}</Text> : null}
       {children}
     </View>
   )
@@ -136,9 +139,9 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
     })
   }, [userId, cycleStart, cycleEnd])
 
-  if (loading) return <View style={s.topicPad}><Skeleton /><Skeleton /></View>
+  if (loading) return <><Skeleton /><Skeleton /></>
 
-  const totalExp = potExpenses.reduce((s, p) => s + p.total, 0)
+  const totalExp = potExpenses.reduce((sum, p) => sum + p.total, 0)
 
   const pieData = potExpenses.slice(0, 8).map(p => ({
     value: p.total,
@@ -150,22 +153,17 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
     value: p.total,
     label: p.potName.slice(0, 6),
     frontColor: p.potColor,
-    topLabelComponent: () => null,
-  }))
-  const barLimitData = potExpenses.slice(0, 6).map(p => ({
-    value: p.limit ?? 0,
-    frontColor: Colors.lightBlue,
   }))
 
   const needTotal = (necessity?.necessity ?? 0) + (necessity?.desire ?? 0)
   const needPie = needTotal > 0 ? [
     { value: necessity!.necessity, color: Colors.success, text: Math.round((necessity!.necessity / needTotal) * 100) + '%' },
-    { value: necessity!.desire, color: Colors.warning, text: Math.round((necessity!.desire / needTotal) * 100) + '%' },
+    { value: necessity!.desire,    color: Colors.warning,  text: Math.round((necessity!.desire / needTotal) * 100) + '%' },
   ] : []
 
   return (
-    <View style={s.topicPad}>
-      <ChartCard title="Gastos por pote">
+    <>
+      <ChartCard title="Gastos por pote" description="Veja como seus gastos estão distribuídos entre os potes neste ciclo.">
         {pieData.length === 0 ? (
           <Empty icon="🫙" text="Nenhum gasto registrado neste ciclo" />
         ) : (
@@ -176,9 +174,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
                 donut
                 radius={80}
                 innerRadius={50}
-                centerLabelComponent={() => (
-                  <Text style={s.donutCenter}>{brl(totalExp)}</Text>
-                )}
+                centerLabelComponent={() => <Text style={s.donutCenter}>{brl(totalExp)}</Text>}
                 showText
                 textSize={10}
                 textColor={Colors.white}
@@ -190,9 +186,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
                   <View style={[s.legendDot, { backgroundColor: p.potColor }]} />
                   <Text style={s.legendName}>{p.potName}</Text>
                   <Text style={s.legendVal}>{brl(p.total)}</Text>
-                  {totalExp > 0 && (
-                    <Text style={s.legendPct}>{Math.round((p.total / totalExp) * 100)}%</Text>
-                  )}
+                  {totalExp > 0 && <Text style={s.legendPct}>{Math.round((p.total / totalExp) * 100)}%</Text>}
                 </View>
               ))}
             </View>
@@ -200,41 +194,33 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
         )}
       </ChartCard>
 
-      <ChartCard title="Gasto vs. Orçado por pote">
+      <ChartCard title="Gasto vs. Orçado por pote" description="Compare o que você gastou com o limite definido em cada pote.">
         {barData.length === 0 ? (
           <Empty icon="📊" text="Nenhum dado disponível" />
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
             <BarChart
               data={barData}
-              width={Math.max(CHART_W - 32, barData.length * 60)}
-              barWidth={18}
-              spacing={14}
+              width={Math.max(CHART_W - 32, barData.length * 68)}
+              barWidth={22}
+              spacing={16}
               noOfSections={4}
               yAxisTextStyle={{ color: Colors.textMuted, fontSize: 10 }}
               xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
               rulesColor={Colors.border}
-              rulesType="solid"
-              hideRules={false}
               barBorderRadius={3}
             />
           </ScrollView>
         )}
       </ChartCard>
 
-      <ChartCard title="Necessidade vs. Desejo">
+      <ChartCard title="Necessidade vs. Desejo" description="Proporção dos seus gastos entre necessidades e desejos.">
         {needPie.length === 0 ? (
           <Empty icon="🏷️" text="Classifique seus gastos como necessidade ou desejo ao lançar" />
         ) : (
           <>
             <View style={s.center}>
-              <PieChart
-                data={needPie}
-                radius={70}
-                showText
-                textSize={11}
-                textColor={Colors.white}
-              />
+              <PieChart data={needPie} radius={70} showText textSize={11} textColor={Colors.white} />
             </View>
             <View style={s.legendWrap}>
               <View style={s.legendRow}>
@@ -253,7 +239,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: { userId: string; cycleSt
           </>
         )}
       </ChartCard>
-    </View>
+    </>
   )
 }
 
@@ -270,31 +256,25 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
     })
   }, [userId, cycleStartDay])
 
-  if (loading) return <View style={s.topicPad}><Skeleton /><Skeleton /></View>
+  if (loading) return <><Skeleton /><Skeleton /></>
 
   const incomeLineData = monthly.map(m => ({ value: m.income }))
-  const expLineData = monthly.map(m => ({ value: m.expense }))
-  const labels = monthly.map(m => m.label.slice(0, 3))
+  const expLineData    = monthly.map(m => ({ value: m.expense }))
+  const labels         = monthly.map(m => m.label.slice(0, 3))
 
   const balanceBarData = monthly.map(m => {
     const saldo = m.income - m.expense
-    return {
-      value: Math.abs(saldo),
-      label: m.label.slice(0, 3),
-      frontColor: saldo >= 0 ? Colors.success : Colors.danger,
-    }
+    return { value: Math.abs(saldo), label: m.label.slice(0, 3), frontColor: saldo >= 0 ? Colors.success : Colors.danger }
   })
 
-  const maxVal = Math.max(...monthly.map(m => Math.max(m.income, m.expense)), 1)
-
   return (
-    <View style={s.topicPad}>
-      <ChartCard title="Receita vs. Despesa (últimos 7 ciclos)">
+    <>
+      <ChartCard title="Receita vs. Despesa" description="Evolução mensal da sua receita e despesa nos últimos 6 meses.">
         {monthly.every(m => m.income === 0 && m.expense === 0) ? (
           <Empty icon="💰" text="Nenhum dado de receita/despesa disponível" />
         ) : (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
               <LineChart
                 data={incomeLineData}
                 data2={expLineData}
@@ -336,16 +316,16 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
         )}
       </ChartCard>
 
-      <ChartCard title="Saldo por ciclo">
+      <ChartCard title="Saldo por ciclo" description="Histórico do saldo final de cada ciclo — verde é positivo, vermelho é negativo.">
         {balanceBarData.every(b => b.value === 0) ? (
           <Empty icon="📈" text="Nenhum dado de saldo disponível" />
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
             <BarChart
               data={balanceBarData}
               width={CHART_W - 32}
-              barWidth={22}
-              spacing={12}
+              barWidth={26}
+              spacing={14}
               noOfSections={4}
               yAxisTextStyle={{ color: Colors.textMuted, fontSize: 10 }}
               xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
@@ -355,13 +335,13 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
           </ScrollView>
         )}
       </ChartCard>
-    </View>
+    </>
   )
 }
 
 // ── Topic 3: Metas e Reserva ───────────────────────────────────────────────
 function TopicMetas({ userId }: { userId: string }) {
-  const [goals, setGoals] = useState<GoalProgress[]>([])
+  const [goals, setGoals]     = useState<GoalProgress[]>([])
   const [reserve, setReserve] = useState<ReservePoint[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -377,13 +357,13 @@ function TopicMetas({ userId }: { userId: string }) {
     })
   }, [userId])
 
-  if (loading) return <View style={s.topicPad}><Skeleton /><Skeleton /></View>
+  if (loading) return <><Skeleton /><Skeleton /></>
 
   const reserveLineData = reserve.map(r => ({ value: r.balance }))
 
   return (
-    <View style={s.topicPad}>
-      <ChartCard title="Progresso das metas">
+    <>
+      <ChartCard title="Progresso das metas" description="Quanto você já avançou em cada meta ativa.">
         {goals.length === 0 ? (
           <Empty icon="🎯" text="Crie sua primeira meta para ver o progresso aqui" />
         ) : (
@@ -410,34 +390,32 @@ function TopicMetas({ userId }: { userId: string }) {
         )}
       </ChartCard>
 
-      <ChartCard title="Evolução da reserva de emergência">
+      <ChartCard title="Evolução da reserva de emergência" description="Evolução do saldo da sua reserva ao longo do tempo.">
         {reserve.every(r => r.balance === 0) ? (
           <Empty icon="🛡️" text="Nenhuma movimentação na reserva de emergência" />
         ) : (
-          <>
-            <LineChart
-              data={reserveLineData}
-              width={CHART_W - 32}
-              height={140}
-              color={Colors.success}
-              dataPointsColor={Colors.success}
-              startFillColor={Colors.success}
-              endFillColor={Colors.white}
-              startOpacity={0.25}
-              endOpacity={0}
-              areaChart
-              curved
-              noOfSections={3}
-              yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-              xAxisLabelTexts={reserve.map(r => r.label)}
-              xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-              rulesColor={Colors.border}
-              thickness={2}
-            />
-          </>
+          <LineChart
+            data={reserveLineData}
+            width={CHART_W - 32}
+            height={140}
+            color={Colors.success}
+            dataPointsColor={Colors.success}
+            startFillColor={Colors.success}
+            endFillColor={Colors.white}
+            startOpacity={0.25}
+            endOpacity={0}
+            areaChart
+            curved
+            noOfSections={3}
+            yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+            xAxisLabelTexts={reserve.map(r => r.label)}
+            xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+            rulesColor={Colors.border}
+            thickness={2}
+          />
         )}
       </ChartCard>
-    </View>
+    </>
   )
 }
 
@@ -446,9 +424,9 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
   userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string
 }) {
   const [commitments, setCommitments] = useState<CreditCommitment[]>([])
-  const [paymentDist, setPaymentDist] = useState<PaymentMethodShare[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tooltipIdx, setTooltipIdx] = useState<number | null>(null)
+  const [paymentDist, setPaymentDist]  = useState<PaymentMethodShare[]>([])
+  const [loading, setLoading]          = useState(true)
+  const [tooltipIdx, setTooltipIdx]    = useState<number | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -462,7 +440,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
     })
   }, [userId, cycleStartDay, cycleStart, cycleEnd])
 
-  if (loading) return <View style={s.topicPad}><Skeleton /><Skeleton /></View>
+  if (loading) return <><Skeleton /><Skeleton /></>
 
   const commitBarData = commitments.map((c, i) => ({
     value: c.total,
@@ -471,25 +449,25 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
     onPress: () => setTooltipIdx(tooltipIdx === i ? null : i),
   }))
 
-  const totalDist = paymentDist.reduce((s, p) => s + p.total, 0)
-  const pieDist = paymentDist.map(p => ({
+  const totalDist = paymentDist.reduce((sum, p) => sum + p.total, 0)
+  const pieDist   = paymentDist.map(p => ({
     value: p.total,
     color: p.color,
     text: totalDist > 0 ? Math.round((p.total / totalDist) * 100) + '%' : '',
   }))
 
   return (
-    <View style={s.topicPad}>
-      <ChartCard title="Compromisso de crédito futuro">
+    <>
+      <ChartCard title="Compromisso de crédito futuro" description="Total de parcelas de cartão que vencem em cada mês futuro.">
         {commitments.every(c => c.total === 0) ? (
           <Empty icon="💳" text="Nenhuma parcela de crédito registrada" />
         ) : (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
               <BarChart
                 data={commitBarData}
                 width={CHART_W - 32}
-                barWidth={28}
+                barWidth={30}
                 spacing={16}
                 noOfSections={4}
                 yAxisTextStyle={{ color: Colors.textMuted, fontSize: 10 }}
@@ -502,9 +480,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
               <View style={s.tooltip}>
                 <Text style={s.tooltipTitle}>{commitments[tooltipIdx].label} — {brl(commitments[tooltipIdx].total)}</Text>
                 {commitments[tooltipIdx].items.slice(0, 5).map((item, j) => (
-                  <Text key={j} style={s.tooltipItem}>
-                    · {item.merchant ?? item.description} — {brl(item.amount)}
-                  </Text>
+                  <Text key={j} style={s.tooltipItem}>· {item.merchant ?? item.description} — {brl(item.amount)}</Text>
                 ))}
                 {commitments[tooltipIdx].items.length > 5 && (
                   <Text style={s.tooltipMore}>+{commitments[tooltipIdx].items.length - 5} outros</Text>
@@ -518,7 +494,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
         )}
       </ChartCard>
 
-      <ChartCard title="Distribuição por forma de pagamento">
+      <ChartCard title="Distribuição por forma de pagamento" description="Como você está pagando suas despesas — cartão, pix, dinheiro, etc.">
         {pieDist.length === 0 ? (
           <Empty icon="💰" text="Nenhum gasto registrado neste ciclo" />
         ) : (
@@ -532,9 +508,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
                 showText
                 textSize={10}
                 textColor={Colors.white}
-                centerLabelComponent={() => (
-                  <Text style={s.donutCenter}>{brl(totalDist)}</Text>
-                )}
+                centerLabelComponent={() => <Text style={s.donutCenter}>{brl(totalDist)}</Text>}
               />
             </View>
             <View style={s.legendWrap}>
@@ -550,7 +524,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
           </>
         )}
       </ChartCard>
-    </View>
+    </>
   )
 }
 
@@ -567,89 +541,97 @@ function TopicIA({ userId, cycleStartDay }: { userId: string; cycleStartDay: num
     })
   }, [userId, cycleStartDay])
 
-  if (loading) return <View style={s.topicPad}><Skeleton height={240} /></View>
-
-  if (!score) return <View style={s.topicPad}><Empty icon="🤖" text="Dados insuficientes para calcular o score" /></View>
+  if (loading) return <Skeleton height={260} />
+  if (!score)  return <Empty icon="🤖" text="Dados insuficientes para calcular o score" />
 
   const scoreValues = [score.controle, score.poupanca, score.planejamento, score.equilibrio, score.consistencia]
-  const axes = [
-    { label: 'Controle', value: score.controle },
-    { label: 'Poupança', value: score.poupanca },
-    { label: 'Planejamento', value: score.planejamento },
-    { label: 'Equilíbrio', value: score.equilibrio },
-    { label: 'Consistência', value: score.consistencia },
-  ]
-
-  const scoreColor = score.total >= 75 ? Colors.success : score.total >= 50 ? Colors.warning : Colors.danger
+  const scoreColor  = score.total >= 75 ? Colors.success : score.total >= 50 ? Colors.warning : Colors.danger
 
   return (
-    <View style={s.topicPad}>
-      <ChartCard title="Radar: Perfil financeiro">
-        <View style={s.center}>
-          <View>
-            <RadarChart scores={scoreValues} />
-            <View style={s.radarScoreOverlay}>
-              <Text style={[s.radarScore, { color: scoreColor }]}>{score.total}</Text>
-              <Text style={s.radarScoreLabel}>/ 100</Text>
-            </View>
-          </View>
-        </View>
+    <ChartCard title="Seu Perfil Financeiro">
+      <Text style={s.cardDesc}>
+        Este gráfico mostra sua saúde financeira em 5 dimensões, calculadas com base no seu histórico. Quanto maior a área preenchida, melhor sua situação em cada aspecto.
+      </Text>
 
-        <View style={s.axesWrap}>
-          {axes.map(a => (
-            <View key={a.label} style={s.axisRow}>
-              <Text style={s.axisLabel}>{a.label}</Text>
-              <View style={s.axisBg}>
-                <View style={[s.axisFill, {
-                  width: `${a.value}%` as any,
-                  backgroundColor: a.value >= 70 ? Colors.success : a.value >= 40 ? Colors.warning : Colors.danger,
-                }]} />
+      {/* Radar + Score geral */}
+      <View style={s.center}>
+        <RadarChart scores={scoreValues} />
+      </View>
+      <View style={s.scoreBox}>
+        <Text style={[s.scoreNum, { color: scoreColor }]}>Score: {score.total}/100</Text>
+        <Text style={s.scoreMotivation}>{getMotivation(score.total)}</Text>
+      </View>
+
+      {/* Axis cards */}
+      <View style={{ marginTop: 16, gap: 10 }}>
+        {AXIS_INFO.map(a => {
+          const val = score[a.key as keyof FinancialScore] as number
+          const barColor = val >= 70 ? Colors.success : val >= 40 ? Colors.warning : Colors.danger
+          return (
+            <View key={a.key} style={s.axisCard}>
+              <View style={s.axisCardHeader}>
+                <Text style={s.axisEmoji}>{a.emoji}</Text>
+                <Text style={s.axisCardName}>{a.name}</Text>
+                <Text style={[s.axisCardScore, { color: barColor }]}>{val}/100</Text>
               </View>
-              <Text style={s.axisVal}>{a.value}%</Text>
+              <View style={s.axisBg}>
+                <View style={[s.axisFill, { width: `${val}%` as any, backgroundColor: barColor }]} />
+              </View>
+              <Text style={s.axisDesc}>{a.desc}</Text>
+              <Text style={s.axisTip}>💡 {a.tip}</Text>
             </View>
-          ))}
-        </View>
-
-        <View style={s.analysisBox}>
-          <Text style={s.analysisText}>{score.analysis}</Text>
-        </View>
-      </ChartCard>
-    </View>
+          )
+        })}
+      </View>
+    </ChartCard>
   )
 }
 
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function ChartsScreen() {
   const { user } = useAuthStore()
-  const [topicIdx, setTopicIdx] = useState(0)
+  const [activeIdx, setActiveIdx]   = useState(0)
   const [cycleOffset, setCycleOffset] = useState(0)
+  const [hasCreditTx, setHasCreditTx] = useState(false)
   const flatRef = useRef<FlatList>(null)
 
   const cycle = getCycle(user?.cycle_start ?? 1, cycleOffset)
 
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('payment_method', 'credit')
+      .eq('type', 'expense')
+      .gte('date', cycle.startISO)
+      .lte('date', cycle.endISO)
+      .then(({ count }) => setHasCreditTx((count ?? 0) > 0))
+  }, [user?.id, cycle.startISO, cycle.endISO])
+
   const scrollToTopic = useCallback((idx: number) => {
-    setTopicIdx(idx)
+    setActiveIdx(idx)
     flatRef.current?.scrollToIndex({ index: idx, animated: true })
   }, [])
 
   const onMomentumScrollEnd = useCallback((e: any) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)
-    setTopicIdx(idx)
+    setActiveIdx(idx)
   }, [])
 
   if (!user) return null
 
-  const renderTopic = ({ item, index }: { item: typeof TOPICS[0]; index: number }) => (
-    <View style={{ width: SCREEN_W }}>
-      {index === 0 && (
-        <TopicGastos userId={user.id} cycleStart={cycle.startISO} cycleEnd={cycle.endISO} />
-      )}
-      {index === 1 && (
-        <TopicReceita userId={user.id} cycleStartDay={user.cycle_start} />
-      )}
-      {index === 2 && (
-        <TopicMetas userId={user.id} />
-      )}
+  const renderTopic = ({ index }: { item: typeof TOPICS[0]; index: number }) => (
+    <ScrollView
+      style={{ width: SCREEN_W }}
+      contentContainerStyle={s.topicPad}
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled
+    >
+      {index === 0 && <TopicGastos  userId={user.id} cycleStart={cycle.startISO} cycleEnd={cycle.endISO} />}
+      {index === 1 && <TopicReceita userId={user.id} cycleStartDay={user.cycle_start} />}
+      {index === 2 && <TopicMetas   userId={user.id} />}
       {index === 3 && (
         <TopicCredito
           userId={user.id}
@@ -658,10 +640,8 @@ export default function ChartsScreen() {
           cycleEnd={cycle.endISO}
         />
       )}
-      {index === 4 && (
-        <TopicIA userId={user.id} cycleStartDay={user.cycle_start} />
-      )}
-    </View>
+      {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} />}
+    </ScrollView>
   )
 
   return (
@@ -690,6 +670,15 @@ export default function ChartsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Credit info banner */}
+      {hasCreditTx && (
+        <View style={s.creditBanner}>
+          <Text style={s.creditBannerText}>
+            ℹ️ Este ciclo inclui parcelas de cartão de crédito com vencimento em {cycle.monthYear}. As datas de compra podem ser de meses anteriores.
+          </Text>
+        </View>
+      )}
+
       {/* Topic tabs */}
       <ScrollView
         horizontal
@@ -701,9 +690,9 @@ export default function ChartsScreen() {
           <TouchableOpacity
             key={t.id}
             onPress={() => scrollToTopic(i)}
-            style={[s.tab, topicIdx === i && s.tabActive]}
+            style={[s.tab, activeIdx === i && s.tabActive]}
           >
-            <Text style={[s.tabText, topicIdx === i && s.tabTextActive]}>{t.label}</Text>
+            <Text style={[s.tabText, activeIdx === i && s.tabTextActive]} numberOfLines={1}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -711,11 +700,11 @@ export default function ChartsScreen() {
       {/* Dot indicators */}
       <View style={s.dotsRow}>
         {TOPICS.map((_, i) => (
-          <View key={i} style={[s.dot, topicIdx === i && s.dotActive]} />
+          <View key={i} style={[s.dot, activeIdx === i && s.dotActive]} />
         ))}
       </View>
 
-      {/* Paged content */}
+      {/* Paged content — FlatList horizontal, each item has its own ScrollView vertical */}
       <FlatList
         ref={flatRef}
         data={TOPICS}
@@ -725,11 +714,11 @@ export default function ChartsScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onMomentumScrollEnd}
-        nestedScrollEnabled
         getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
+        style={{ flex: 1 }}
       />
     </SafeAreaView>
   )
@@ -745,73 +734,80 @@ const s = StyleSheet.create({
     backgroundColor: Colors.white,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  backBtn: { width: 32, alignItems: 'flex-start' },
-  backText: { fontSize: 26, color: Colors.primary, fontWeight: '400', lineHeight: 30 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textDark },
+  backBtn:    { width: 32, alignItems: 'flex-start' },
+  backText:   { fontSize: 26, color: Colors.primary, fontWeight: '400', lineHeight: 30 },
+  headerTitle:{ fontSize: 17, fontWeight: '700', color: Colors.textDark },
 
   cycleRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 8, backgroundColor: Colors.white,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-    gap: 16,
+    borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 16,
   },
-  cycleArrow: { padding: 4 },
+  cycleArrow:     { padding: 4 },
   cycleArrowText: { fontSize: 22, color: Colors.primary, fontWeight: '600' },
-  cycleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark, minWidth: 90, textAlign: 'center' },
+  cycleLabel:     { fontSize: 14, fontWeight: '700', color: Colors.textDark, minWidth: 90, textAlign: 'center' },
+
+  creditBanner: {
+    backgroundColor: Colors.lightBlue,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: Colors.primary + '30',
+  },
+  creditBannerText: { fontSize: 11, color: Colors.primary, lineHeight: 16 },
 
   tabsScroll: { backgroundColor: Colors.white, flexGrow: 0 },
-  tabsRow: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  tabsRow:    { paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' },
   tab: {
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
     backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+    flexShrink: 0,
   },
-  tabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabText: { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
-  tabTextActive: { color: Colors.white },
+  tabActive:    { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  tabText:      { fontSize: 12, fontWeight: '600', color: Colors.textMuted, flexShrink: 0 },
+  tabTextActive:{ color: Colors.white },
 
   dotsRow: {
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     gap: 6, paddingVertical: 6, backgroundColor: Colors.white,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.border },
-  dotActive: { backgroundColor: Colors.primary, width: 14 },
+  dot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.border },
+  dotActive:{ backgroundColor: Colors.primary, width: 14 },
 
-  topicPad: { padding: 16 },
+  topicPad: { padding: 16, paddingBottom: 32 },
+
   card: {
     backgroundColor: Colors.white, borderRadius: 14,
     padding: 16, marginBottom: 16,
     borderWidth: 1, borderColor: Colors.border,
   },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 14 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 4 },
+  cardDesc:  { fontSize: 11, color: Colors.textMuted, fontStyle: 'italic', marginBottom: 12, lineHeight: 16 },
 
-  skeleton: {
-    backgroundColor: Colors.border, borderRadius: 12, marginBottom: 16, opacity: 0.5,
-  },
+  skeleton: { backgroundColor: Colors.border, borderRadius: 12, marginBottom: 16, opacity: 0.45 },
 
-  empty: { alignItems: 'center', paddingVertical: 24 },
+  empty:     { alignItems: 'center', paddingVertical: 24 },
   emptyIcon: { fontSize: 28, marginBottom: 8 },
   emptyText: { fontSize: 12, color: Colors.textMuted, textAlign: 'center' },
 
   center: { alignItems: 'center', marginBottom: 12 },
 
   legendWrap: { gap: 6, marginTop: 4 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendDot:  { width: 10, height: 10, borderRadius: 5 },
   legendName: { flex: 1, fontSize: 12, color: Colors.textDark },
-  legendVal: { fontSize: 12, fontWeight: '600', color: Colors.textDark },
-  legendPct: { fontSize: 11, color: Colors.textMuted, width: 36, textAlign: 'right' },
+  legendVal:  { fontSize: 12, fontWeight: '600', color: Colors.textDark },
+  legendPct:  { fontSize: 11, color: Colors.textMuted, width: 36, textAlign: 'right' },
 
   donutCenter: { fontSize: 11, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
 
-  goalRow: { marginBottom: 14 },
+  goalRow:    { marginBottom: 14 },
   goalHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  goalName: { fontSize: 13, fontWeight: '600', color: Colors.textDark, flex: 1 },
-  goalPct: { fontSize: 12, fontWeight: '700', color: Colors.primary },
-  goalBarBg: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden' },
-  goalBarFill: { height: 8, borderRadius: 4 },
+  goalName:   { fontSize: 13, fontWeight: '600', color: Colors.textDark, flex: 1 },
+  goalPct:    { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  goalBarBg:  { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden' },
+  goalBarFill:{ height: 8, borderRadius: 4 },
   goalValues: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 },
-  goalCurrent: { fontSize: 11, fontWeight: '600', color: Colors.primary },
+  goalCurrent:{ fontSize: 11, fontWeight: '600', color: Colors.primary },
   goalTarget: { fontSize: 11, color: Colors.textMuted },
 
   tooltip: {
@@ -819,27 +815,30 @@ const s = StyleSheet.create({
     padding: 12, marginTop: 10, borderWidth: 1, borderColor: Colors.primary + '40',
   },
   tooltipTitle: { fontSize: 12, fontWeight: '700', color: Colors.primary, marginBottom: 6 },
-  tooltipItem: { fontSize: 11, color: Colors.textDark, marginBottom: 2 },
-  tooltipMore: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  tooltipItem:  { fontSize: 11, color: Colors.textDark, marginBottom: 2 },
+  tooltipMore:  { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   tooltipClose: { alignSelf: 'flex-end', marginTop: 8 },
 
-  radarScoreOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
+  // Score IA
+  scoreBox: {
+    alignItems: 'center', marginVertical: 12,
+    backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 12,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  radarScore: { fontSize: 22, fontWeight: '800' },
-  radarScoreLabel: { fontSize: 11, color: Colors.textMuted },
+  scoreNum:        { fontSize: 26, fontWeight: '800', marginBottom: 4 },
+  scoreMotivation: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingHorizontal: 8 },
 
-  axesWrap: { marginTop: 12, gap: 8 },
-  axisRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  axisLabel: { fontSize: 11, color: Colors.textDark, width: 90 },
-  axisBg: { flex: 1, height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
+  // Axis cards IA
+  axisCard: {
+    backgroundColor: Colors.background, borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  axisCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  axisEmoji:      { fontSize: 16 },
+  axisCardName:   { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.textDark },
+  axisCardScore:  { fontSize: 13, fontWeight: '800' },
+  axisBg:   { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   axisFill: { height: 6, borderRadius: 3 },
-  axisVal: { fontSize: 11, fontWeight: '600', color: Colors.textMuted, width: 36, textAlign: 'right' },
-
-  analysisBox: {
-    backgroundColor: Colors.lightBlue, borderRadius: 10,
-    padding: 12, marginTop: 14, borderWidth: 1, borderColor: Colors.primary + '30',
-  },
-  analysisText: { fontSize: 12, color: Colors.textDark, lineHeight: 18 },
+  axisDesc: { fontSize: 11, color: Colors.textMuted, marginBottom: 4 },
+  axisTip:  { fontSize: 11, color: Colors.primary, fontStyle: 'italic' },
 })
