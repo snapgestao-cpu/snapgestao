@@ -71,6 +71,13 @@ function fmtShort(val: number): string {
   return `R$${val.toFixed(0)}`
 }
 
+function fmtSigned(val: number): string {
+  const abs = Math.abs(val)
+  const sign = val < 0 ? '-' : ''
+  if (abs >= 1000) return `${sign}R$${(abs / 1000).toFixed(1)}k`
+  return `${sign}R$${abs.toFixed(0)}`
+}
+
 // ── Radar Chart ────────────────────────────────────────────────────────────
 function RadarChart({ scores }: { scores: number[] }) {
   const SIZE   = 300
@@ -326,13 +333,15 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
 }
 
 // ── Topic 2: Receita e Saldo ───────────────────────────────────────────────
+type RealMonth = MonthlyTotal & { income: number; expense: number; balance: number }
+
 function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay: number }) {
   const [monthly, setMonthly] = useState<MonthlyTotal[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]  = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    getMonthlyTotalsOptimized(userId, cycleStartDay, 7).then(data => {
+    getMonthlyTotalsOptimized(userId, cycleStartDay).then(data => {
       setMonthly(data)
       setLoading(false)
     })
@@ -340,100 +349,132 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
-  // Filtra meses sem nenhuma transação para não poluir o gráfico
-  const active = monthly.filter(m => m.income > 0 || m.expense > 0)
+  const real   = monthly.filter((m): m is RealMonth => m.income !== null)
+  const future = monthly.filter(m => m.income === null)
 
-  const incomeLineData = active.map(m => ({ value: m.income }))
-  const expLineData    = active.map(m => ({ value: m.expense }))
-  const labels         = active.map(m => m.label.slice(0, 3))
-  const lineMaxValue   = Math.ceil(Math.max(...active.map(m => Math.max(m.income, m.expense)), 1) * 1.2)
+  if (real.length === 0) return (
+    <>
+      <ChartCard title="Receita vs. Despesa">
+        <Empty icon="💰" text="Nenhum dado de receita/despesa disponível" />
+      </ChartCard>
+      <ChartCard title="Saldo por ciclo">
+        <Empty icon="📈" text="Nenhum dado de saldo disponível" />
+      </ChartCard>
+    </>
+  )
 
-  const balanceBarData = active.map(m => ({
-    value: Math.abs(m.balance),
+  // ── LineChart: apenas meses reais ──────────────────────────────────────
+  const incomeLineData = real.map(m => ({ value: m.income }))
+  const expLineData    = real.map(m => ({ value: m.expense }))
+  const lineLabels     = real.map(m => m.label.slice(0, 3))
+  const lineMaxValue   = Math.ceil(Math.max(...real.map(m => Math.max(m.income, m.expense)), 1) * 1.2)
+
+  // ── BarChart: reais + futuros vazios ───────────────────────────────────
+  const balances  = real.map(m => m.balance)
+  const maxBal    = Math.max(...balances, 0)
+  const minBal    = Math.min(...balances, 0)
+  const hasNeg    = minBal < -0.01
+  const barMaxVal = Math.ceil(maxBal * 1.2) || 50
+  const barMinVal = hasNeg ? Math.floor(minBal * 1.2) : undefined
+
+  const realBars = real.map(m => ({
+    value: m.balance,
     label: m.label.slice(0, 3),
     frontColor: m.balance >= 0 ? Colors.success : Colors.danger,
     topLabelComponent: () => (
       <Text style={{ fontSize: 8, color: m.balance >= 0 ? Colors.success : Colors.danger, marginBottom: 2, textAlign: 'center' }}>
-        {m.balance >= 0 ? '' : '−'}{fmtShort(Math.abs(m.balance))}
+        {fmtSigned(m.balance)}
       </Text>
     ),
   }))
-  const balanceMaxValue = Math.ceil(Math.max(...balanceBarData.map(b => b.value), 1) * 1.2)
+
+  // Barras futuras com value=0 — exibem o label no eixo X mas sem barra
+  const futureBars = future.map(m => ({
+    value: 0,
+    label: m.label.slice(0, 3),
+    frontColor: Colors.border,
+  }))
+
+  const balanceBarData = [...realBars, ...futureBars]
 
   return (
     <>
-      <ChartCard title="Receita vs. Despesa" description="Receita e despesa por ciclo — 3 meses atrás, atual e 3 adiante. Meses sem lançamentos são omitidos.">
-        {active.length === 0 ? (
-          <Empty icon="💰" text="Nenhum dado de receita/despesa disponível" />
-        ) : (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
-              <LineChart
-                data={incomeLineData}
-                data2={expLineData}
-                width={CHART_W - 32}
-                height={280}
-                maxValue={lineMaxValue}
-                color1={Colors.primary}
-                color2={Colors.danger}
-                dataPointsColor1={Colors.primary}
-                dataPointsColor2={Colors.danger}
-                startFillColor1={Colors.primary}
-                startFillColor2={Colors.danger}
-                endFillColor1={Colors.white}
-                endFillColor2={Colors.white}
-                startOpacity1={0.2}
-                endOpacity1={0}
-                startOpacity2={0.2}
-                endOpacity2={0}
-                areaChart
-                curved
-                noOfSections={4}
-                yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-                xAxisLabelTexts={labels}
-                xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-                rulesColor={Colors.border}
-                thickness={2}
-                formatYLabel={(val) => fmtShort(parseFloat(val))}
-              />
-            </ScrollView>
-            <View style={[s.legendWrap, { marginTop: 8 }]}>
-              <View style={s.legendRow}>
-                <View style={[s.legendDot, { backgroundColor: Colors.primary }]} />
-                <Text style={s.legendName}>Receita</Text>
-              </View>
-              <View style={s.legendRow}>
-                <View style={[s.legendDot, { backgroundColor: Colors.danger }]} />
-                <Text style={s.legendName}>Despesa</Text>
-              </View>
+      <ChartCard
+        title="Receita vs. Despesa"
+        description="Receita e despesa por mês — últimos 4 ciclos e atual. Apenas transações reais, sem projeção."
+      >
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
+            <LineChart
+              data={incomeLineData}
+              data2={expLineData}
+              width={CHART_W - 32}
+              height={280}
+              maxValue={lineMaxValue}
+              color1={Colors.primary}
+              color2={Colors.danger}
+              dataPointsColor1={Colors.primary}
+              dataPointsColor2={Colors.danger}
+              startFillColor1={Colors.primary}
+              startFillColor2={Colors.danger}
+              endFillColor1={Colors.white}
+              endFillColor2={Colors.white}
+              startOpacity1={0.2}
+              endOpacity1={0}
+              startOpacity2={0.2}
+              endOpacity2={0}
+              areaChart
+              curved
+              noOfSections={4}
+              yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+              xAxisLabelTexts={lineLabels}
+              xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+              rulesColor={Colors.border}
+              thickness={2}
+              formatYLabel={(val) => fmtShort(parseFloat(val))}
+            />
+          </ScrollView>
+          <View style={[s.legendWrap, { marginTop: 8 }]}>
+            <View style={s.legendRow}>
+              <View style={[s.legendDot, { backgroundColor: Colors.primary }]} />
+              <Text style={s.legendName}>Receita</Text>
             </View>
-          </>
-        )}
+            <View style={s.legendRow}>
+              <View style={[s.legendDot, { backgroundColor: Colors.danger }]} />
+              <Text style={s.legendName}>Despesa</Text>
+            </View>
+          </View>
+          {future.length > 0 && (
+            <View style={s.futureNote}>
+              <Text style={s.futureNoteText}>
+                Próximos {future.length} meses ({future.map(m => m.label.slice(0, 3)).join(' · ')}): sem dados
+              </Text>
+            </View>
+          )}
+        </>
       </ChartCard>
 
       <ChartCard
         title="Saldo por ciclo"
-        description="Saldo real de cada ciclo. Verde = positivo. Vermelho = negativo. Ciclos encerrados usam o valor registrado no fechamento."
+        description="Saldo = receita − despesa de cada ciclo. Verde = positivo. Vermelho = negativo. Meses futuros aparecem vazios."
       >
-        {active.length === 0 ? (
-          <Empty icon="📈" text="Nenhum dado de saldo disponível" />
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
-            <BarChart
-              data={balanceBarData}
-              width={CHART_W - 32}
-              barWidth={28}
-              spacing={14}
-              maxValue={balanceMaxValue}
-              noOfSections={4}
-              yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-              xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
-              rulesColor={Colors.border}
-              barBorderRadius={3}
-              formatYLabel={(val) => fmtShort(parseFloat(val))}
-            />
-          </ScrollView>
-        )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
+          <BarChart
+            data={balanceBarData}
+            width={CHART_W - 32}
+            barWidth={28}
+            spacing={14}
+            maxValue={barMaxVal}
+            mostNegativeValue={barMinVal}
+            noOfSectionsBelowXAxis={hasNeg ? 3 : 0}
+            noOfSections={4}
+            yAxisTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+            xAxisLabelTextStyle={{ color: Colors.textMuted, fontSize: 9 }}
+            rulesColor={Colors.border}
+            barBorderRadius={3}
+            formatYLabel={(val) => fmtShort(parseFloat(val))}
+          />
+        </ScrollView>
       </ChartCard>
     </>
   )
@@ -883,6 +924,13 @@ const s = StyleSheet.create({
   legendPct:  { fontSize: 11, color: Colors.textMuted, width: 36, textAlign: 'right' },
 
   donutCenter: { fontSize: 11, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
+
+  // Future months note
+  futureNote: {
+    backgroundColor: Colors.background, borderRadius: 8, padding: 8, marginTop: 10,
+    borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed' as const,
+  },
+  futureNoteText: { fontSize: 10, color: Colors.textMuted, textAlign: 'center' as const },
 
   // Necessity/Desire hint
   classifyHint: {

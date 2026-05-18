@@ -11,9 +11,9 @@ export type PotExpense = {
 
 export type MonthlyTotal = {
   month: string
-  income: number
-  expense: number
-  balance: number
+  income: number | null   // null = mês futuro sem dados
+  expense: number | null
+  balance: number | null
   label: string
 }
 
@@ -188,104 +188,62 @@ export async function getCreditByCard(
   return result.sort((a, b) => b.total - a.total)
 }
 
-export async function getMonthlyTotals(
-  userId: string,
-  cycleStartDay: number,
-  months = 7
-): Promise<MonthlyTotal[]> {
-  const result: MonthlyTotal[] = []
-  const today = new Date()
-
-  for (let i = months - 1; i >= 0; i--) {
-    const cycle = getCycle(cycleStartDay, -i)
-    const { data } = await supabase
-      .from('transactions')
-      .select('type, amount, payment_method, billing_date, date')
-      .eq('user_id', userId)
-      .in('type', ['income', 'expense'])
-
-    let income = 0
-    let expense = 0
-    for (const tx of data ?? []) {
-      const displayDate = tx.payment_method === 'credit' && tx.billing_date
-        ? tx.billing_date
-        : tx.date
-      if (displayDate >= cycle.startISO && displayDate <= cycle.endISO) {
-        if (tx.type === 'income') income += Number(tx.amount)
-        else expense += Number(tx.amount)
-      }
-    }
-    result.push({
-      month: cycle.startISO,
-      income,
-      expense,
-      balance: income - expense,
-      label: cycle.monthYear,
-    })
-  }
-  return result
-}
-
 export async function getMonthlyTotalsOptimized(
   userId: string,
   cycleStartDay: number,
-  _months = 7 // ignored — janela fixa: -3 atual +3
+  _months = 7
 ): Promise<MonthlyTotal[]> {
-  // Janela fixa: 3 ciclos atrás, atual, 3 à frente
-  const cycles = Array.from({ length: 7 }, (_, i) => getCycle(cycleStartDay, i - 3))
-  const earliest = cycles[0].startISO
+  // 4 meses passados + atual = 5 com dados reais; 3 futuros retornam null
+  const realCycles   = Array.from({ length: 5 }, (_, i) => getCycle(cycleStartDay, i - 4))
+  const futureCycles = Array.from({ length: 3 }, (_, i) => getCycle(cycleStartDay, i + 1))
 
-  // Datas dos rollovers: saída de cada ciclo = startISO do ciclo seguinte
-  const nextStarts = cycles.map((_, i) => getCycle(cycleStartDay, i - 3 + 1).startISO)
-  const rolloverDates = [...new Set([...cycles.map(c => c.startISO), ...nextStarts])]
+  const earliest   = realCycles[0].startISO
+  const latestReal = realCycles[realCycles.length - 1].endISO
 
-  const [{ data: txData }, { data: rollovers }] = await Promise.all([
+  // Receitas e despesas não-crédito: filtro por date
+  // Despesas de crédito: filtro por billing_date (pode ter date anterior a earliest)
+  const [{ data: nonCreditTxs }, { data: creditExpTxs }] = await Promise.all([
     supabase
       .from('transactions')
-      .select('type, amount, payment_method, billing_date, date')
+      .select('type, amount, date')
       .eq('user_id', userId)
       .in('type', ['income', 'expense'])
-      .gte('date', earliest),
+      .neq('payment_method', 'credit')
+      .gte('date', earliest)
+      .lte('date', latestReal),
     supabase
-      .from('cycle_rollovers')
-      .select('cycle_start_date, total_debt, total_surplus')
+      .from('transactions')
+      .select('amount, billing_date')
       .eq('user_id', userId)
-      .in('cycle_start_date', rolloverDates),
+      .eq('type', 'expense')
+      .eq('payment_method', 'credit')
+      .not('billing_date', 'is', null)
+      .gte('billing_date', earliest)
+      .lte('billing_date', latestReal),
   ])
 
-  const rolloverMap = new Map((rollovers ?? []).map(r => [r.cycle_start_date as string, r]))
+  const realMonths: MonthlyTotal[] = realCycles.map(cycle => {
+    const income = (nonCreditTxs ?? [])
+      .filter(tx => tx.type === 'income' && tx.date >= cycle.startISO && tx.date <= cycle.endISO)
+      .reduce((s, tx) => s + Number(tx.amount), 0)
 
-  return cycles.map((cycle, i) => {
-    let income = 0
-    let expense = 0
-    for (const tx of txData ?? []) {
-      const displayDate = tx.payment_method === 'credit' && tx.billing_date
-        ? tx.billing_date
-        : tx.date
-      if (displayDate >= cycle.startISO && displayDate <= cycle.endISO) {
-        if (tx.type === 'income') income += Number(tx.amount)
-        else expense += Number(tx.amount)
-      }
-    }
+    const expNonCredit = (nonCreditTxs ?? [])
+      .filter(tx => tx.type === 'expense' && tx.date >= cycle.startISO && tx.date <= cycle.endISO)
+      .reduce((s, tx) => s + Number(tx.amount), 0)
 
-    // Rollover de saída deste ciclo (gravado no início do próximo)
-    const outgoing = rolloverMap.get(nextStarts[i])
-    // Rollover de entrada neste ciclo (gerado pelo ciclo anterior)
-    const incoming = rolloverMap.get(cycle.startISO)
+    const expCredit = (creditExpTxs ?? [])
+      .filter(tx => (tx.billing_date ?? '') >= cycle.startISO && (tx.billing_date ?? '') <= cycle.endISO)
+      .reduce((s, tx) => s + Number(tx.amount), 0)
 
-    let balance: number
-    if (outgoing) {
-      // Ciclo encerrado: usa o saldo autoritativo registrado no fechamento
-      balance = Number(outgoing.total_surplus ?? 0) - Number(outgoing.total_debt ?? 0)
-    } else {
-      // Ciclo aberto ou futuro: só transações reais + rollover de entrada
-      const surplusIn = Number(incoming?.total_surplus ?? 0)
-      const debtIn    = Number(incoming?.total_debt ?? 0)
-      balance = income + surplusIn - debtIn - expense
-    }
-
-    return { month: cycle.startISO, income, expense, balance, label: cycle.monthYear }
+    const expense = expNonCredit + expCredit
+    return { month: cycle.startISO, income, expense, balance: income - expense, label: cycle.monthYear }
   })
+
+  const futureMonths: MonthlyTotal[] = futureCycles.map(cycle => ({
+    month: cycle.startISO, income: null, expense: null, balance: null, label: cycle.monthYear,
+  }))
+
+  return [...realMonths, ...futureMonths]
 }
 
 export async function getCreditCommitments(
