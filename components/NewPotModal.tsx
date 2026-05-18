@@ -17,6 +17,8 @@ import { Colors } from '../constants/colors'
 import { Pot } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
+import { usePlanLimits } from '../hooks/usePlanLimits'
+import { PLAN_LIMITS } from '../constants/plans'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PotCard } from './PotCard'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
@@ -55,6 +57,7 @@ type Props = {
 
 export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, totalIncome, cycleStartDate, isRetroactive, cycleOffset = 0 }: Props) {
   const insets = useSafeAreaInsets()
+  const { isPremium } = usePlanLimits()
 
   const [name, setName] = useState('')
   const [color, setColor] = useState(POT_COLORS[0])
@@ -109,6 +112,28 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
     setError(null)
     setLoading(true)
     try {
+      // Verificar limite de plano na criação
+      if (!editPot) {
+        const plan = useAuthStore.getState().user?.plan ?? 'free'
+        const potsLimit = PLAN_LIMITS[plan].pots
+        if (potsLimit !== Infinity) {
+          const { count } = await supabase.from('pots').select('id', { count: 'exact', head: true })
+            .eq('user_id', userId).is('deleted_at', null)
+          if ((count ?? 0) >= potsLimit) {
+            setLoading(false)
+            Alert.alert(
+              'Limite atingido',
+              `Você atingiu o limite de ${potsLimit} potes no plano gratuito. Faça upgrade para o Premium e crie potes ilimitados.`,
+              [
+                { text: 'Agora não', style: 'cancel' },
+                { text: 'Ver Premium', onPress: () => { onClose(); require('expo-router').router.push('/premium') } },
+              ]
+            )
+            return
+          }
+        }
+      }
+
       // Verificar duplicata apenas na criação
       if (!editPot) {
         const { data: existing } = await supabase

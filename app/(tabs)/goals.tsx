@@ -17,6 +17,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { NewGoalModal } from '../../components/NewGoalModal'
 import { BadgeToast } from '../../components/BadgeToast'
@@ -24,6 +25,7 @@ import { Badge } from '../../lib/badges'
 import { Toast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { PLAN_LIMITS } from '../../constants/plans'
 import { useCycleStore } from '../../stores/useCycleStore'
 import { Goal } from '../../types'
 import { brl, calcFV } from '../../lib/finance'
@@ -648,7 +650,22 @@ export default function GoalsScreen() {
       {/* Botão fixo na base */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
-          onPress={() => setShowNewGoal(true)}
+          onPress={() => {
+            const plan = useAuthStore.getState().user?.plan ?? 'free'
+            const limit = PLAN_LIMITS[plan].goals
+            if (limit !== Infinity && goals.length >= limit) {
+              Alert.alert(
+                'Limite atingido',
+                `Você atingiu o limite de ${limit} metas no plano gratuito. Faça upgrade para o Premium e crie metas ilimitadas.`,
+                [
+                  { text: 'Agora não', style: 'cancel' },
+                  { text: 'Ver Premium', onPress: () => router.push('/premium' as any) },
+                ]
+              )
+              return
+            }
+            setShowNewGoal(true)
+          }}
           style={styles.newGoalBtn}
           activeOpacity={0.85}
         >

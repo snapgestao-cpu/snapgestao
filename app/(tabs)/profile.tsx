@@ -277,7 +277,21 @@ export default function ProfileScreen() {
         {
           label: 'Exportar lançamentos (Excel)',
           icon: '📋',
-          onPress: () => setShowExportExcel(true),
+          onPress: () => {
+            const plan = user?.plan ?? 'free'
+            if (plan !== 'premium') {
+              Alert.alert(
+                'Funcionalidade Premium',
+                'A exportação de Excel está disponível apenas no plano Premium.',
+                [
+                  { text: 'Agora não', style: 'cancel' },
+                  { text: 'Ver Premium', onPress: () => router.push('/premium' as any) },
+                ]
+              )
+              return
+            }
+            setShowExportExcel(true)
+          },
         },
         { label: 'Limpar dados de teste', icon: '🗑', onPress: handleLimparDados, danger: true },
       ],
@@ -285,6 +299,12 @@ export default function ProfileScreen() {
     {
       title: 'Financeiro',
       items: [
+        {
+          label: 'Plano e assinatura',
+          icon: user?.plan === 'premium' ? '⭐' : '🔒',
+          value: user?.plan === 'premium' ? 'Premium' : 'Gratuito',
+          onPress: () => router.push('/premium' as any),
+        },
         {
           label: 'Deduções de IR',
           icon: '',
@@ -337,6 +357,15 @@ export default function ProfileScreen() {
               Ciclo: dia {user?.cycle_start ?? 1} ao {cycleEnd}
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => router.push('/premium' as any)}
+            style={[styles.planBadge, user?.plan === 'premium' ? styles.planBadgePremium : styles.planBadgeFree]}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.planBadgeText, user?.plan === 'premium' ? styles.planBadgePremiumText : styles.planBadgeFreeText]}>
+              {user?.plan === 'premium' ? '⭐ Premium' : 'Gratuito'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Summary cards */}
@@ -608,6 +637,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 5,
   },
   cycleBadgeText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
+  planBadge: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginTop: 8, borderWidth: 1.5 },
+  planBadgeFree: { backgroundColor: '#F3F4F6', borderColor: Colors.border },
+  planBadgePremium: { backgroundColor: '#FFF8E1', borderColor: '#F59E0B' },
+  planBadgeText: { fontSize: 12, fontWeight: '700' },
+  planBadgeFreeText: { color: Colors.textMuted },
+  planBadgePremiumText: { color: '#B45309' },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   statCard: {
     flex: 1, backgroundColor: Colors.white, borderRadius: 12,

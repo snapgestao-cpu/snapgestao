@@ -12,6 +12,7 @@ export type User = {
   terms_accepted_at: string | null
   terms_version: string | null
   ir_module_enabled: boolean
+  plan: 'free' | 'premium'
 }
 
 export type Pot = {

@@ -246,6 +246,47 @@ Feature implementada via Edge Function + botão no Perfil.
 - `handleDeleteAccount`: chama a Edge Function, depois `clearSecureStoreCache()` + `signOut()` + redirect para `/login`
 - Botão fica desabilitado e mostra "Excluindo conta..." durante a operação
 
+## Planos Free e Premium
+
+Sistema de planos implementado em `constants/plans.ts`.
+
+**Coluna no banco**: `users.plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'premium'))`.  
+Para promover: `UPDATE public.users SET plan = 'premium' WHERE id = '...'`.
+
+**Limites**:
+
+| Feature | Free | Premium |
+|---|---|---|
+| Potes | 10 | Ilimitados |
+| Metas | 5 | Ilimitadas |
+| Cartões | 2 | Ilimitados |
+| Fontes de receita | 3 | Ilimitadas |
+| Tokens IA/mês | 2 | 10 |
+| Histórico de ciclos | 3 meses | Completo |
+| Export Excel | ✕ | ✓ |
+| Módulo IR | ✕ | ✓ |
+
+**Arquivos**:
+- `constants/plans.ts` — `PLAN_LIMITS`, `isPremium`, `getLimit`
+- `hooks/usePlanLimits.ts` — hook que lê `plan` do store e retorna flags de acesso
+- `stores/useAuthStore.ts` — expõe `isPremium: boolean` derivado de `user.plan`
+- `types/index.ts` — `User.plan: 'free' | 'premium'`
+- `components/PaywallBanner.tsx` — banner inline de bloqueio com botão de upgrade
+- `app/premium.tsx` — tela de comparação Free vs Premium
+
+**Onde os bloqueios estão**:
+- Potes: `NewPotModal.handleSave` — query de contagem antes de criar
+- Metas: `goals.tsx` botão "Nova meta" — conta `goals.length`
+- Cartões: `CreditCardModal.openAdd` — usa `cards.length`
+- Fontes: `IncomeSourcesModal.openAdd` — usa `sources.length`
+- Excel: `profile.tsx` — checa `user.plan` antes de abrir modal
+- Histórico: `monthly.tsx` botão `‹` — limita a `-cycleHistoryMonths` de offset
+
+**Regras**:
+- Limites verificados localmente via store/state — sem query extra por validação (exceto potes, que usa `count` para evitar inconsistência)
+- `canUseIR = isPremium && ir_module_enabled` — IR requer tanto plano premium quanto flag manual
+- Usuários premium existentes com `ir_module_enabled=true` continuam funcionando sem alteração
+
 ## Roadmap
 
 - [ ] Glossário financeiro

@@ -18,6 +18,8 @@ import { Colors } from '../constants/colors'
 import { IncomeSource } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
+import { PLAN_LIMITS } from '../constants/plans'
+import { router } from 'expo-router'
 import { getCycle } from '../lib/cycle'
 import { updateIncomeSourceAmount, getIncomeSourcesForMonth } from '../lib/income-history'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
@@ -98,6 +100,19 @@ export function IncomeSourcesModal({ visible, onClose, onChanged }: Props) {
   }
 
   const openAdd = () => {
+    const plan = useAuthStore.getState().user?.plan ?? 'free'
+    const limit = PLAN_LIMITS[plan].incomeSources
+    if (limit !== Infinity && sources.length >= limit) {
+      Alert.alert(
+        'Limite atingido',
+        `Você atingiu o limite de ${limit} fontes de receita no plano gratuito. Faça upgrade para o Premium e cadastre fontes ilimitadas.`,
+        [
+          { text: 'Agora não', style: 'cancel' },
+          { text: 'Ver Premium', onPress: () => { onClose(); router.push('/premium' as any) } },
+        ]
+      )
+      return
+    }
     setForm(EMPTY_FORM)
     setEditingId(null)
     setFromOffset(0)

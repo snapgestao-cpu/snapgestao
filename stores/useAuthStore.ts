@@ -19,6 +19,7 @@ type AuthState = {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  isPremium: boolean
   signIn: (email: string, password: string) => Promise<string | null>
   signUp: (name: string, email: string, password: string) => Promise<string | null>
   signOut: () => Promise<void>
@@ -95,6 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  isPremium: false,
 
   signIn: async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -114,10 +116,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut()
-    set({ session: null, user: null, isAuthenticated: false })
+    set({ session: null, user: null, isAuthenticated: false, isPremium: false })
   },
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => set({ user, isPremium: user?.plan === 'premium' }),
 
   // Mantido para compatibilidade — delegado ao init
   loadSession: async () => { },
@@ -132,7 +134,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       fetchUserProfile(session.user.id)
         .then(user => {
           console.log('[AuthStore] Perfil carregado — isLoading=false, user:', user?.id?.substring(0, 8) ?? 'null')
-          set({ user, isLoading: false })
+          set({ user, isLoading: false, isPremium: user?.plan === 'premium' })
         })
         .catch(err => {
           console.error('[AuthStore] Erro ao carregar perfil:', String(err))

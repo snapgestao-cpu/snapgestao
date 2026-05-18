@@ -19,6 +19,8 @@ import { CreditCard } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
+import { PLAN_LIMITS } from '../constants/plans'
+import { router } from 'expo-router'
 
 type FormState = {
   name: string
@@ -65,6 +67,19 @@ export function CreditCardModal({ visible, onClose }: Props) {
   }, [visible])
 
   const openAdd = () => {
+    const plan = useAuthStore.getState().user?.plan ?? 'free'
+    const limit = PLAN_LIMITS[plan].creditCards
+    if (limit !== Infinity && cards.length >= limit) {
+      Alert.alert(
+        'Limite atingido',
+        `Você atingiu o limite de ${limit} cartões no plano gratuito. Faça upgrade para o Premium e cadastre cartões ilimitados.`,
+        [
+          { text: 'Agora não', style: 'cancel' },
+          { text: 'Ver Premium', onPress: () => { onClose(); router.push('/premium' as any) } },
+        ]
+      )
+      return
+    }
     setForm(EMPTY_FORM)
     setEditingId(null)
     setError(null)
