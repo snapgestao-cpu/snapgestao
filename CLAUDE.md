@@ -288,6 +288,39 @@ Para promover: `UPDATE public.users SET plan = 'premium' WHERE id = '...'`.
 - `canUseIR = isPremium && ir_module_enabled` — IR requer tanto plano premium quanto flag manual
 - Usuários premium existentes com `ir_module_enabled=true` continuam funcionando sem alteração
 
+## Gráficos Financeiros
+
+Feature implementada em `app/charts.tsx` e `lib/charts-data.ts`.
+
+**Biblioteca**: `react-native-gifted-charts` (PieChart, BarChart, LineChart) + `react-native-svg` (radar chart customizado). Instaladas com `--legacy-peer-deps`.
+
+**Acesso**: Perfil → grupo "Dados" → "📊 Gráficos financeiros" → `router.push('/charts')`. Rota `/charts` está na allowlist do guard em `_layout.tsx`.
+
+**Estrutura**: header fixo + seletor de ciclo + 5 abas horizontais (ScrollView). Conteúdo: `FlatList` horizontal paginada com `pagingEnabled`. `onMomentumScrollEnd` sincroniza a aba ativa.
+
+**Tópicos e gráficos**:
+1. 📊 Gastos — donut por pote, barras gasto vs orçado, pizza necessidade/desejo
+2. 💰 Receita e Saldo — LineChart duplo receita vs despesa (7 ciclos), BarChart saldo por ciclo
+3. 🎯 Metas e Reserva — barras horizontais de progresso por meta, AreaChart reserva de emergência
+4. 💳 Crédito — barras compromisso futuro por mês (com tooltip), donut distribuição por forma de pagamento
+5. 🤖 IA — radar SVG 5 eixos (Controle/Poupança/Planejamento/Equilíbrio/Consistência), análise textual local
+
+**`lib/charts-data.ts`** — funções de query:
+- `getExpensesByPot(userId, cycleStart, cycleEnd)` — gastos agrupados por pote
+- `getNecessityShare(userId, cycleStart, cycleEnd)` — totais necessidade vs desejo
+- `getMonthlyTotalsOptimized(userId, cycleStartDay, months)` — receita/despesa por mês (1 query)
+- `getCreditCommitmentsSimple(userId, cycleStartDay, months)` — parcelas futuras por mês
+- `getPaymentMethodDistribution(userId, cycleStart, cycleEnd)` — distribuição por forma de pagamento
+- `getGoalsProgress(userId)` — progresso de metas ativas
+- `getEmergencyReserveHistory(userId, months)` — saldo histórico da reserva (cálculo local com running sum)
+- `getFinancialScore(userId, cycleStartDay)` — calcula os 5 eixos do radar localmente (sem API)
+
+**Regras**:
+- Cada tópico é um componente independente que faz seus próprios fetches ao montar
+- Estados de loading: `Skeleton` retangular; estado vazio: `Empty` com ícone + texto contextual
+- Ciclo selecionado (offset) afeta apenas os tópicos que dependem de ciclo (Gastos, Crédito distribuição)
+- Score financeiro calculado localmente — não chama APIs de IA
+
 ## Roadmap
 
 - [ ] Glossário financeiro
