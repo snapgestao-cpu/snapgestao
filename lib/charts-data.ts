@@ -229,17 +229,17 @@ export async function getMonthlyTotals(
 export async function getMonthlyTotalsOptimized(
   userId: string,
   cycleStartDay: number,
-  months = 7
+  _months = 7 // ignored — janela fixa: -3 atual +3
 ): Promise<MonthlyTotal[]> {
-  const cycles = Array.from({ length: months }, (_, i) => getCycle(cycleStartDay, -(months - 1 - i)))
+  // Janela fixa: 3 ciclos atrás, atual, 3 à frente
+  const cycles = Array.from({ length: 7 }, (_, i) => getCycle(cycleStartDay, i - 3))
   const earliest = cycles[0].startISO
 
-  // Next-cycle start dates: rollover stored here tells us if the cycle was closed
-  const nextStarts = cycles.map((_, i) => getCycle(cycleStartDay, -(months - 1 - i) + 1).startISO)
-  // Also need the incoming rollover dates (= each cycle's own startISO)
+  // Datas dos rollovers: saída de cada ciclo = startISO do ciclo seguinte
+  const nextStarts = cycles.map((_, i) => getCycle(cycleStartDay, i - 3 + 1).startISO)
   const rolloverDates = [...new Set([...cycles.map(c => c.startISO), ...nextStarts])]
 
-  const [{ data: txData }, { data: rollovers }, { data: sources }] = await Promise.all([
+  const [{ data: txData }, { data: rollovers }] = await Promise.all([
     supabase
       .from('transactions')
       .select('type, amount, payment_method, billing_date, date')
@@ -251,16 +251,11 @@ export async function getMonthlyTotalsOptimized(
       .select('cycle_start_date, total_debt, total_surplus')
       .eq('user_id', userId)
       .in('cycle_start_date', rolloverDates),
-    supabase
-      .from('income_sources')
-      .select('amount')
-      .eq('user_id', userId),
   ])
 
   const rolloverMap = new Map((rollovers ?? []).map(r => [r.cycle_start_date as string, r]))
-  const monthlyIncome = (sources ?? []).reduce((s, r) => s + Number(r.amount), 0)
 
-  const result: MonthlyTotal[] = cycles.map((cycle, i) => {
+  return cycles.map((cycle, i) => {
     let income = 0
     let expense = 0
     for (const tx of txData ?? []) {
@@ -273,25 +268,24 @@ export async function getMonthlyTotalsOptimized(
       }
     }
 
-    // outgoing rollover = recorded when cycle was closed (stored for next cycle)
+    // Rollover de saída deste ciclo (gravado no início do próximo)
     const outgoing = rolloverMap.get(nextStarts[i])
-    // incoming rollover = what the previous cycle sent into this cycle
+    // Rollover de entrada neste ciclo (gerado pelo ciclo anterior)
     const incoming = rolloverMap.get(cycle.startISO)
 
     let balance: number
     if (outgoing) {
-      // Cycle was closed — use the authoritative recorded balance
+      // Ciclo encerrado: usa o saldo autoritativo registrado no fechamento
       balance = Number(outgoing.total_surplus ?? 0) - Number(outgoing.total_debt ?? 0)
     } else {
-      // Open cycle — compute using same formula as computeCycleSummaryFromData
+      // Ciclo aberto ou futuro: só transações reais + rollover de entrada
       const surplusIn = Number(incoming?.total_surplus ?? 0)
       const debtIn    = Number(incoming?.total_debt ?? 0)
-      balance = monthlyIncome + income + surplusIn - debtIn - expense
+      balance = income + surplusIn - debtIn - expense
     }
 
     return { month: cycle.startISO, income, expense, balance, label: cycle.monthYear }
   })
-  return result
 }
 
 export async function getCreditCommitments(

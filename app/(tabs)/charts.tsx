@@ -340,12 +340,15 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
-  const incomeLineData = monthly.map(m => ({ value: m.income }))
-  const expLineData    = monthly.map(m => ({ value: m.expense }))
-  const labels         = monthly.map(m => m.label.slice(0, 3))
-  const lineMaxValue   = Math.ceil(Math.max(...monthly.map(m => Math.max(m.income, m.expense))) * 1.2) || 100
+  // Filtra meses sem nenhuma transação para não poluir o gráfico
+  const active = monthly.filter(m => m.income > 0 || m.expense > 0)
 
-  const balanceBarData = monthly.map(m => ({
+  const incomeLineData = active.map(m => ({ value: m.income }))
+  const expLineData    = active.map(m => ({ value: m.expense }))
+  const labels         = active.map(m => m.label.slice(0, 3))
+  const lineMaxValue   = Math.ceil(Math.max(...active.map(m => Math.max(m.income, m.expense)), 1) * 1.2)
+
+  const balanceBarData = active.map(m => ({
     value: Math.abs(m.balance),
     label: m.label.slice(0, 3),
     frontColor: m.balance >= 0 ? Colors.success : Colors.danger,
@@ -355,12 +358,12 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
       </Text>
     ),
   }))
-  const balanceMaxValue = Math.ceil(Math.max(...balanceBarData.map(b => b.value)) * 1.2) || 100
+  const balanceMaxValue = Math.ceil(Math.max(...balanceBarData.map(b => b.value), 1) * 1.2)
 
   return (
     <>
-      <ChartCard title="Receita vs. Despesa" description="Evolução mensal da sua receita e despesa nos últimos 6 meses.">
-        {monthly.every(m => m.income === 0 && m.expense === 0) ? (
+      <ChartCard title="Receita vs. Despesa" description="Receita e despesa por ciclo — 3 meses atrás, atual e 3 adiante. Meses sem lançamentos são omitidos.">
+        {active.length === 0 ? (
           <Empty icon="💰" text="Nenhum dado de receita/despesa disponível" />
         ) : (
           <>
@@ -410,9 +413,9 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
 
       <ChartCard
         title="Saldo por ciclo"
-        description="Saldo = receitas − despesas de cada ciclo. Verde = sobrou dinheiro. Vermelho = gastou mais do que recebeu."
+        description="Saldo real de cada ciclo. Verde = positivo. Vermelho = negativo. Ciclos encerrados usam o valor registrado no fechamento."
       >
-        {balanceBarData.every(b => b.value === 0) ? (
+        {active.length === 0 ? (
           <Empty icon="📈" text="Nenhum dado de saldo disponível" />
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
