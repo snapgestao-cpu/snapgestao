@@ -46,6 +46,7 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 
 - **Potes**: sempre usar `lib/pot-history.ts` — nunca `.is('deleted_at', null)` sozinho
 - **Ciclos**: crédito filtra por `billing_date`; tudo mais por `date`
+- **Data de compra em crédito**: `TransactionGroup` exibe "🛍️ Compra em DD/MM/YYYY" (campo `date`) — no cabeçalho do grupo quando todas as transações têm a mesma data, individualmente por item quando as datas diferem. Não alterar lógica de filtro por `billing_date`.
 - **`monthly.tsx`**: usa `computeCycleSummaryFromData` (síncrono) — nunca `calculateCycleSummary`
 - **`_layout.tsx`**: nunca adicionar `getSession()` extra — `init()` já cuida disso
 - **Onboarding guard**: nunca usar `initial_balance === 0` — saldo zero é válido
