@@ -27,7 +27,7 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { getPotAtMonth } from '../../lib/pot-history'
 import { brl } from '../../lib/finance'
-import { Pot, Transaction } from '../../types'
+import { Pot, Transaction, CreditCard } from '../../types'
 import TransactionGroup from '../../components/TransactionGroup'
 import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } from '../../lib/group-transactions'
 import { SearchBar } from '../../components/SearchBar'
@@ -36,6 +36,32 @@ import ScheduledItem from '../../components/ScheduledItem'
 import { getScheduledForMonth, confirmScheduled, cancelScheduledMonth } from '../../lib/scheduled-transactions'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
+
+function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
+  const [y, m, d] = txISO.split('-').map(Number)
+  let month0 = m - 1
+  if (d >= card.closing_day) month0 += 1
+  if (card.due_day < card.closing_day) month0 += 1
+  month0 += offset
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
+}
+
+function calcBillingDateNoCard(txISO: string, offset = 0): string {
+  const [y, m] = txISO.split('-').map(Number)
+  let month0 = m - 1 + 1 + offset
+  let year = y
+  while (month0 > 11) { month0 -= 12; year += 1 }
+  return new Date(year, month0, 1).toISOString().split('T')[0]
+}
+
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
 
 export default function PotDetailScreen() {
   const { id, cycleOffset: offsetParam } = useLocalSearchParams<{ id: string; cycleOffset: string }>()
@@ -381,6 +407,53 @@ export default function PotDetailScreen() {
                       const { error } = await supabase.from('transactions').update({ merchant: newMerchant }).in('id', ids)
                       if (error) { Alert.alert('Erro', 'Não foi possível renomear o estabelecimento.'); return }
                       handleSuccess('Estabelecimento renomeado!')
+                    }}
+                    onEditPaymentMethod={async (txs, newMethod, card, installments = 1) => {
+                      const ids = txs.map(t => t.id)
+                      if (newMethod === 'credit' && (installments ?? 1) > 1) {
+                        const userId = user?.id
+                        if (!userId) return
+                        const { error: delErr } = await supabase.from('transactions').delete().in('id', ids)
+                        if (delErr) { Alert.alert('Erro', 'Não foi possível alterar o pagamento.'); return }
+                        const allRows: Record<string, unknown>[] = []
+                        for (const tx of txs) {
+                          const groupId = genUUID()
+                          const perInstallment = Math.round((Number(tx.amount) / installments) * 100) / 100
+                          for (let i = 0; i < installments; i++) {
+                            allRows.push({
+                              user_id: userId,
+                              pot_id: tx.pot_id,
+                              type: tx.type,
+                              amount: perInstallment,
+                              description: tx.description,
+                              merchant: tx.merchant,
+                              date: tx.date,
+                              payment_method: 'credit',
+                              card_id: card?.id ?? null,
+                              billing_date: card ? calcBillingDate(tx.date, card, i) : calcBillingDateNoCard(tx.date, i),
+                              installment_group_id: groupId,
+                              installment_number: i + 1,
+                              installment_total: installments,
+                            })
+                          }
+                        }
+                        const { error: insErr } = await supabase.from('transactions').insert(allRows)
+                        if (insErr) { Alert.alert('Erro', 'Não foi possível criar as parcelas.'); return }
+                        handleSuccess('Parcelas criadas!')
+                      } else {
+                        let updatePayload: Record<string, unknown>
+                        if (newMethod === 'credit') {
+                          const billing = card
+                            ? calcBillingDate(txs[0].date, card)
+                            : calcBillingDateNoCard(txs[0].date)
+                          updatePayload = { payment_method: 'credit', card_id: card?.id ?? null, billing_date: billing }
+                        } else {
+                          updatePayload = { payment_method: newMethod, card_id: null, billing_date: null }
+                        }
+                        const { error } = await supabase.from('transactions').update(updatePayload).in('id', ids)
+                        if (error) { Alert.alert('Erro', 'Não foi possível alterar a forma de pagamento.'); return }
+                        handleSuccess('Pagamento atualizado!')
+                      }
                     }}
                     onDeleteGroup={txs => {
                       const hasParcelas = txs.some(t => t.payment_method === 'credit' && (t.installment_total ?? 0) > 1)

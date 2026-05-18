@@ -107,8 +107,8 @@ export default function NewScheduledModal({
       })
       reset()
       onSuccess()
-    } catch (err) {
-      Alert.alert('Erro', String(err))
+    } catch (err: any) {
+      Alert.alert('Erro', err?.message ?? 'Erro ao registrar agendamento.')
     } finally {
       setSaving(false)
     }
