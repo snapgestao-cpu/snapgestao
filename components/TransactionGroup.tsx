@@ -11,6 +11,9 @@
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native'
 import { Colors } from '../constants/colors'
+import { CreditCard } from '../types'
+import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../stores/useAuthStore'
 
 type TxItem = {
   id: string
@@ -33,6 +36,7 @@ type Props = {
   onEdit?: (t: TxItem) => void
   onDeleteGroup?: (transactions: TxItem[]) => void
   onEditMerchant?: (transactions: TxItem[], newMerchant: string) => Promise<void> | void
+  onEditPaymentMethod?: (transactions: TxItem[], newMethod: string, card?: CreditCard | null, installments?: number) => Promise<void> | void
 }
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -139,11 +143,22 @@ function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
-export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, onEditMerchant }: Props) {
+const EXPENSE_METHODS = ['cash', 'debit', 'credit', 'pix', 'voucher_alimentacao', 'voucher_refeicao']
+const INCOME_METHODS = ['pix', 'transfer', 'cash', 'voucher_alimentacao', 'voucher_refeicao']
+
+export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, onEditMerchant, onEditPaymentMethod }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [editingMerchant, setEditingMerchant] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState('')
   const [savingMerchant, setSavingMerchant] = useState(false)
+  const [editingPayment, setEditingPayment] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [awaitingCard, setAwaitingCard] = useState(false)
+  const [cards, setCards] = useState<CreditCard[]>([])
+  const [cardsLoaded, setCardsLoaded] = useState(false)
+  const [loadingCards, setLoadingCards] = useState(false)
+  const [selectedCreditCardId, setSelectedCreditCardId] = useState<string | null>(null)
+  const [installmentsCount, setInstallmentsCount] = useState(1)
 
   const hasMerchant = !!transactions[0]?.merchant
   const isMultiple = transactions.length > 1
@@ -164,6 +179,11 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
   const paymentLabel = paymentMethods.length > 1
     ? 'Múltiplos pagamentos'
     : (PAYMENT_LABEL[paymentMethods[0]] ?? paymentMethods[0] ?? '')
+
+  const allCredit = transactions.every(t => t.payment_method === 'credit')
+  const purchaseDates = [...new Set(transactions.map(t => t.date))]
+  const showPurchaseDateInHeader = allCredit && purchaseDates.length === 1
+  const showPurchaseDatePerItem = allCredit && purchaseDates.length > 1
 
   return (
     <View style={{ borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
@@ -258,6 +278,11 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
               · {transactions.length} itens
             </Text>
           </View>
+          {showPurchaseDateInHeader && (
+            <Text style={{ fontSize: 10, color: Colors.warning, marginTop: 2 }}>
+              🛍️ Compra em {formatDate(purchaseDates[0])}
+            </Text>
+          )}
         </View>
 
         {/* Valor total + botão editar estabelecimento */}
@@ -285,27 +310,203 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
         <View>
           {/* Barra de ações em lote */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingHorizontal: 16, paddingVertical: 8,
             backgroundColor: Colors.lightBlue,
             borderTopWidth: 0.5, borderTopColor: Colors.border,
           }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }}>
-              {transactions.length}{' '}{transactions.length === 1 ? 'item' : 'itens'}
-            </Text>
-            {onDeleteGroup && (
-              <TouchableOpacity
-                onPress={() => onDeleteGroup(transactions)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: '#FEF2F2', borderRadius: 8,
-                  paddingHorizontal: 10, paddingVertical: 5,
-                  borderWidth: 1, borderColor: '#FCA5A5',
-                }}
-              >
-                <Text style={{ fontSize: 12 }}>🗑️</Text>
-                <Text style={{ fontSize: 11, color: Colors.danger, fontWeight: '600' }}>Excluir todos</Text>
-              </TouchableOpacity>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 16, paddingVertical: 8,
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }}>
+                {transactions.length}{' '}{transactions.length === 1 ? 'item' : 'itens'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {onEditPaymentMethod && (
+                  savingPayment ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setEditingPayment(v => !v)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        backgroundColor: editingPayment ? Colors.primary : Colors.white,
+                        borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+                        borderWidth: 1, borderColor: Colors.primary,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12 }}>💳</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: editingPayment ? Colors.white : Colors.primary }}>
+                        Pagamento
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+                {onDeleteGroup && (
+                  <TouchableOpacity
+                    onPress={() => onDeleteGroup(transactions)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                      backgroundColor: '#FEF2F2', borderRadius: 8,
+                      paddingHorizontal: 10, paddingVertical: 5,
+                      borderWidth: 1, borderColor: '#FCA5A5',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12 }}>🗑️</Text>
+                    <Text style={{ fontSize: 11, color: Colors.danger, fontWeight: '600' }}>Excluir todos</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Chips de seleção de forma de pagamento */}
+            {editingPayment && onEditPaymentMethod && !awaitingCard && (
+              <View style={{
+                flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+                paddingHorizontal: 16, paddingBottom: 10,
+              }}>
+                {(transactions[0]?.type === 'income' ? INCOME_METHODS : EXPENSE_METHODS).map(method => {
+                  const currentMethod = paymentMethods.length === 1 ? paymentMethods[0] : null
+                  const active = currentMethod === method
+                  const isCreditWithoutCards = method === 'credit' && cardsLoaded && cards.length === 0
+                  return (
+                    <TouchableOpacity
+                      key={method}
+                      disabled={isCreditWithoutCards}
+                      onPress={async () => {
+                        if (active) { setEditingPayment(false); return }
+                        if (method === 'credit') {
+                          setLoadingCards(true)
+                          setAwaitingCard(true)
+                          const userId = useAuthStore.getState().session?.user?.id
+                          if (userId) {
+                            const { data } = await supabase.from('credit_cards').select('*').eq('user_id', userId)
+                            const list = (data as CreditCard[]) ?? []
+                            setCards(list)
+                            setSelectedCreditCardId(list[0]?.id ?? null)
+                            setCardsLoaded(true)
+                          }
+                          setLoadingCards(false)
+                          return
+                        }
+                        setEditingPayment(false)
+                        setSavingPayment(true)
+                        await onEditPaymentMethod(transactions, method, undefined)
+                        setSavingPayment(false)
+                      }}
+                      style={{
+                        paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16,
+                        backgroundColor: active ? Colors.primary : Colors.white,
+                        borderWidth: 1, borderColor: active ? Colors.primary : (isCreditWithoutCards ? Colors.border : Colors.border),
+                        opacity: isCreditWithoutCards ? 0.35 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: active ? Colors.white : Colors.textDark }}>
+                        {PAYMENT_LABEL[method] ?? method}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            )}
+
+            {/* Seleção de cartão para crédito */}
+            {awaitingCard && onEditPaymentMethod && (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+                {loadingCards ? (
+                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 6 }} />
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 6 }}>
+                      Selecione o cartão:
+                    </Text>
+                    {cards.length === 0 ? (
+                      <Text style={{ fontSize: 11, color: Colors.danger, marginBottom: 8 }}>
+                        Nenhum cartão cadastrado. Adicione um cartão no perfil para usar crédito.
+                      </Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {cards.map(c => {
+                          const active = selectedCreditCardId === c.id
+                          return (
+                            <TouchableOpacity
+                              key={c.id}
+                              onPress={() => setSelectedCreditCardId(c.id)}
+                              style={{
+                                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16,
+                                backgroundColor: active ? Colors.primary : Colors.white,
+                                borderWidth: 1, borderColor: active ? Colors.primary : Colors.border,
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: active ? Colors.white : Colors.textDark }}>
+                                {c.name}{c.last_four ? ` ••••${c.last_four}` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        })}
+                      </View>
+                    )}
+
+                    <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 6 }}>
+                      Parcelas:
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => setInstallmentsCount(v => Math.max(1, v - 1))}
+                        style={{
+                          width: 28, height: 28, borderRadius: 14, borderWidth: 1.5,
+                          borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.primary, lineHeight: 20 }}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark, minWidth: 36, textAlign: 'center' }}>
+                        {installmentsCount}x
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setInstallmentsCount(v => Math.min(24, v + 1))}
+                        style={{
+                          width: 28, height: 28, borderRadius: 14, borderWidth: 1.5,
+                          borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.primary, lineHeight: 20 }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        disabled={cards.length === 0}
+                        onPress={async () => {
+                          setAwaitingCard(false)
+                          setEditingPayment(false)
+                          setSavingPayment(true)
+                          const card = cards.find(c => c.id === selectedCreditCardId) ?? null
+                          await onEditPaymentMethod(transactions, 'credit', card, installmentsCount)
+                          setInstallmentsCount(1)
+                          setSavingPayment(false)
+                        }}
+                        style={{
+                          flex: 1, paddingVertical: 7, borderRadius: 8,
+                          backgroundColor: cards.length === 0 ? Colors.border : Colors.primary,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.white }}>Confirmar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { setAwaitingCard(false); setEditingPayment(false); setInstallmentsCount(1) }}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+                          borderWidth: 1.5, borderColor: Colors.danger, alignItems: 'center',
+                          backgroundColor: '#FEF2F2',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.danger }}>Cancelar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
             )}
           </View>
 
@@ -341,6 +542,11 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
                         Parcela {t.installment_number}/{t.installment_total}
                       </Text>
                     ) : null}
+                    {showPurchaseDatePerItem && (
+                      <Text style={{ fontSize: 10, color: Colors.warning, marginTop: 2 }}>
+                        🛍️ Compra em {formatDate(t.date)}
+                      </Text>
+                    )}
                   </View>
 
                   <Text style={{
