@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
+import { getIncomeSourcesBatch } from './income-history'
 
 export type PotExpense = {
   potId: string
@@ -194,15 +195,19 @@ export async function getMonthlyTotalsOptimized(
   _months = 7
 ): Promise<MonthlyTotal[]> {
   // 4 meses passados + atual = 5 com dados reais; 3 futuros retornam null
-  const realCycles   = Array.from({ length: 5 }, (_, i) => getCycle(cycleStartDay, i - 4))
+  const realOffsets  = [-4, -3, -2, -1, 0]
+  const realCycles   = realOffsets.map(o => getCycle(cycleStartDay, o))
   const futureCycles = Array.from({ length: 3 }, (_, i) => getCycle(cycleStartDay, i + 1))
 
   const earliest   = realCycles[0].startISO
   const latestReal = realCycles[realCycles.length - 1].endISO
 
-  // Receitas e despesas não-crédito: filtro por date
-  // Despesas de crédito: filtro por billing_date (pode ter date anterior a earliest)
-  const [{ data: nonCreditTxs }, { data: creditExpTxs }] = await Promise.all([
+  // Três queries em paralelo:
+  // 1. Receita recorrente histórica (income_sources + income_source_history) — 2 queries internas
+  // 2. Receitas manuais e despesas não-crédito por date
+  // 3. Despesas de crédito por billing_date
+  const [recurringByOffset, { data: nonCreditTxs }, { data: creditExpTxs }] = await Promise.all([
+    getIncomeSourcesBatch(userId, cycleStartDay, realOffsets),
     supabase
       .from('transactions')
       .select('type, amount, date')
@@ -222,15 +227,19 @@ export async function getMonthlyTotalsOptimized(
       .lte('billing_date', latestReal),
   ])
 
-  const realMonths: MonthlyTotal[] = realCycles.map(cycle => {
-    const income = (nonCreditTxs ?? [])
+  const realMonths: MonthlyTotal[] = realCycles.map((cycle, i) => {
+    const offset = realOffsets[i]
+
+    // Receita = recorrente do mês + lançamentos manuais de receita
+    const recurringIncome = recurringByOffset[offset] ?? 0
+    const manualIncome = (nonCreditTxs ?? [])
       .filter(tx => tx.type === 'income' && tx.date >= cycle.startISO && tx.date <= cycle.endISO)
       .reduce((s, tx) => s + Number(tx.amount), 0)
+    const income = recurringIncome + manualIncome
 
     const expNonCredit = (nonCreditTxs ?? [])
       .filter(tx => tx.type === 'expense' && tx.date >= cycle.startISO && tx.date <= cycle.endISO)
       .reduce((s, tx) => s + Number(tx.amount), 0)
-
     const expCredit = (creditExpTxs ?? [])
       .filter(tx => (tx.billing_date ?? '') >= cycle.startISO && (tx.billing_date ?? '') <= cycle.endISO)
       .reduce((s, tx) => s + Number(tx.amount), 0)
