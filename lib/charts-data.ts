@@ -53,11 +53,40 @@ export type NecessityShare = {
   unclassified: number
 }
 
+export type CreditByCardTx = {
+  id: string
+  description: string | null
+  merchant: string | null
+  amount: number
+  date: string
+  potName: string | null
+  installment_number: number | null
+  installment_total: number | null
+}
+
 export type CreditByCard = {
   cardId: string | null
   cardName: string
+  lastFour: string | null
+  brand: string
   color: string
   total: number
+  transactions: CreditByCardTx[]
+}
+
+export function inferBrand(cardName: string): string {
+  const n = cardName.toLowerCase()
+  if (n.includes('visa'))                         return 'visa'
+  if (n.includes('master'))                       return 'mastercard'
+  if (n.includes('amex') || n.includes('american')) return 'amex'
+  if (n.includes('elo'))                          return 'elo'
+  if (n.includes('hipercard'))                    return 'hipercard'
+  if (n.includes('hiper'))                        return 'hiper'
+  if (n.includes('diners'))                       return 'diners'
+  if (n.includes('discover'))                     return 'discover'
+  if (n.includes('jcb'))                          return 'jcb'
+  if (n.includes('maestro'))                      return 'maestro'
+  return 'generic'
 }
 
 export type FinancialScore = {
@@ -149,10 +178,10 @@ export async function getCreditByCard(
 ): Promise<CreditByCard[]> {
   const CARD_COLORS = ['#0F5EA8','#1D9E75','#7C3AED','#EA580C','#0891B2','#BA7517','#E24B4A']
 
-  const [{ data: txs }, { data: cards }] = await Promise.all([
+  const [{ data: txs }, { data: cards }, { data: pots }] = await Promise.all([
     supabase
       .from('transactions')
-      .select('amount, card_id')
+      .select('id, amount, card_id, description, merchant, date, pot_id, installment_number, installment_total')
       .eq('user_id', userId)
       .eq('type', 'expense')
       .eq('payment_method', 'credit')
@@ -162,28 +191,44 @@ export async function getCreditByCard(
       .from('credit_cards')
       .select('id, name, last_four')
       .eq('user_id', userId),
+    supabase
+      .from('pots')
+      .select('id, name')
+      .eq('user_id', userId)
+      .is('deleted_at', null),
   ])
 
   const cardMap = new Map((cards ?? []).map(c => [c.id, c]))
-  const totals  = new Map<string | null, number>()
+  const potMap  = new Map((pots ?? []).map(p => [p.id, p.name as string]))
+
+  const txsByCard = new Map<string | null, typeof txs>()
   for (const tx of txs ?? []) {
     const key = tx.card_id ?? null
-    totals.set(key, (totals.get(key) ?? 0) + Number(tx.amount))
+    if (!txsByCard.has(key)) txsByCard.set(key, [])
+    txsByCard.get(key)!.push(tx)
   }
 
   const result: CreditByCard[] = []
   let colorIdx = 0
-  for (const [cardId, total] of totals.entries()) {
-    const card = cardId ? cardMap.get(cardId) : null
-    const cardName = card
-      ? `${card.name}${card.last_four ? ` ••••${card.last_four}` : ''}`
-      : 'Sem cartão vinculado'
-    result.push({
-      cardId,
-      cardName,
-      color: CARD_COLORS[colorIdx % CARD_COLORS.length],
-      total,
-    })
+  for (const [cardId, cardTxs] of txsByCard.entries()) {
+    const card     = cardId ? cardMap.get(cardId) : null
+    const cardName = card ? card.name : 'Sem cartão vinculado'
+    const lastFour = card?.last_four ?? null
+    const brand    = inferBrand(cardName)
+    const total    = (cardTxs ?? []).reduce((s, t) => s + Number(t.amount), 0)
+    const transactions: CreditByCardTx[] = (cardTxs ?? [])
+      .map(tx => ({
+        id:                 tx.id as string,
+        description:        tx.description as string | null,
+        merchant:           tx.merchant as string | null,
+        amount:             Number(tx.amount),
+        date:               tx.date as string,
+        potName:            tx.pot_id ? (potMap.get(tx.pot_id) ?? null) : null,
+        installment_number: tx.installment_number as number | null,
+        installment_total:  tx.installment_total as number | null,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+    result.push({ cardId, cardName, lastFour, brand, color: CARD_COLORS[colorIdx % CARD_COLORS.length], total, transactions })
     colorIdx++
   }
   return result.sort((a, b) => b.total - a.total)

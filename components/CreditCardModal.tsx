@@ -21,6 +21,8 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PLAN_LIMITS } from '../constants/plans'
 import { router } from 'expo-router'
+import { PaymentIcon } from 'react-native-payment-icons'
+import { inferBrand } from '../lib/charts-data'
 
 type FormState = {
   name: string
@@ -258,7 +260,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
                 cards.map(card => (
                   <View key={card.id} style={styles.cardRow}>
                     <View style={styles.cardIcon}>
-                      <Text style={{ fontSize: 20 }}>💳</Text>
+                      <PaymentIcon type={inferBrand(card.name) as any} width={40} height={25} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardName}>

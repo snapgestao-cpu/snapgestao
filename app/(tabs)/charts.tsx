@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Dimensions, FlatList,
+  Dimensions, FlatList, Modal, TextInput,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
+import { PaymentIcon } from 'react-native-payment-icons'
 import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
@@ -15,9 +16,10 @@ import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
   getGoalsProgress, getEmergencyReserveHistory, getFinancialScore,
-  getCreditByCard,
+  getCreditByCard, inferBrand,
   PotExpense, MonthlyTotal, CreditCommitment, PaymentMethodShare,
-  GoalProgress, ReservePoint, NecessityShare, FinancialScore, CreditByCard,
+  GoalProgress, ReservePoint, NecessityShare, FinancialScore,
+  CreditByCard, CreditByCardTx,
 } from '../../lib/charts-data'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -76,6 +78,88 @@ function fmtSigned(val: number): string {
   const sign = val < 0 ? '-' : ''
   if (abs >= 1000) return `${sign}R$${(abs / 1000).toFixed(1)}k`
   return `${sign}R$${abs.toFixed(0)}`
+}
+
+function formatDatePT(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-')
+  return `${day}/${month}/${year}`
+}
+
+// ── CardPurchasesModal ─────────────────────────────────────────────────────
+function CardPurchasesModal({
+  card, monthYear, onClose,
+}: {
+  card: CreditByCard; monthYear: string; onClose: () => void
+}) {
+  const insets = useSafeAreaInsets()
+  const [search, setSearch] = useState('')
+
+  const sorted = card.transactions
+    .filter(tx => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (
+        (tx.description?.toLowerCase().includes(q) ?? false) ||
+        (tx.merchant?.toLowerCase().includes(q) ?? false)
+      )
+    })
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={s.modalOverlay}>
+        <View style={[s.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={s.modalHeader}>
+            <View style={s.cardBrandWrap}>
+              <PaymentIcon type={card.brand as any} width={44} height={28} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.modalCardName}>{card.cardName}</Text>
+              <Text style={s.modalMonthYear}>Compras em {monthYear} · {brl(card.total)}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={s.modalCloseBtn}>
+              <Text style={s.modalCloseTxt}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={s.modalSearchWrap}>
+            <TextInput
+              style={s.modalSearch}
+              placeholder="Buscar compra..."
+              placeholderTextColor={Colors.textMuted}
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+
+          <FlatList
+            data={sorted}
+            keyExtractor={tx => tx.id}
+            renderItem={({ item: tx }) => (
+              <View style={s.txRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.txDesc} numberOfLines={1}>
+                    {tx.merchant ?? tx.description ?? 'Sem descrição'}
+                  </Text>
+                  <Text style={s.txMeta}>
+                    {formatDatePT(tx.date)}
+                    {tx.potName ? ` · ${tx.potName}` : ''}
+                    {tx.installment_total && tx.installment_total > 1
+                      ? ` · ${tx.installment_number}/${tx.installment_total}x`
+                      : ''}
+                  </Text>
+                </View>
+                <Text style={s.txAmt}>{brl(tx.amount)}</Text>
+              </View>
+            )}
+            ListEmptyComponent={() => <Empty icon="🔍" text="Nenhuma compra encontrada" />}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}
+          />
+        </View>
+      </View>
+    </Modal>
+  )
 }
 
 // ── Radar Chart ────────────────────────────────────────────────────────────
@@ -557,13 +641,14 @@ function TopicMetas({ userId }: { userId: string }) {
 }
 
 // ── Topic 4: Crédito ───────────────────────────────────────────────────────
-function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
-  userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string
+function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear }: {
+  userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string; monthYear: string
 }) {
   const [commitments, setCommitments] = useState<CreditCommitment[]>([])
   const [creditByCard, setCreditByCard] = useState<CreditByCard[]>([])
   const [loading, setLoading]           = useState(true)
   const [tooltipIdx, setTooltipIdx]     = useState<number | null>(null)
+  const [selectedCard, setSelectedCard] = useState<CreditByCard | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -596,10 +681,6 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
   }))
 
   const totalCard = creditByCard.reduce((sum, c) => sum + c.total, 0)
-  const cardPieData = creditByCard.map(c => ({
-    value: c.total, color: c.color,
-    text: totalCard > 0 ? Math.round((c.total / totalCard) * 100) + '%' : '',
-  }))
 
   return (
     <>
@@ -640,31 +721,46 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd }: {
         )}
       </ChartCard>
 
-      <ChartCard title="Gastos por cartão de crédito" description="Veja quanto você gastou em cada cartão de crédito neste ciclo.">
-        {cardPieData.length === 0 ? (
+      <ChartCard title="Gastos por cartão de crédito" description="Veja quanto você gastou em cada cartão neste ciclo. Toque em um cartão para ver as compras.">
+        {creditByCard.length === 0 ? (
           <Empty icon="💳" text="Nenhum gasto no crédito neste ciclo" />
         ) : (
-          <>
-            <View style={s.center}>
-              <PieChart
-                data={cardPieData} donut radius={80} innerRadius={50}
-                showText textSize={10} textColor={Colors.white}
-                centerLabelComponent={() => <Text style={s.donutCenter}>{brl(totalCard)}</Text>}
-              />
-            </View>
-            <View style={s.legendWrap}>
-              {creditByCard.map(c => (
-                <View key={c.cardId ?? 'none'} style={s.legendRow}>
-                  <View style={[s.legendDot, { backgroundColor: c.color }]} />
-                  <Text style={s.legendName}>{c.cardName}</Text>
-                  <Text style={s.legendVal}>{brl(c.total)}</Text>
-                  {totalCard > 0 && <Text style={s.legendPct}>{Math.round((c.total / totalCard) * 100)}%</Text>}
+          <View style={{ gap: 10 }}>
+            {creditByCard.map(c => (
+              <TouchableOpacity key={c.cardId ?? 'none'} style={s.cardCard} onPress={() => setSelectedCard(c)} activeOpacity={0.7}>
+                <View style={s.cardCardTop}>
+                  <View style={s.cardBrandWrap}>
+                    <PaymentIcon type={c.brand as any} width={44} height={28} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cardCardName}>
+                      {c.cardName}{c.lastFour ? ` (•••• ${c.lastFour})` : ''}
+                    </Text>
+                    <Text style={s.cardCardAmt}>
+                      {brl(c.total)}{totalCard > 0 ? ` · ${Math.round((c.total / totalCard) * 100)}%` : ''}
+                    </Text>
+                  </View>
+                  <Text style={s.cardChevron}>›</Text>
                 </View>
-              ))}
-            </View>
-          </>
+                <View style={s.cardProgressBg}>
+                  <View style={[s.cardProgressFill, {
+                    width: totalCard > 0 ? `${Math.round((c.total / totalCard) * 100)}%` as any : '0%',
+                    backgroundColor: c.color,
+                  }]} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
       </ChartCard>
+
+      {selectedCard && (
+        <CardPurchasesModal
+          card={selectedCard}
+          monthYear={monthYear}
+          onClose={() => setSelectedCard(null)}
+        />
+      )}
     </>
   )
 }
@@ -775,6 +871,7 @@ export default function ChartsScreen() {
           cycleStartDay={user.cycle_start}
           cycleStart={cycle.startISO}
           cycleEnd={cycle.endISO}
+          monthYear={cycle.monthYear}
         />
       )}
       {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} />}
@@ -981,4 +1078,47 @@ const s = StyleSheet.create({
   axisFill: { height: 6, borderRadius: 3 },
   axisDesc: { fontSize: 11, color: Colors.textMuted, marginBottom: 4 },
   axisTip:  { fontSize: 11, color: Colors.primary, fontStyle: 'italic' },
+
+  // Credit card rows
+  cardCard: {
+    backgroundColor: Colors.background, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border, padding: 12,
+  },
+  cardCardTop:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  cardBrandWrap:   { width: 44, alignItems: 'center', justifyContent: 'center' },
+  cardCardName:    { fontSize: 13, fontWeight: '700', color: Colors.textDark },
+  cardCardAmt:     { fontSize: 12, color: Colors.textMuted, marginTop: 1 },
+  cardChevron:     { fontSize: 18, color: Colors.textMuted },
+  cardProgressBg:  { height: 4, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden' },
+  cardProgressFill:{ height: 4, borderRadius: 2 },
+
+  // CardPurchasesModal
+  modalOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    maxHeight: '80%' as any,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  modalCardName:   { fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  modalMonthYear:  { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  modalCloseBtn:   { padding: 4 },
+  modalCloseTxt:   { fontSize: 16, color: Colors.textMuted },
+  modalSearchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
+  modalSearch: {
+    backgroundColor: Colors.background, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 13,
+    color: Colors.textDark, borderWidth: 1, borderColor: Colors.border,
+  },
+  txRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  txDesc: { fontSize: 13, fontWeight: '600', color: Colors.textDark },
+  txMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  txAmt:  { fontSize: 13, fontWeight: '700', color: Colors.textDark },
 })
