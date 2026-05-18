@@ -48,6 +48,14 @@ export type ReservePoint = {
 export type NecessityShare = {
   necessity: number
   desire: number
+  unclassified: number
+}
+
+export type CreditByCard = {
+  cardId: string | null
+  cardName: string
+  color: string
+  total: number
 }
 
 export type FinancialScore = {
@@ -123,11 +131,60 @@ export async function getNecessityShare(
 
   let necessity = 0
   let desire = 0
+  let unclassified = 0
   for (const tx of data ?? []) {
-    if (tx.is_need) necessity += Number(tx.amount)
-    else desire += Number(tx.amount)
+    if (tx.is_need === true) necessity += Number(tx.amount)
+    else if (tx.is_need === false) desire += Number(tx.amount)
+    else unclassified += Number(tx.amount)
   }
-  return { necessity, desire }
+  return { necessity, desire, unclassified }
+}
+
+export async function getCreditByCard(
+  userId: string,
+  cycleStart: string,
+  cycleEnd: string
+): Promise<CreditByCard[]> {
+  const CARD_COLORS = ['#0F5EA8','#1D9E75','#7C3AED','#EA580C','#0891B2','#BA7517','#E24B4A']
+
+  const [{ data: txs }, { data: cards }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('amount, card_id')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .eq('payment_method', 'credit')
+      .gte('date', cycleStart)
+      .lte('date', cycleEnd),
+    supabase
+      .from('credit_cards')
+      .select('id, name, last_four')
+      .eq('user_id', userId),
+  ])
+
+  const cardMap = new Map((cards ?? []).map(c => [c.id, c]))
+  const totals  = new Map<string | null, number>()
+  for (const tx of txs ?? []) {
+    const key = tx.card_id ?? null
+    totals.set(key, (totals.get(key) ?? 0) + Number(tx.amount))
+  }
+
+  const result: CreditByCard[] = []
+  let colorIdx = 0
+  for (const [cardId, total] of totals.entries()) {
+    const card = cardId ? cardMap.get(cardId) : null
+    const cardName = card
+      ? `${card.name}${card.last_four ? ` ••••${card.last_four}` : ''}`
+      : 'Sem cartão vinculado'
+    result.push({
+      cardId,
+      cardName,
+      color: CARD_COLORS[colorIdx % CARD_COLORS.length],
+      total,
+    })
+    colorIdx++
+  }
+  return result.sort((a, b) => b.total - a.total)
 }
 
 export async function getMonthlyTotals(
@@ -408,15 +465,21 @@ export async function getFinancialScore(
   userId: string,
   cycleStartDay: number
 ): Promise<FinancialScore> {
+  const today = new Date()
+  const currentMonthISO = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
+
   const [
     { data: pots },
     { data: txsRaw },
-    { data: scheduledMonths },
+    { data: pastScheduled },
   ] = await Promise.all([
     supabase.from('pots').select('id, limit_amount').eq('user_id', userId).is('deleted_at', null),
     supabase.from('transactions').select('type, amount, date, payment_method, billing_date, is_need, pot_id')
       .eq('user_id', userId).in('type', ['income', 'expense']),
-    supabase.from('scheduled_transaction_months').select('status').eq('user_id', userId),
+    supabase.from('scheduled_transaction_months')
+      .select('status, reference_month')
+      .eq('user_id', userId)
+      .lt('reference_month', currentMonthISO),
   ])
 
   const cycles6 = Array.from({ length: 6 }, (_, i) => getCycle(cycleStartDay, -(5 - i)))
@@ -460,12 +523,13 @@ export async function getFinancialScore(
     poupanca = Math.min(100, Math.round(savingsRates.reduce((s, r) => s + r, 0) / savingsRates.length * 2))
   }
 
-  // Planejamento: % lançamentos agendados confirmados
-  let planejamento = 50
-  const allScheduled = scheduledMonths ?? []
-  if (allScheduled.length > 0) {
-    const confirmed = allScheduled.filter(s => s.status === 'confirmed').length
-    planejamento = Math.round((confirmed / allScheduled.length) * 100)
+  // Planejamento: 100% se não há agendados pendentes em meses passados;
+  // penaliza proporcionalmente a cada mês atrasado (reference_month < mês atual)
+  let planejamento = 100
+  const pastMonths = pastScheduled ?? []
+  if (pastMonths.length > 0) {
+    const overdue = pastMonths.filter(m => m.status === 'pending').length
+    planejamento = Math.round(Math.max(0, (1 - overdue / pastMonths.length) * 100))
   }
 
   // Equilíbrio: % de necessidade vs desejo (ideal ~70% necessidade)
