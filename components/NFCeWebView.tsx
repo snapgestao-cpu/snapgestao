@@ -266,6 +266,10 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
   const sawRedirectRef = useRef(
     state ? state.isRedirectUrl(url) : genericIsRedirectUrl(url)
   )
+  // Counts how many times onLoadEnd fired at the redirect URL.
+  // Some portals (e.g. SP SEFAZ) render data at the same QRCode URL instead of
+  // redirecting — on the 2nd load we inject the extraction script anyway.
+  const redirectLoadEndCountRef = useRef(0)
 
   const checkIsRedirect = (u: string) => state ? state.isRedirectUrl(u) : genericIsRedirectUrl(u)
   const checkIsFinal = (u: string) => {
@@ -283,6 +287,7 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
     setTentativaAlternativa(false)
     scriptInjectedRef.current = false
     finalUrlRef.current = url
+    redirectLoadEndCountRef.current = 0
   }, [url])
 
   // Elapsed-seconds counter
@@ -485,7 +490,16 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
           }
 
           if (checkIsRedirect(currentUrl)) {
-            console.log('[WebView] onLoadEnd ignorado — ainda na URL de redirect')
+            redirectLoadEndCountRef.current++
+            if (sawRedirectRef.current && redirectLoadEndCountRef.current >= 2) {
+              // Portal renders data at the same QRCode URL without redirecting (e.g. SP SEFAZ).
+              // Inject the extraction script — it polls internally for up to 15s.
+              console.log('[WebView] Redirect URL carregou pela 2ª vez — injetando script (padrão SP)')
+              setLoadingMessage('Extraindo itens...')
+              loadEndTimerRef.current = setTimeout(injectScript, 1500)
+            } else {
+              console.log('[WebView] onLoadEnd ignorado — ainda na URL de redirect')
+            }
             return
           }
 
