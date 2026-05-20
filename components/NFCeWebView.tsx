@@ -298,7 +298,10 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
       setLoading(prev => {
         if (!prev) return prev
         console.log('[WebView] TIMEOUT GLOBAL 35s')
-        onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais.\nVerifique sua conexão e tente novamente.')
+        // Defer onError to after the current render cycle — calling setState of a
+        // parent component inside a state updater function causes the React
+        // "Cannot update a component while rendering a different component" error.
+        setTimeout(() => onError('Tempo limite excedido.\n\nO portal da SEFAZ demorou demais.\nVerifique sua conexão e tente novamente.'), 0)
         return false
       })
     }, 35000)
