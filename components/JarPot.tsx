@@ -9,6 +9,7 @@
 
 import React from 'react'
 import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { getPotIcon } from '../lib/potIcons'
 
 const POT_IMAGES = {
   empty:    require('../assets/potes/Pote_volume_vazio.png'),
@@ -34,31 +35,6 @@ function getPotImage(percent: number) {
   return POT_IMAGES.p100mais
 }
 
-const POT_ICONS: Record<string, string> = {
-  'alimentação': '🍽️', 'alimentacao': '🍽️',
-  'mercado': '🛒', 'supermercado': '🛒',
-  'moradia': '🏠', 'aluguel': '🏠', 'casa': '🏡',
-  'transporte': '🚗', 'combustível': '⛽', 'combustivel': '⛽', 'uber': '🚕',
-  'saúde': '❤️', 'saude': '❤️',
-  'farmácia': '💊', 'farmacia': '💊', 'academia': '💪', 'médico': '🏥', 'medico': '🏥',
-  'educação': '📚', 'educacao': '📚', 'escola': '🎓', 'curso': '📖',
-  'lazer': '🎉', 'entretenimento': '🎬', 'cinema': '🎬', 'streaming': '📺',
-  'viagem': '✈️', 'viagens': '✈️',
-  'vestuário': '👕', 'vestuario': '👕', 'roupas': '👔',
-  'pet': '🐾', 'pets': '🐾',
-  'investimento': '📈', 'investimentos': '📈',
-  'reserva': '🛡️', 'emergência': '🛡️', 'emergencia': '🛡️',
-  'beleza': '💄', 'tecnologia': '💻', 'celular': '📱',
-  'família': '👨‍👩‍👧', 'familia': '👨‍👩‍👧',
-  'presentes': '🎁', 'outros': '📦',
-}
-
-function getPotIcon(name: string): string {
-  const lower = name.toLowerCase().trim()
-  if (POT_ICONS[lower]) return POT_ICONS[lower]
-  const match = Object.keys(POT_ICONS).find(k => lower.includes(k) || k.includes(lower))
-  return match ? POT_ICONS[match] : '💰'
-}
 
 type Props = {
   name: string

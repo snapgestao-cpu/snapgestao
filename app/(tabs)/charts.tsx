@@ -11,7 +11,7 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
-import { brl } from '../../lib/finance'
+import { brl, fmtShort, fmtSigned } from '../../lib/finance'
 import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
@@ -66,18 +66,6 @@ function getMotivation(score: number): string {
   if (score <= 70) return 'Bom progresso! Continue monitorando seus gastos. 📊'
   if (score <= 90) return 'Ótima gestão financeira! Você está no caminho certo. ⭐'
   return 'Excelente! Você é um exemplo de controle financeiro! 🏆'
-}
-
-function fmtShort(val: number): string {
-  if (val >= 1000) return `R$${(val / 1000).toFixed(1)}k`
-  return `R$${val.toFixed(0)}`
-}
-
-function fmtSigned(val: number): string {
-  const abs = Math.abs(val)
-  const sign = val < 0 ? '-' : ''
-  if (abs >= 1000) return `${sign}R$${(abs / 1000).toFixed(1)}k`
-  return `${sign}R$${abs.toFixed(0)}`
 }
 
 function formatDatePT(isoDate: string): string {

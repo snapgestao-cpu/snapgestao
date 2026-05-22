@@ -19,3 +19,15 @@ export function calcFV(monthlyDeposit: number, annualRatePct: number, years: num
 export function brl(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
+
+export function fmtShort(val: number): string {
+  if (val >= 1000) return `R$${(val / 1000).toFixed(1)}k`
+  return `R$${val.toFixed(0)}`
+}
+
+export function fmtSigned(val: number): string {
+  const abs = Math.abs(val)
+  const sign = val < 0 ? '-' : ''
+  if (abs >= 1000) return `${sign}R$${(abs / 1000).toFixed(1)}k`
+  return `${sign}R$${abs.toFixed(0)}`
+}

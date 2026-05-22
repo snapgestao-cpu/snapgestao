@@ -23,13 +23,10 @@ import { getCycle } from '../../lib/cycle'
 import { getPotsHistoryBatch } from '../../lib/pot-history'
 import { getIncomeSourcesBatch } from '../../lib/income-history'
 import { getPotIcon } from '../../lib/potIcons'
+import { brl } from '../../lib/finance'
 import { SearchBar } from '../../components/SearchBar'
 
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-
-function brl(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
 
 function formatMonthLabel(start: Date): string {
   return MONTH_NAMES[start.getMonth()] + '/' + String(start.getFullYear()).slice(2)

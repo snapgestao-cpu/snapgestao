@@ -12,6 +12,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'
 import { Transaction } from '../types'
 import { getPotIcon } from '../lib/potIcons'
+import { brl } from '../lib/finance'
 
 type Props = {
   transaction: Transaction
@@ -41,10 +42,6 @@ function formatDate(iso: string): string {
   if (iso === yesterday) return 'Ontem'
   const [y, m, d] = iso.split('-')
   return `${d}/${m}`
-}
-
-function brl(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 export function TransactionItem({ transaction, potName, potColor, onPress }: Props) {

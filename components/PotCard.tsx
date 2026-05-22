@@ -11,6 +11,7 @@ import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Colors } from '../constants/colors'
 import { getPotIcon } from '../lib/potIcons'
+import { brl } from '../lib/finance'
 
 type Props = {
   name: string
@@ -20,10 +21,6 @@ type Props = {
   remaining: number
   onPress?: () => void
   onLongPress?: () => void
-}
-
-function brl(value: number) {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 export function PotCard({ name, color, limit_amount, spent, remaining, onPress, onLongPress }: Props) {

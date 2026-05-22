@@ -10,6 +10,8 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'
+import { brl } from '../lib/finance'
+import { PAYMENT_LABEL } from '../lib/payment-methods'
 
 type Props = {
   item: any
@@ -23,19 +25,6 @@ function formatDate(dateStr: string): string {
   return `${day}/${month}/${year}`
 }
 
-const PAYMENT_LABELS: Record<string, string> = {
-  credit: 'Crédito',
-  debit: 'Débito',
-  pix: 'Pix',
-  cash: 'Dinheiro',
-  transfer: 'Transferência',
-  voucher_alimentacao: 'Vale Alimentação',
-  voucher_refeicao: 'Vale Refeição',
-}
-
-function brl(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
 
 export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }: Props) {
   const scheduled = item.scheduled_transactions
@@ -62,7 +51,7 @@ export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }:
         <View style={[styles.potDot, { backgroundColor: potColor }]} />
         <Text style={styles.metaText}>{scheduled?.pots?.name}</Text>
         <Text style={styles.metaText}>
-          · {PAYMENT_LABELS[scheduled?.payment_method] || scheduled?.payment_method}
+          · {PAYMENT_LABEL[scheduled?.payment_method] || scheduled?.payment_method}
         </Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>A CONFIRMAR</Text>

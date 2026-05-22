@@ -14,6 +14,9 @@ import { Colors } from '../constants/colors'
 import { CreditCard } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
+import { getPotIcon } from '../lib/potIcons'
+import { brl } from '../lib/finance'
+import { PAYMENT_LABEL } from '../lib/payment-methods'
 
 type TxItem = {
   id: string
@@ -37,29 +40,6 @@ type Props = {
   onDeleteGroup?: (transactions: TxItem[]) => void
   onEditMerchant?: (transactions: TxItem[], newMerchant: string) => Promise<void> | void
   onEditPaymentMethod?: (transactions: TxItem[], newMethod: string, card?: CreditCard | null, installments?: number) => Promise<void> | void
-}
-
-const PAYMENT_LABEL: Record<string, string> = {
-  credit: 'Crédito', debit: 'Débito',
-  pix: 'Pix', cash: 'Dinheiro', transfer: 'Transferência',
-  voucher_alimentacao: 'Vale Alimentação', voucher_refeicao: 'Vale Refeição',
-}
-
-const POT_ICONS: Record<string, string> = {
-  'alimentação': '🍽️', 'alimentacao': '🍽️', 'mercado': '🛒',
-  'moradia': '🏠', 'transporte': '🚗', 'saúde': '❤️', 'saude': '❤️',
-  'educação': '📚', 'educacao': '📚', 'lazer': '🎉',
-  'lanche': '🍔', 'presente': '🎁', 'presentes': '🎁',
-}
-
-function getPotIcon(name: string): string {
-  const lower = (name || '').toLowerCase()
-  const match = Object.keys(POT_ICONS).find(k => lower.includes(k))
-  return match ? POT_ICONS[match] : '💰'
-}
-
-function brl(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function formatDate(dateStr: string): string {
