@@ -9,7 +9,7 @@
  * já buscados. É a tela inicial do app após login.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   TouchableOpacity, RefreshControl, Animated, Alert,
@@ -33,6 +33,7 @@ import { getCycle, CycleInfo } from '../../lib/cycle'
 import { computeCycleSummaryFromData, CycleSummary, processCycleClose, recalculateRollover } from '../../lib/cycleClose'
 import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
 import { getIncomeSourcesForMonth } from '../../lib/income-history'
+import { getOrCreateReserve } from '../../lib/emergency-reserve'
 import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { calcBillingDate, calcBillingDateNoCard } from '../../lib/billing-date'
@@ -96,15 +97,13 @@ export default function MonthlyScreen() {
   const loadData = useCallback(async () => {
     if (!user) return
     try {
-      const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
-      const [txNonCreditRes, txCreditRes, allPotsRes, epRes, goalsRes, incomeSources, closedRes, incomingRolloverRes] = await Promise.all([
-        // Non-credit: filter by date (limit prevents extreme edge cases)
+      // Block 1 — critical: transactions + pots + income (renders immediately)
+      const [txNonCreditRes, txCreditRes, allPotsRes, incomeSources] = await Promise.all([
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .neq('payment_method', 'credit')
           .gte('date', cycle.startISO).lte('date', cycle.endISO)
           .order('date', { ascending: false })
           .limit(2000),
-        // Credit: filter by billing_date (captures installments from prior months)
         supabase.from('transactions').select('*').eq('user_id', user.id)
           .eq('payment_method', 'credit')
           .not('billing_date', 'is', null)
@@ -112,15 +111,7 @@ export default function MonthlyScreen() {
           .order('billing_date', { ascending: false })
           .limit(2000),
         fetchPotsForCycleWithHistory(user.id, cycle.startISO, cycle.endISO),
-        supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
-        supabase.from('goals').select('*').eq('user_id', user.id),
         getIncomeSourcesForMonth(user.id, user.cycle_start ?? 1, offset),
-        // Rollover de saída (verifica se este ciclo foi encerrado — chave = início do próximo)
-        supabase.from('cycle_rollovers').select('*')
-          .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
-        // Rollover de entrada (débito/sobra vindo do ciclo anterior — chave = início deste ciclo)
-        supabase.from('cycle_rollovers').select('total_debt, total_surplus')
-          .eq('user_id', user.id).eq('cycle_start_date', cycle.startISO).maybeSingle(),
       ])
 
       const txs: Transaction[] = [
@@ -132,25 +123,38 @@ export default function MonthlyScreen() {
         return dB.localeCompare(dA)
       })
       const pots = allPotsRes as Pot[]
-      const ep = epRes.data as Pot | null
       const income = incomeSources.reduce((s, r) => s + Number(r.amount), 0)
+      const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
 
       setAllPots(pots)
-      setEmergencyPot(ep)
       setTotalIncome(income)
-      setGoals((goalsRes.data ?? []) as Goal[])
-      setCycleClosed((closedRes.data as any)?.processed === true)
-      setRolloverExists(!!closedRes.data)
-
-      const potMap = Object.fromEntries(pots.map(p => [p.id, p]))
-      const txsWithPot: TxWithPot[] = txs.map(tx => ({
+      setTransactions(txs.map(tx => ({
         ...tx,
         potName: tx.pot_id ? potMap[tx.pot_id]?.name : undefined,
         potColor: tx.pot_id ? potMap[tx.pot_id]?.color : undefined,
-      }))
-      setTransactions(txsWithPot)
+      })))
+      setLoading(false)
+      setRefreshing(false)
 
-      // Summary computed from already-fetched data — zero extra queries
+      // Block 2 — complementary: goals, rollovers, emergency (background)
+      const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
+      const [epRes, goalsRes, closedRes, incomingRolloverRes, reserveRes] = await Promise.all([
+        supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
+        supabase.from('goals').select('*').eq('user_id', user.id),
+        supabase.from('cycle_rollovers').select('*')
+          .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
+        supabase.from('cycle_rollovers').select('total_debt, total_surplus')
+          .eq('user_id', user.id).eq('cycle_start_date', cycle.startISO).maybeSingle(),
+        getOrCreateReserve(user.id),
+      ])
+
+      const ep = epRes.data as Pot | null
+      setEmergencyPot(ep)
+      setGoals((goalsRes.data ?? []) as Goal[])
+      setCycleClosed((closedRes.data as any)?.processed === true)
+      setRolloverExists(!!closedRes.data)
+      setEmergencyBalance(Number(reserveRes.current_amount ?? 0))
+
       const s = computeCycleSummaryFromData(
         pots,
         incomeSources,
@@ -159,21 +163,11 @@ export default function MonthlyScreen() {
         (txCreditRes.data ?? []) as any[],
       )
       setSummary(s)
-
-      // Emergency balance: single query, runs after main block
-      if (ep) {
-        const { data: epTxs } = await supabase
-          .from('transactions').select('amount, type').eq('pot_id', ep.id)
-        const epBal = ((epTxs ?? []) as any[]).reduce(
-          (acc: number, t: any) => t.type === 'income' ? acc + Number(t.amount) : acc - Number(t.amount), 0
-        )
-        setEmergencyBalance(epBal)
-      }
-    } finally {
+    } catch {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [user?.id, offset])
+  }, [user?.id, user?.cycle_start, offset])
 
   useEffect(() => { setLoading(true); loadData() }, [loadData])
 
@@ -261,17 +255,24 @@ export default function MonthlyScreen() {
     }
   }
 
-  const expPots = allPots.filter(p => !p.is_emergency)
-  const q = searchQuery.trim().toLowerCase()
-  const filteredTransactions = q
-    ? transactions.filter(t =>
-        (t.description ?? '').toLowerCase().includes(q) ||
-        (t.merchant ?? '').toLowerCase().includes(q)
-      )
-    : transactions
-  const txMerchantGroups = groupTransactionsByMerchantAndDate(filteredTransactions)
-  const txByDate = groupByDate(txMerchantGroups)
-  const txDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
+  const expPots = useMemo(() => allPots.filter(p => !p.is_emergency), [allPots])
+  const filteredTransactions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return transactions
+    return transactions.filter(t =>
+      (t.description ?? '').toLowerCase().includes(q) ||
+      (t.merchant ?? '').toLowerCase().includes(q)
+    )
+  }, [transactions, searchQuery])
+  const txMerchantGroups = useMemo(
+    () => groupTransactionsByMerchantAndDate(filteredTransactions),
+    [filteredTransactions]
+  )
+  const txByDate = useMemo(() => groupByDate(txMerchantGroups), [txMerchantGroups])
+  const txDates = useMemo(
+    () => Object.keys(txByDate).sort((a, b) => b.localeCompare(a)),
+    [txByDate]
+  )
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

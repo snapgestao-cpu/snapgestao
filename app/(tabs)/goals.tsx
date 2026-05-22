@@ -9,7 +9,7 @@
  * concluídas acessíveis via modais inline.
  */
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   TouchableOpacity, RefreshControl, Modal, Alert, FlatList,
@@ -251,7 +251,6 @@ export default function GoalsScreen() {
   const { cycleOffset } = useCycleStore()
 
   const [goals, setGoals] = useState<Goal[]>([])
-  const [urgentGoal, setUrgentGoal] = useState<Goal | null>(null)
   const [timelineYears, setTimelineYears] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -305,9 +304,19 @@ export default function GoalsScreen() {
   // Metas concluídas
   const [showCompletedGoals, setShowCompletedGoals] = useState(false)
   const [completedGoals, setCompletedGoals] = useState<any[]>([])
+  const [completedPage, setCompletedPage] = useState(0)
+  const [completedHasMore, setCompletedHasMore] = useState(true)
+  const [completedLoadingMore, setCompletedLoadingMore] = useState(false)
 
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null)
   const [pendingBadges, setPendingBadges] = useState<Badge[]>([])
+
+  const urgentGoal = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    return goals
+      .filter(g => g.target_date != null && g.target_date >= today)
+      .sort((a, b) => (a.target_date ?? '').localeCompare(b.target_date ?? ''))[0] ?? null
+  }, [goals])
 
   const loadGoals = useCallback(async () => {
     if (!user) return
@@ -327,12 +336,6 @@ export default function GoalsScreen() {
 
       const loaded = (goalsResult.data as Goal[]) ?? []
       setGoals(loaded)
-
-      const today = new Date().toISOString().split('T')[0]
-      const urgent = loaded
-        .filter(g => g.target_date != null && g.target_date >= today)
-        .sort((a, b) => (a.target_date ?? '').localeCompare(b.target_date ?? ''))[0] ?? null
-      setUrgentGoal(urgent)
 
       const currentYear = new Date().getFullYear()
       const items: TimelineItem[] = [{ year: currentYear, label: 'Hoje' }]
@@ -429,8 +432,11 @@ export default function GoalsScreen() {
           <Text style={styles.title}>Metas de longo prazo</Text>
           <TouchableOpacity
             onPress={async () => {
-              const completed = await getCompletedGoals(user!.id)
-              setCompletedGoals(completed)
+              setCompletedPage(0)
+              setCompletedHasMore(true)
+              const first = await getCompletedGoals(user!.id, 50, 0)
+              setCompletedGoals(first)
+              setCompletedHasMore(first.length === 50)
               setShowCompletedGoals(true)
             }}
             style={styles.completedBtn}
@@ -1112,6 +1118,20 @@ export default function GoalsScreen() {
             data={completedGoals}
             keyExtractor={item => item.id}
             contentContainerStyle={{ padding: 16 }}
+            onEndReachedThreshold={0.3}
+            onEndReached={async () => {
+              if (!completedHasMore || completedLoadingMore) return
+              setCompletedLoadingMore(true)
+              const nextPage = completedPage + 1
+              const more = await getCompletedGoals(user!.id, 50, nextPage * 50)
+              setCompletedGoals(prev => [...prev, ...more])
+              setCompletedPage(nextPage)
+              setCompletedHasMore(more.length === 50)
+              setCompletedLoadingMore(false)
+            }}
+            ListFooterComponent={completedLoadingMore ? (
+              <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 12 }} />
+            ) : null}
             ListEmptyComponent={
               <View style={{ alignItems: 'center', padding: 40 }}>
                 <Text style={{ fontSize: 48 }}>🏆</Text>

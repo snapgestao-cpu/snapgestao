@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Dimensions, FlatList, Modal, TextInput,
@@ -248,15 +248,18 @@ function ChartCard({ title, description, children }: {
 }
 
 // ── Topic 1: Gastos ────────────────────────────────────────────────────────
-function TopicGastos({ userId, cycleStart, cycleEnd }: {
-  userId: string; cycleStart: string; cycleEnd: string
+function TopicGastos({ userId, cycleStart, cycleEnd, isActive }: {
+  userId: string; cycleStart: string; cycleEnd: string; isActive: boolean
 }) {
   const [potExpenses, setPotExpenses]   = useState<PotExpense[]>([])
   const [necessity, setNecessity]       = useState<NecessityShare | null>(null)
   const [paymentDist, setPaymentDist]   = useState<PaymentMethodShare[]>([])
   const [loading, setLoading]           = useState(true)
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
     setLoading(true)
     Promise.all([
       getExpensesByPot(userId, cycleStart, cycleEnd),
@@ -268,7 +271,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
       setPaymentDist(pd)
       setLoading(false)
     })
-  }, [userId, cycleStart, cycleEnd])
+  }, [isActive, userId, cycleStart, cycleEnd])
 
   if (loading) return <><Skeleton /><Skeleton /><Skeleton /></>
 
@@ -407,17 +410,20 @@ function TopicGastos({ userId, cycleStart, cycleEnd }: {
 // ── Topic 2: Receita e Saldo ───────────────────────────────────────────────
 type RealMonth = MonthlyTotal & { income: number; expense: number; balance: number }
 
-function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay: number }) {
+function TopicReceita({ userId, cycleStartDay, isActive }: { userId: string; cycleStartDay: number; isActive: boolean }) {
   const [monthly, setMonthly] = useState<MonthlyTotal[]>([])
   const [loading, setLoading]  = useState(true)
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
     setLoading(true)
     getMonthlyTotalsOptimized(userId, cycleStartDay).then(data => {
       setMonthly(data)
       setLoading(false)
     })
-  }, [userId, cycleStartDay])
+  }, [isActive, userId, cycleStartDay])
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -553,18 +559,21 @@ function TopicReceita({ userId, cycleStartDay }: { userId: string; cycleStartDay
 }
 
 // ── Topic 3: Metas e Reserva ───────────────────────────────────────────────
-function TopicMetas({ userId }: { userId: string }) {
+function TopicMetas({ userId, isActive }: { userId: string; isActive: boolean }) {
   const [goals, setGoals]     = useState<GoalProgress[]>([])
   const [reserve, setReserve] = useState<ReservePoint[]>([])
   const [loading, setLoading] = useState(true)
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
     setLoading(true)
     Promise.all([
       getGoalsProgress(userId),
       getEmergencyReserveHistory(userId, 6),
     ]).then(([g, r]) => { setGoals(g); setReserve(r); setLoading(false) })
-  }, [userId])
+  }, [isActive, userId])
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -629,16 +638,19 @@ function TopicMetas({ userId }: { userId: string }) {
 }
 
 // ── Topic 4: Crédito ───────────────────────────────────────────────────────
-function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear }: {
-  userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string; monthYear: string
+function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, isActive }: {
+  userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string; monthYear: string; isActive: boolean
 }) {
   const [commitments, setCommitments] = useState<CreditCommitment[]>([])
   const [creditByCard, setCreditByCard] = useState<CreditByCard[]>([])
   const [loading, setLoading]           = useState(true)
   const [tooltipIdx, setTooltipIdx]     = useState<number | null>(null)
   const [selectedCard, setSelectedCard] = useState<CreditByCard | null>(null)
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
     setLoading(true)
     Promise.all([
       getCreditCommitmentsSimple(userId, cycleStartDay, 6),
@@ -648,7 +660,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear }
       setCreditByCard(cb)
       setLoading(false)
     })
-  }, [userId, cycleStartDay, cycleStart, cycleEnd])
+  }, [isActive, userId, cycleStartDay, cycleStart, cycleEnd])
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -754,14 +766,17 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear }
 }
 
 // ── Topic 5: IA ────────────────────────────────────────────────────────────
-function TopicIA({ userId, cycleStartDay }: { userId: string; cycleStartDay: number }) {
+function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleStartDay: number; isActive: boolean }) {
   const [score, setScore]     = useState<FinancialScore | null>(null)
   const [loading, setLoading] = useState(true)
+  const hasLoaded = useRef(false)
 
   useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
     setLoading(true)
     getFinancialScore(userId, cycleStartDay).then(s => { setScore(s); setLoading(false) })
-  }, [userId, cycleStartDay])
+  }, [isActive, userId, cycleStartDay])
 
   if (loading) return <Skeleton height={320} />
   if (!score)  return <Empty icon="🤖" text="Dados insuficientes para calcular o score" />
@@ -816,7 +831,10 @@ export default function ChartsScreen() {
   const [hasCreditTx, setHasCreditTx]   = useState(false)
   const flatRef = useRef<FlatList>(null)
 
-  const cycle = getCycle(user?.cycle_start ?? 1, cycleOffset)
+  const cycle = useMemo(
+    () => getCycle(user?.cycle_start ?? 1, cycleOffset),
+    [user?.cycle_start, cycleOffset]
+  )
 
   useEffect(() => {
     if (!user) return
@@ -850,9 +868,9 @@ export default function ChartsScreen() {
       showsVerticalScrollIndicator={false}
       nestedScrollEnabled
     >
-      {index === 0 && <TopicGastos  userId={user.id} cycleStart={cycle.startISO} cycleEnd={cycle.endISO} />}
-      {index === 1 && <TopicReceita userId={user.id} cycleStartDay={user.cycle_start} />}
-      {index === 2 && <TopicMetas   userId={user.id} />}
+      {index === 0 && <TopicGastos  userId={user.id} cycleStart={cycle.startISO} cycleEnd={cycle.endISO} isActive={activeIdx === 0} />}
+      {index === 1 && <TopicReceita userId={user.id} cycleStartDay={user.cycle_start} isActive={activeIdx === 1} />}
+      {index === 2 && <TopicMetas   userId={user.id} isActive={activeIdx === 2} />}
       {index === 3 && (
         <TopicCredito
           userId={user.id}
@@ -860,9 +878,10 @@ export default function ChartsScreen() {
           cycleStart={cycle.startISO}
           cycleEnd={cycle.endISO}
           monthYear={cycle.monthYear}
+          isActive={activeIdx === 3}
         />
       )}
-      {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} />}
+      {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} isActive={activeIdx === 4} />}
     </ScrollView>
   )
 

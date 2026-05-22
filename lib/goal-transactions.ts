@@ -180,13 +180,14 @@ export async function getGoalTransactions(goalId: string): Promise<GoalTransacti
   return data || []
 }
 
-export async function getCompletedGoals(userId: string): Promise<any[]> {
+export async function getCompletedGoals(userId: string, limit = 50, offset = 0): Promise<any[]> {
   const { data } = await supabase
     .from('goals')
     .select('*')
     .eq('user_id', userId)
     .neq('status', 'active')
     .order('completed_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   return data || []
 }
