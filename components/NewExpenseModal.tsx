@@ -27,6 +27,7 @@ import { checkCriticalPots } from '../lib/notifications'
 import { brl } from '../lib/finance'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 import { calcBillingDate } from '../lib/billing-date'
+import { getCardImage } from '../constants/cardBrands'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'voucher_alimentacao' | 'voucher_refeicao'
 
@@ -325,8 +326,13 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
                         style={[styles.chip, selectedCardId === c.id && styles.chipActive]}
                         onPress={() => setSelectedCardId(c.id)}
                       >
+                        <Image
+                          source={getCardImage(c.brand)}
+                          style={{ width: 60, height: 38 }}
+                          resizeMode="contain"
+                        />
                         <Text style={[styles.chipText, selectedCardId === c.id && styles.chipTextActive]}>
-                          {c.name} {c.last_four ? `••${c.last_four}` : ''}
+                          {c.name}{c.last_four ? ` ••${c.last_four}` : ''}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -586,6 +592,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
     borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
   },
   chipActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },

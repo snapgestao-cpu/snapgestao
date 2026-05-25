@@ -1,7 +1,7 @@
 /**
  * Criador: Diego Manhães
  * Data: 07/05/2026
- * Modificado em: 07/05/2026
+ * Modificado em: 25/05/2026
  *
  * Modal de cadastro e edição de cartões de crédito. Coleta
  * nome, banco, dia de fechamento e dia de vencimento.
@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '../constants/colors'
@@ -21,8 +21,8 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PLAN_LIMITS } from '../constants/plans'
 import { router } from 'expo-router'
-import { PaymentIcon } from 'react-native-payment-icons'
-import { inferBrand } from '../lib/charts-data'
+import { getCardImage } from '../constants/cardBrands'
+import CardBrandPicker from './CardBrandPicker'
 
 type FormState = {
   name: string
@@ -30,9 +30,12 @@ type FormState = {
   closingDay: string
   dueDay: string
   limitDigits: string
+  brand: string
 }
 
-const EMPTY_FORM: FormState = { name: '', lastFour: '', closingDay: '', dueDay: '', limitDigits: '' }
+const EMPTY_FORM: FormState = {
+  name: '', lastFour: '', closingDay: '', dueDay: '', limitDigits: '', brand: 'generic',
+}
 
 type Props = {
   visible: boolean
@@ -46,6 +49,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +67,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
     if (!visible) return
     loadCards()
     setShowForm(false)
+    setShowPicker(false)
     setEditingId(null)
     setForm(EMPTY_FORM)
     setError(null)
@@ -95,6 +100,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
       closingDay: String(card.closing_day),
       dueDay: String(card.due_day),
       limitDigits: card.credit_limit ? String(Math.round(card.credit_limit * 100)) : '',
+      brand: card.brand ?? 'generic',
     })
     setEditingId(card.id)
     setError(null)
@@ -138,6 +144,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
         closing_day: closing,
         due_day: due,
         credit_limit: centsToFloat(form.limitDigits) > 0 ? centsToFloat(form.limitDigits) : null,
+        brand: form.brand || 'generic',
       }
 
       if (editingId) {
@@ -150,6 +157,32 @@ export function CreditCardModal({ visible, onClose }: Props) {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ── Brand picker modal ───────────────────────────────────────────────────
+  if (showPicker) {
+    return (
+      <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={() => setShowPicker(false)}>
+        <View style={styles.pickerContainer}>
+          <View style={styles.pickerHeader}>
+            <TouchableOpacity onPress={() => setShowPicker(false)}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>← Voltar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Aparência do cartão</Text>
+            <View style={{ width: 80 }} />
+          </View>
+          <View style={styles.pickerBody}>
+            <CardBrandPicker
+              value={form.brand}
+              onChange={brand => {
+                setForm(f => ({ ...f, brand }))
+                setShowPicker(false)
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+    )
   }
 
   return (
@@ -196,6 +229,19 @@ export function CreditCardModal({ visible, onClose }: Props) {
                 placeholderTextColor={Colors.textMuted}
                 maxLength={4}
               />
+
+              <Text style={styles.label}>Aparência do cartão</Text>
+              <TouchableOpacity style={styles.brandRow} onPress={() => setShowPicker(true)} activeOpacity={0.7}>
+                <Image
+                  source={getCardImage(form.brand)}
+                  style={styles.brandPreview}
+                  resizeMode="contain"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.brandHint}>Toque para selecionar</Text>
+                </View>
+                <Text style={{ fontSize: 16, color: Colors.textMuted }}>›</Text>
+              </TouchableOpacity>
 
               <View style={styles.twoCol}>
                 <View style={{ flex: 1 }}>
@@ -260,7 +306,11 @@ export function CreditCardModal({ visible, onClose }: Props) {
                 cards.map(card => (
                   <View key={card.id} style={styles.cardRow}>
                     <View style={styles.cardIcon}>
-                      <PaymentIcon type={inferBrand(card.name) as any} width={40} height={25} />
+                      <Image
+                        source={getCardImage(card.brand)}
+                        style={{ width: 56, height: 36 }}
+                        resizeMode="contain"
+                      />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardName}>
@@ -311,13 +361,27 @@ const styles = StyleSheet.create({
     borderColor: Colors.border, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, color: Colors.textDark, marginBottom: 4,
   },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  brandPreview: { width: 80, height: 50 },
+  brandHint: { fontSize: 14, color: Colors.textMuted },
   twoCol: { flexDirection: 'row', gap: 12 },
   empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 24, marginBottom: 8 },
   cardRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  cardIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: Colors.lightBlue, alignItems: 'center', justifyContent: 'center' },
+  cardIcon: { width: 60, height: 40, alignItems: 'center', justifyContent: 'center' },
   cardName: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   cardMeta: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   editBtn: { fontSize: 18, padding: 4 },
@@ -341,4 +405,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  pickerContainer: { flex: 1, backgroundColor: Colors.background },
+  pickerHeader: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerBody: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
 })

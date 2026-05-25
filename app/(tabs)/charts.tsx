@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Dimensions, FlatList, Modal, TextInput,
+  Dimensions, FlatList, Modal, TextInput, Image,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
-import { PaymentIcon } from 'react-native-payment-icons'
 import { Colors } from '../../constants/colors'
+import { getCardImage } from '../../constants/cardBrands'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
@@ -16,7 +16,7 @@ import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
   getGoalsProgress, getEmergencyReserveHistory, getFinancialScore,
-  getCreditByCard, inferBrand,
+  getCreditByCard,
   PotExpense, MonthlyTotal, CreditCommitment, PaymentMethodShare,
   GoalProgress, ReservePoint, NecessityShare, FinancialScore,
   CreditByCard, CreditByCardTx,
@@ -100,7 +100,7 @@ function CardPurchasesModal({
         <View style={[s.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={s.modalHeader}>
             <View style={s.cardBrandWrap}>
-              <PaymentIcon type={card.brand as any} width={44} height={28} />
+              <Image source={getCardImage(card.cardId ? card.brand : 'generic')} style={{ width: 80, height: 50 }} resizeMode="contain" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.modalCardName}>{card.cardName}</Text>
@@ -730,7 +730,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
               <TouchableOpacity key={c.cardId ?? 'none'} style={s.cardCard} onPress={() => setSelectedCard(c)} activeOpacity={0.7}>
                 <View style={s.cardCardTop}>
                   <View style={s.cardBrandWrap}>
-                    <PaymentIcon type={c.brand as any} width={44} height={28} />
+                    <Image source={getCardImage(c.cardId ? c.brand : 'generic')} style={{ width: 80, height: 50 }} resizeMode="contain" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.cardCardName}>
@@ -1092,7 +1092,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, padding: 12,
   },
   cardCardTop:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  cardBrandWrap:   { width: 44, alignItems: 'center', justifyContent: 'center' },
+  cardBrandWrap:   { width: 80, alignItems: 'center', justifyContent: 'center' },
   cardCardName:    { fontSize: 13, fontWeight: '700', color: Colors.textDark },
   cardCardAmt:     { fontSize: 12, color: Colors.textMuted, marginTop: 1 },
   cardChevron:     { fontSize: 18, color: Colors.textMuted },

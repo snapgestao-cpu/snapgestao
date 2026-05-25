@@ -189,7 +189,7 @@ export async function getCreditByCard(
       .lte('date', cycleEnd),
     supabase
       .from('credit_cards')
-      .select('id, name, last_four')
+      .select('id, name, last_four, brand')
       .eq('user_id', userId),
     supabase
       .from('pots')
@@ -214,7 +214,7 @@ export async function getCreditByCard(
     const card     = cardId ? cardMap.get(cardId) : null
     const cardName = card ? card.name : 'Sem cartão vinculado'
     const lastFour = card?.last_four ?? null
-    const brand    = inferBrand(cardName)
+    const brand    = (card as any)?.brand ?? 'generic'
     const total    = (cardTxs ?? []).reduce((s, t) => s + Number(t.amount), 0)
     const transactions: CreditByCardTx[] = (cardTxs ?? [])
       .map(tx => ({

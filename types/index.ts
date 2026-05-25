@@ -88,6 +88,7 @@ export type CreditCard = {
   closing_day: number
   due_day: number
   credit_limit: number | null
+  brand: string | null
 }
 
 export type IncomeSource = {
