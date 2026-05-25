@@ -9,7 +9,7 @@
  * dados futuros são estimados com base no histórico.
  */
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
   TouchableOpacity, Modal,
@@ -22,9 +22,10 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { getPotsHistoryBatch } from '../../lib/pot-history'
 import { getIncomeSourcesBatch } from '../../lib/income-history'
-import { getPotIcon } from '../../lib/potIcons'
 import { brl } from '../../lib/finance'
 import { SearchBar } from '../../components/SearchBar'
+import { groupTransactionsByMerchantAndDate } from '../../lib/group-transactions'
+import TransactionGroup from '../../components/TransactionGroup'
 
 const MONTH_NAMES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
@@ -32,16 +33,6 @@ function formatMonthLabel(start: Date): string {
   return MONTH_NAMES[start.getMonth()] + '/' + String(start.getFullYear()).slice(2)
 }
 
-function formatBillingDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00')
-  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function formatPurchaseDate(dateStr: string): string {
-  if (!dateStr) return '—'
-  const d = new Date(dateStr + 'T12:00:00')
-  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`
-}
 
 type MonthRow = {
   label: string
@@ -245,20 +236,51 @@ export default function ProjectionScreen() {
     }
   }
 
-  const selectedCreditTxs = selectedCreditMonth
-    ? creditInstallments.filter(t =>
-        t.billing_date >= selectedCreditMonth.cycleStartISO &&
-        t.billing_date <= selectedCreditMonth.cycleEndISO
-      )
-    : []
+  const selectedCreditTxs = useMemo(() =>
+    selectedCreditMonth
+      ? creditInstallments.filter(t =>
+          t.billing_date >= selectedCreditMonth.cycleStartISO &&
+          t.billing_date <= selectedCreditMonth.cycleEndISO
+        )
+      : [],
+    [selectedCreditMonth, creditInstallments]
+  )
+
+  const creditTxItems = useMemo(() =>
+    selectedCreditTxs.map(t => ({
+      id: t.id as string,
+      description: (t.description ?? null) as string | null,
+      merchant: (t.merchant ?? null) as string | null,
+      amount: Number(t.amount),
+      type: 'expense' as const,
+      payment_method: 'credit',
+      date: t.date as string,
+      billing_date: null as string | null,
+      pot_id: (t.pot_id ?? null) as string | null,
+      potName: t.pots?.name as string | undefined,
+      potColor: t.pots?.color as string | undefined,
+      installment_number: (t.installment_number ?? null) as number | null,
+      installment_total: (t.installment_total ?? null) as number | null,
+    })),
+    [selectedCreditTxs]
+  )
+
+  const creditGroups = useMemo(
+    () => groupTransactionsByMerchantAndDate(creditTxItems),
+    [creditTxItems]
+  )
 
   const cq = creditSearchQuery.trim().toLowerCase()
-  const filteredCreditTxs = cq
-    ? selectedCreditTxs.filter(t =>
+  const filteredCreditGroups = useMemo(() => {
+    if (!cq) return creditGroups
+    return creditGroups.filter(g =>
+      (g.merchant?.toLowerCase().includes(cq) ?? false) ||
+      g.transactions.some((t: any) =>
         (t.description ?? '').toLowerCase().includes(cq) ||
         (t.merchant ?? '').toLowerCase().includes(cq)
       )
-    : selectedCreditTxs
+    )
+  }, [creditGroups, cq])
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -418,44 +440,22 @@ export default function ProjectionScreen() {
             </View>
             <SearchBar value={creditSearchQuery} onChangeText={setCreditSearchQuery} />
             <ScrollView showsVerticalScrollIndicator={false}>
-              {filteredCreditTxs.map((t, i) => (
-                <View key={t.id ?? i} style={{ paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <Text style={[styles.entryDesc, { flex: 1, marginRight: 8 }]}>
-                      {t.description ?? t.merchant ?? 'Sem descrição'}
-                    </Text>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.danger }}>
-                      -{brl(Number(t.amount))}
-                    </Text>
-                  </View>
-                  {(t.installment_total ?? 0) > 1 && (
-                    <Text style={styles.entryMeta}>
-                      Parcela {t.installment_number}/{t.installment_total}
-                      {t.merchant ? ' · ' + t.merchant : ''}
-                    </Text>
-                  )}
-                  <Text style={styles.entryMeta}>🛍️ Comprado em {formatPurchaseDate(t.date)}</Text>
-                  <Text style={[styles.entryMeta, { color: Colors.warning }]}>📅 Vence {formatBillingDate(t.billing_date)}</Text>
-                  {t.pots ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.pots.color ?? Colors.primary }} />
-                      <Text style={{ fontSize: 11 }}>{getPotIcon(t.pots.name)}</Text>
-                      <Text style={[styles.entryMeta, { marginTop: 0, fontStyle: 'italic' }]}>{t.pots.name}</Text>
-                    </View>
-                  ) : t.pot_id ? (
-                    <Text style={[styles.entryMeta, { marginTop: 4, fontStyle: 'italic' }]}>🪣 Pote não identificado</Text>
-                  ) : (
-                    <Text style={[styles.entryMeta, { marginTop: 4, fontStyle: 'italic' }]}>🪣 Sem pote vinculado</Text>
-                  )}
-                </View>
-              ))}
+              {filteredCreditGroups.length === 0 ? (
+                <Text style={[styles.entryMeta, { textAlign: 'center', paddingVertical: 24 }]}>
+                  Nenhum lançamento encontrado
+                </Text>
+              ) : (
+                filteredCreditGroups.map(g => (
+                  <TransactionGroup key={g.key} transactions={g.transactions} />
+                ))
+              )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, marginTop: 8, borderTopWidth: 1.5, borderTopColor: Colors.border }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textDark }}>
                   {cq ? 'Total filtrado' : 'Total no cartão'}
                 </Text>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.danger }}>
                   -{brl(cq
-                    ? filteredCreditTxs.reduce((s, t) => s + Number(t.amount), 0)
+                    ? filteredCreditGroups.flatMap(g => g.transactions).reduce((s: number, t: any) => s + Number(t.amount), 0)
                     : (selectedCreditMonth?.installmentsTotal ?? 0)
                   )}
                 </Text>

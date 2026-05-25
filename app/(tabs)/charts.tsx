@@ -8,6 +8,8 @@ import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
 import { Colors } from '../../constants/colors'
 import { getCardImage } from '../../constants/cardBrands'
+import { groupTransactionsByMerchantAndDate } from '../../lib/group-transactions'
+import TransactionGroup from '../../components/TransactionGroup'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
@@ -68,10 +70,6 @@ function getMotivation(score: number): string {
   return 'Excelente! Você é um exemplo de controle financeiro! 🏆'
 }
 
-function formatDatePT(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-')
-  return `${day}/${month}/${year}`
-}
 
 // ── CardPurchasesModal ─────────────────────────────────────────────────────
 function CardPurchasesModal({
@@ -82,17 +80,34 @@ function CardPurchasesModal({
   const insets = useSafeAreaInsets()
   const [search, setSearch] = useState('')
 
-  const sorted = card.transactions
-    .filter(tx => {
-      if (!search.trim()) return true
-      const q = search.toLowerCase()
-      return (
-        (tx.description?.toLowerCase().includes(q) ?? false) ||
-        (tx.merchant?.toLowerCase().includes(q) ?? false)
+  const txItems = useMemo(() => card.transactions.map(tx => ({
+    id: tx.id,
+    description: tx.description ?? null,
+    merchant: tx.merchant ?? null,
+    amount: tx.amount,
+    type: 'expense' as const,
+    payment_method: 'credit',
+    date: tx.date,
+    billing_date: null as string | null,
+    pot_id: null as string | null,
+    potName: tx.potName ?? undefined,
+    potColor: undefined as string | undefined,
+    installment_number: tx.installment_number ?? null,
+    installment_total: tx.installment_total ?? null,
+  })), [card.transactions])
+
+  const groups = useMemo(() => groupTransactionsByMerchantAndDate(txItems), [txItems])
+
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return groups
+    return groups.filter(g =>
+      (g.merchant?.toLowerCase().includes(q) ?? false) ||
+      g.transactions.some((t: any) =>
+        (t.description ?? '').toLowerCase().includes(q)
       )
-    })
-    .slice()
-    .sort((a, b) => b.date.localeCompare(a.date))
+    )
+  }, [groups, search])
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -121,29 +136,15 @@ function CardPurchasesModal({
             />
           </View>
 
-          <FlatList
-            data={sorted}
-            keyExtractor={tx => tx.id}
-            renderItem={({ item: tx }) => (
-              <View style={s.txRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.txDesc} numberOfLines={1}>
-                    {tx.merchant ?? tx.description ?? 'Sem descrição'}
-                  </Text>
-                  <Text style={s.txMeta}>
-                    {formatDatePT(tx.date)}
-                    {tx.potName ? ` · ${tx.potName}` : ''}
-                    {tx.installment_total && tx.installment_total > 1
-                      ? ` · ${tx.installment_number}/${tx.installment_total}x`
-                      : ''}
-                  </Text>
-                </View>
-                <Text style={s.txAmt}>{brl(tx.amount)}</Text>
-              </View>
-            )}
-            ListEmptyComponent={() => <Empty icon="🔍" text="Nenhuma compra encontrada" />}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}
-          />
+          <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
+            {filteredGroups.length === 0
+              ? <Empty icon="🔍" text="Nenhuma compra encontrada" />
+              : filteredGroups.map(g => (
+                  <TransactionGroup key={g.key} transactions={g.transactions} />
+                ))
+            }
+            <View style={{ height: 8 }} />
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -1121,11 +1122,4 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, fontSize: 13,
     color: Colors.textDark, borderWidth: 1, borderColor: Colors.border,
   },
-  txRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  txDesc: { fontSize: 13, fontWeight: '600', color: Colors.textDark },
-  txMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
-  txAmt:  { fontSize: 13, fontWeight: '700', color: Colors.textDark },
 })
