@@ -87,7 +87,23 @@ function parseDateISO(raw: any): string {
 
 function parseAmount(raw: any): number {
   if (typeof raw === 'number') return Math.abs(raw)
-  const s = String(raw).replace(/[R$\s]/g, '').replace(',', '.')
+  let s = String(raw).replace(/[R$\s]/g, '')
+  const lastDot = s.lastIndexOf('.')
+  const lastComma = s.lastIndexOf(',')
+  if (lastDot >= 0 && lastComma >= 0) {
+    // Both separators present — whichever comes last is the decimal separator
+    if (lastComma > lastDot) {
+      // Brazilian: 1.234,56 → remove dots (thousands), replace comma with dot
+      s = s.replace(/\./g, '').replace(',', '.')
+    } else {
+      // US: 1,234.56 → remove commas (thousands)
+      s = s.replace(/,/g, '')
+    }
+  } else if (lastComma >= 0) {
+    // Only comma: treat as decimal separator (ex: 45,90)
+    s = s.replace(',', '.')
+  }
+  // Only dot (or no separator): parseFloat handles it directly
   return Math.abs(parseFloat(s) || 0)
 }
 
@@ -496,8 +512,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           )}
         </View>
 
-        {/* Row 3: pote selector */}
-        <View>
+        {/* Row 3: pote selector — apenas para gastos */}
+        {item.type === 'expense' && <View>
           <Text style={styles.previewMeta}>
             {'Pote: '}
             {poteNotFound && (
@@ -529,7 +545,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </View>}
       </View>
     )
   }
