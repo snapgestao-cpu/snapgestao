@@ -23,6 +23,8 @@ const FEATURES: FeatureRow[] = [
   { label: 'Fontes de receita',      free: 'Até 3',       premium: 'Ilimitado',    freeOk: true,  premiumOk: true },
   { label: 'Histórico de ciclos',    free: '3 meses',     premium: 'Ilimitado',    freeOk: true,  premiumOk: true },
   { label: 'Tokens de IA por mês',   free: '2 tokens',    premium: '10 tokens',    freeOk: true,  premiumOk: true },
+  { label: 'IA no Mentor',           free: '⚡ Llama 3.3', premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
+  { label: 'IA no Analisador',       free: '⚡ Llama 3.3', premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
   { label: 'Módulo IR (Deduções)',   free: '',            premium: '',             freeOk: false, premiumOk: true },
   { label: 'Exportação Excel',       free: '',            premium: '',             freeOk: false, premiumOk: true },
   { label: 'Exportação PDF',         free: '',            premium: '',             freeOk: true,  premiumOk: true },
@@ -97,6 +99,25 @@ export default function PremiumScreen() {
               <Text style={styles.annualText}>2 meses grátis no anual</Text>
               <Text style={styles.annualPrice}>R$ 119/ano</Text>
             </View>
+          </View>
+        </View>
+
+        {/* IA highlight */}
+        <Text style={styles.sectionTitle}>🤖 IA que evolui com você</Text>
+        <View style={styles.aiCompareRow}>
+          {/* Free */}
+          <View style={styles.aiCardFree}>
+            <Text style={styles.aiCardBadgeFree}>Gratuito</Text>
+            <Text style={styles.aiCardEmoji}>⚡</Text>
+            <Text style={styles.aiCardName}>Llama 3.3</Text>
+            <Text style={styles.aiCardDesc}>IA eficiente para análises financeiras básicas</Text>
+          </View>
+          {/* Premium */}
+          <View style={styles.aiCardPremium}>
+            <Text style={styles.aiCardBadgePremium}>⭐ Premium</Text>
+            <Text style={styles.aiCardEmoji}>🤖</Text>
+            <Text style={styles.aiCardNamePremium}>Claude</Text>
+            <Text style={styles.aiCardDescPremium}>IA avançada com análises mais profundas, recomendações personalizadas e linguagem mais precisa</Text>
           </View>
         </View>
 
@@ -268,8 +289,36 @@ const styles = StyleSheet.create({
   annualPrice: { fontSize: 12, color: Colors.primary, fontWeight: '800', marginTop: 1 },
 
   // Section
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 4 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 12 },
   sectionSub: { fontSize: 12, color: Colors.textMuted, marginBottom: 12 },
+
+  // AI compare
+  aiCompareRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  aiCardFree: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 14,
+    borderWidth: 1.5, borderColor: Colors.border, padding: 14, alignItems: 'center',
+  },
+  aiCardPremium: {
+    flex: 1, backgroundColor: Colors.lightBlue, borderRadius: 14,
+    borderWidth: 2, borderColor: Colors.primary, padding: 14, alignItems: 'center',
+  },
+  aiCardBadgeFree: {
+    fontSize: 9, fontWeight: '700', color: Colors.textMuted,
+    backgroundColor: Colors.border, borderRadius: 20,
+    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
+    overflow: 'hidden',
+  },
+  aiCardBadgePremium: {
+    fontSize: 9, fontWeight: '700', color: Colors.white,
+    backgroundColor: Colors.primary, borderRadius: 20,
+    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
+    overflow: 'hidden',
+  },
+  aiCardEmoji: { fontSize: 28, marginBottom: 4 },
+  aiCardName: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
+  aiCardNamePremium: { fontSize: 15, fontWeight: '700', color: Colors.primary, marginBottom: 6 },
+  aiCardDesc: { fontSize: 11, color: Colors.textMuted, textAlign: 'center', lineHeight: 16 },
+  aiCardDescPremium: { fontSize: 11, color: Colors.primary, textAlign: 'center', lineHeight: 16 },
 
   // Table
   table: {

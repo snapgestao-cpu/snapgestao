@@ -19,9 +19,8 @@ import { Colors } from '../constants/colors'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { buscarDadosParaAnalise, analisarPrecos } from '../lib/analisador-precos'
-import { useCycleStore } from '../stores/useCycleStore'
-import AIProviderSelector from '../components/AIProviderSelector'
 import { gerarAnalisadorPDF, compartilharPDF } from '../lib/gerar-pdf'
+import { getAIProvider, AI_PROVIDER_INFO } from '../lib/ai-provider'
 
 // ── Perguntas ─────────────────────────────────────────────────────────────────
 
@@ -68,7 +67,8 @@ type Resposta = { opcao: string | null; comentario: string }
 export default function AnalisadorPrecosScreen() {
   const insets = useSafeAreaInsets()
   const user = useAuthStore(s => s.user)
-  const { aiProvider, setAiProvider } = useCycleStore()
+  const provider = getAIProvider(user?.plan ?? 'free')
+  const providerInfo = AI_PROVIDER_INFO[provider]
 
   const [perguntaAtual, setPerguntaAtual] = useState(0)
   const [respostas, setRespostas] = useState<Record<string, Resposta>>({})
@@ -200,14 +200,14 @@ export default function AnalisadorPrecosScreen() {
           preocupacao: respostas['preocupacao'] || { opcao: null, comentario: '' },
           foco: respostas['foco'] || { opcao: null, comentario: '' },
         },
-        aiProvider,
+        provider,
         user?.id
       )
 
       setRelatorio(textoRelatorio)
       setLoading(false)
       try {
-        const uri = await gerarAnalisadorPDF(textoRelatorio, user?.name ?? 'Usuário', aiProvider)
+        const uri = await gerarAnalisadorPDF(textoRelatorio, user?.name ?? 'Usuário', provider)
         setPdfUri(uri)
       } catch {
         // PDF failure is non-fatal
@@ -347,14 +347,38 @@ export default function AnalisadorPrecosScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {perguntaAtual === 0 && (
-          <View style={{
-            backgroundColor: Colors.white, borderRadius: 16,
-            padding: 16, marginHorizontal: 0, marginBottom: 16,
-          }}>
-            <AIProviderSelector selected={aiProvider} onSelect={setAiProvider} />
+          <>
+            {provider === 'claude' ? (
+              <View style={{
+                backgroundColor: Colors.primary + '12', borderRadius: 12,
+                padding: 14, marginBottom: 16,
+                borderWidth: 1, borderColor: Colors.primary + '30',
+              }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.primary }}>
+                  ⭐ Usando {providerInfo.label} — IA avançada incluída no seu plano
+                </Text>
+              </View>
+            ) : (
+              <View style={{
+                backgroundColor: Colors.background, borderRadius: 12,
+                padding: 14, marginBottom: 16,
+                borderWidth: 1, borderColor: Colors.border,
+              }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 4 }}>
+                  ⚡ Usando {providerInfo.label} — IA eficiente para análises essenciais
+                </Text>
+                <Text style={{ fontSize: 12, color: Colors.textMuted, lineHeight: 18, marginBottom: 8 }}>
+                  Faça upgrade para o Premium e use o Claude, com análises mais precisas e personalizadas.
+                </Text>
+                <TouchableOpacity onPress={() => router.push('/premium' as any)}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.primary }}>Ver Premium →</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {aiTokens !== null && (
               <View style={{
-                marginTop: 12, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12,
+                borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12,
+                marginBottom: 16,
                 backgroundColor: aiTokens === 0 ? '#FFEBEE' : aiTokens <= 2 ? '#FFF8E1' : '#E8F5E9',
                 alignItems: 'center',
               }}>
@@ -368,7 +392,7 @@ export default function AnalisadorPrecosScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </>
         )}
 
         <Animated.View style={{ opacity: opacityAnim, transform: [{ translateY: slideAnim }] }}>

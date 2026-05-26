@@ -26,10 +26,9 @@ import {
   getMesesParaAnalisar,
 } from '../lib/mentor-financeiro'
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
-import { useCycleStore } from '../stores/useCycleStore'
-import AIProviderSelector from '../components/AIProviderSelector'
 import { checkAndGrantBadges } from '../lib/badges'
 import { BadgeToast } from '../components/BadgeToast'
+import { getAIProvider, AI_PROVIDER_INFO } from '../lib/ai-provider'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -124,7 +123,8 @@ type Step = 'intro' | 'quiz' | 'generating' | 'result' | 'error'
 export default function MentorScreen() {
   const insets = useSafeAreaInsets()
   const { user } = useAuthStore()
-  const { aiProvider, setAiProvider } = useCycleStore()
+  const provider = getAIProvider(user?.plan ?? 'free')
+  const providerInfo = AI_PROVIDER_INFO[provider]
 
   const [step, setStep] = useState<Step>('intro')
   const [currentQ, setCurrentQ] = useState(0)
@@ -216,11 +216,11 @@ export default function MentorScreen() {
     try {
       const maxMeses = getMesesParaAnalisar(r.periodo.opcao)
       const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1, maxMeses)
-      const texto = await gerarRelatorioMentor(r, ctx, aiProvider)
+      const texto = await gerarRelatorioMentor(r, ctx, provider)
       setRelatorio(texto)
 
       try {
-        const uri = await gerarPDF(texto, user?.name ?? 'Usuário', aiProvider)
+        const uri = await gerarPDF(texto, user?.name ?? 'Usuário', provider)
         setPdfUri(uri)
       } catch {
         // PDF failure is non-fatal
@@ -288,13 +288,25 @@ export default function MentorScreen() {
             </Text>
           </View>
 
-          <View style={{
-            backgroundColor: Colors.white, borderRadius: 16,
-            padding: 16, marginBottom: 16,
-            borderWidth: 1, borderColor: Colors.border,
-          }}>
-            <AIProviderSelector selected={aiProvider} onSelect={setAiProvider} />
-          </View>
+          {provider === 'claude' ? (
+            <View style={styles.providerBannerPremium}>
+              <Text style={styles.providerBannerText}>
+                ⭐ Usando {providerInfo.label} — IA avançada incluída no seu plano
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.providerBannerFree}>
+              <Text style={styles.providerBannerFreeText}>
+                ⚡ Usando {providerInfo.label} — IA eficiente para análises essenciais
+              </Text>
+              <Text style={styles.providerBannerFreeSub}>
+                Faça upgrade para o Premium e use o Claude, com análises mais precisas e personalizadas.
+              </Text>
+              <TouchableOpacity onPress={() => router.push('/premium' as any)}>
+                <Text style={styles.providerBannerLink}>Ver Premium →</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
 
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
@@ -574,6 +586,22 @@ const styles = StyleSheet.create({
     padding: 14, marginBottom: 8,
   },
   disclaimerText: { fontSize: 13, color: '#92400E', lineHeight: 19 },
+
+  providerBannerPremium: {
+    backgroundColor: Colors.primary + '12',
+    borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: Colors.primary + '30',
+  },
+  providerBannerText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+
+  providerBannerFree: {
+    backgroundColor: Colors.background,
+    borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  providerBannerFreeText: { fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 4 },
+  providerBannerFreeSub: { fontSize: 12, color: Colors.textMuted, lineHeight: 18, marginBottom: 8 },
+  providerBannerLink: { fontSize: 13, fontWeight: '700', color: Colors.primary },
 
   // QUIZ
   quizScroll: { padding: 24, paddingTop: 28, paddingBottom: 16 },

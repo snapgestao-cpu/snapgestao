@@ -267,7 +267,7 @@ Gere o relatório completo do Mentor Financeiro.`
 export async function gerarRelatorioMentor(
   respostas: QuestionarioRespostas,
   ctx: ContextoFinanceiro,
-  provider: AIProvider = 'gemini'
+  provider: AIProvider = 'groq'
 ): Promise<string> {
   const promptUsuario = buildPrompt(respostas, ctx)
 

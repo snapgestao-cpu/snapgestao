@@ -3,32 +3,67 @@
  * Data: 07/05/2026
  * Modificado em: 07/05/2026
  *
- * Abstração de provedores de IA — Claude (Anthropic), Gemini (Google)
- * e Llama (Groq). Expõe callAI() como ponto único de chamada,
- * independente do provedor selecionado pelo usuário.
+ * Abstração de provedores de IA — Claude (Anthropic) e Llama (Groq).
+ * Seleção automática por plano: Free → Groq/Llama, Premium → Claude.
+ * Gemini desabilitado — Free usa Groq/Llama, Premium usa Claude.
  */
 
-export type AIProvider = 'claude' | 'gemini' | 'groq'
+import { Plan } from '../constants/plans'
 
+export type AIProvider = 'claude' | 'groq'
+// | 'gemini' // Gemini desabilitado
+
+export const AI_PROVIDER_INFO = {
+  claude: {
+    name: 'Claude',
+    model: 'claude-haiku-4-5-20251001',
+    label: 'Claude (Anthropic)',
+    description: 'IA avançada com análises mais precisas e personalizadas',
+    badge: '⭐ Premium',
+    emoji: '🤖',
+  },
+  groq: {
+    name: 'Llama',
+    model: 'llama-3.3-70b-versatile',
+    label: 'Llama 3.3 (Groq)',
+    description: 'IA eficiente para análises financeiras essenciais',
+    badge: 'Gratuito',
+    emoji: '🦙',
+  },
+  // gemini: {
+  //   name: 'Gemini',
+  //   model: 'gemini-2.5-flash',
+  //   label: 'Gemini (Google)',
+  //   description: 'IA do Google',
+  //   badge: '',
+  //   emoji: '✨',
+  // },
+}
+
+export function getAIProvider(plan: Plan): AIProvider {
+  return plan === 'premium' ? 'claude' : 'groq'
+}
+
+// Mantido para compatibilidade com código legado que usa AI_PROVIDERS
 export const AI_PROVIDERS = [
   {
     id: 'claude' as AIProvider,
-    label: 'Claude',
-    emoji: '🤖',
-    description: 'Anthropic — Alta qualidade',
+    label: AI_PROVIDER_INFO.claude.name,
+    emoji: AI_PROVIDER_INFO.claude.emoji,
+    description: AI_PROVIDER_INFO.claude.description,
     envKey: 'EXPO_PUBLIC_ANTHROPIC_API_KEY',
   },
-  {
-    id: 'gemini' as AIProvider,
-    label: 'Gemini',
-    emoji: '✨',
-    description: 'Google — Rápido',
-    envKey: 'EXPO_PUBLIC_GEMINI_API_KEY',
-  },
+  // {
+  //   id: 'gemini' as AIProvider,
+  //   label: 'Gemini',
+  //   emoji: '✨',
+  //   description: 'Google — Rápido',
+  //   envKey: 'EXPO_PUBLIC_GEMINI_API_KEY',
+  // },
   {
     id: 'groq' as AIProvider,
-    label: 'Llama',
-    emoji: '🦙',
+    label: AI_PROVIDER_INFO.groq.name,
+    emoji: AI_PROVIDER_INFO.groq.emoji,
     description: 'Groq — Leve e eficiente',
     envKey: 'EXPO_PUBLIC_GROQ_API_KEY',
   },
@@ -37,7 +72,7 @@ export const AI_PROVIDERS = [
 export function getApiKey(provider: AIProvider): string {
   switch (provider) {
     case 'claude': return process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || ''
-    case 'gemini': return process.env.EXPO_PUBLIC_GEMINI_API_KEY || ''
+    // case 'gemini': return process.env.EXPO_PUBLIC_GEMINI_API_KEY || ''
     case 'groq':   return process.env.EXPO_PUBLIC_GROQ_API_KEY || ''
   }
 }
@@ -76,26 +111,26 @@ export async function callAI(
       return data.content?.[0]?.text || ''
     }
 
-    case 'gemini': {
-      const body: any = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-      }
-      if (systemPrompt) {
-        body.system_instruction = { parts: [{ text: systemPrompt }] }
-      }
-      const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }
-      )
-      if (!response.ok) throw new Error('Erro Gemini: ' + await response.text())
-      const data = await response.json()
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    }
+    // case 'gemini': {
+    //   const body: any = {
+    //     contents: [{ parts: [{ text: prompt }] }],
+    //     generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+    //   }
+    //   if (systemPrompt) {
+    //     body.system_instruction = { parts: [{ text: systemPrompt }] }
+    //   }
+    //   const response = await fetch(
+    //     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey,
+    //     {
+    //       method: 'POST',
+    //       headers: { 'Content-Type': 'application/json' },
+    //       body: JSON.stringify(body),
+    //     }
+    //   )
+    //   if (!response.ok) throw new Error('Erro Gemini: ' + await response.text())
+    //   const data = await response.json()
+    //   return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    // }
 
     case 'groq': {
       const messages: any[] = []

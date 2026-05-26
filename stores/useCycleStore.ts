@@ -5,12 +5,11 @@
  *
  * Store global do ciclo financeiro com Zustand. Sincroniza
  * cycleOffset e viewMode entre as telas Mensal e Potes.
- * Também armazena o provedor de IA ativo e o contador de
- * lançamentos pendentes para o badge do tab Potes.
+ * Também armazena o contador de lançamentos pendentes para
+ * o badge do tab Potes.
  */
 
 import { create } from 'zustand'
-import { AIProvider } from '../lib/ai-provider'
 
 type CycleStore = {
   cycleOffset: number
@@ -19,8 +18,6 @@ type CycleStore = {
   setViewMode: (mode: 'tabela' | 'potes') => void
   alertsExpanded: boolean
   setAlertsExpanded: (v: boolean) => void
-  aiProvider: AIProvider
-  setAiProvider: (p: AIProvider) => void
   pendingScheduledCount: number
   setPendingScheduledCount: (n: number) => void
 }
@@ -32,8 +29,6 @@ export const useCycleStore = create<CycleStore>((set) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   alertsExpanded: true,
   setAlertsExpanded: (v) => set({ alertsExpanded: v }),
-  aiProvider: 'claude',
-  setAiProvider: (p) => set({ aiProvider: p }),
   pendingScheduledCount: 0,
   setPendingScheduledCount: (n) => set({ pendingScheduledCount: n }),
 }))
