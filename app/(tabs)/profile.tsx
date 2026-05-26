@@ -26,7 +26,9 @@ import { brl } from '../../lib/finance'
 import { getCycle } from '../../lib/cycle'
 import { getUserPriceShareOptIn, setUserPriceShareOptIn } from '../../lib/price-database'
 import { clearSecureStoreCache } from '../../lib/supabase'
-import { calculateCycleSummary } from '../../lib/cycleClose'
+import { computeCycleSummaryFromData } from '../../lib/cycleClose'
+import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
+import { getIncomeSourcesForMonth } from '../../lib/income-history'
 import { Goal } from '../../types'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, getEarnedBadgeKeys, ALL_BADGES, Badge } from '../../lib/badges'
@@ -71,7 +73,27 @@ export default function ProfileScreen() {
     ])
 
     const cycle = getCycle(user.cycle_start ?? 1, 0)
-    const summary = await calculateCycleSummary(user.id, cycle)
+    const cycleStartDay = user.cycle_start ?? 1
+    const [pots, incomeSources, txNonCreditRes, txCreditRes, incomingRolloverRes] = await Promise.all([
+      fetchPotsForCycleWithHistory(user.id, cycle.startISO, cycle.endISO),
+      getIncomeSourcesForMonth(user.id, cycleStartDay, 0),
+      supabase.from('transactions').select('amount, type, pot_id')
+        .eq('user_id', user.id).neq('payment_method', 'credit')
+        .gte('date', cycle.startISO).lte('date', cycle.endISO),
+      supabase.from('transactions').select('amount, type, pot_id')
+        .eq('user_id', user.id).eq('payment_method', 'credit')
+        .not('billing_date', 'is', null)
+        .gte('billing_date', cycle.startISO).lte('billing_date', cycle.endISO),
+      supabase.from('cycle_rollovers').select('total_debt, total_surplus')
+        .eq('user_id', user.id).eq('cycle_start_date', cycle.startISO).maybeSingle(),
+    ])
+    const summary = computeCycleSummaryFromData(
+      pots as any[],
+      incomeSources,
+      incomingRolloverRes.data,
+      (txNonCreditRes.data ?? []) as any[],
+      (txCreditRes.data ?? []) as any[],
+    )
     setCycleSaldo(summary.cycleSaldo)
 
     const allGoals = (goalsData ?? []) as Goal[]
