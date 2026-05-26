@@ -13,6 +13,7 @@ export type User = {
   terms_version: string | null
   ir_module_enabled: boolean
   plan: 'free' | 'premium'
+  avatar_url: string | null
 }
 
 export type Pot = {

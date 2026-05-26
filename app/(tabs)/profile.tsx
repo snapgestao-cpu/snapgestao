@@ -11,8 +11,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, Switch, RefreshControl, Modal, TextInput, Linking, Image,
+  Alert, Switch, RefreshControl, Modal, TextInput, Linking, Image, ActivityIndicator,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as ImagePicker from 'expo-image-picker'
+import * as ImageManipulator from 'expo-image-manipulator'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
@@ -51,8 +54,10 @@ export default function ProfileScreen() {
 
   const [sharePrices, setSharePrices] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
 
-  // Notification toggles (local state only)
+  // Notification toggles — persisted in AsyncStorage
+  // (push notifications require production EAS build)
   const [notifGasto, setNotifGasto] = useState(false)
   const [notifCiclo, setNotifCiclo] = useState(false)
   const [notifIncentivo, setNotifIncentivo] = useState(false)
@@ -128,6 +133,14 @@ export default function ProfileScreen() {
       getUserPriceShareOptIn(user.id).then(v => setSharePrices(v === true))
     }
   }, [user?.id])
+
+  useEffect(() => {
+    AsyncStorage.getMany(['notif_gasto', 'notif_ciclo', 'notif_incentivo']).then(m => {
+      setNotifGasto(m['notif_gasto'] === 'true')
+      setNotifCiclo(m['notif_ciclo'] === 'true')
+      setNotifIncentivo(m['notif_incentivo'] === 'true')
+    }).catch(() => {})
+  }, [])
 
   const onRefresh = () => { setRefreshing(true); loadStats() }
 
@@ -235,6 +248,80 @@ export default function ProfileScreen() {
     }
   }
 
+  const handleAvatarPress = () => {
+    const opts: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
+      { text: 'Tirar foto', onPress: () => pickAvatar('camera') },
+      { text: 'Escolher da galeria', onPress: () => pickAvatar('gallery') },
+    ]
+    if (user?.avatar_url) {
+      opts.push({ text: 'Remover foto', style: 'destructive', onPress: removeAvatar })
+    }
+    opts.push({ text: 'Cancelar', style: 'cancel' })
+    Alert.alert('Foto de perfil', undefined, opts)
+  }
+
+  const pickAvatar = async (source: 'camera' | 'gallery') => {
+    let result: ImagePicker.ImagePickerResult
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Permita o acesso à câmera nas configurações.')
+        return
+      }
+      result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 })
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 })
+    }
+    if (result.canceled || !result.assets[0]?.uri) return
+    await uploadAvatar(result.assets[0].uri)
+  }
+
+  const uploadAvatar = async (uri: string) => {
+    if (!user) return
+    setUploadingAvatar(true)
+    try {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 400, height: 400 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      )
+      const response = await fetch(manipResult.uri)
+      const blob = await response.blob()
+      const arrayBuffer = await blob.arrayBuffer()
+      const filePath = `${user.id}/avatar/profile.jpg`
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(filePath, arrayBuffer, { contentType: 'image/jpeg', upsert: true })
+      if (uploadError) throw uploadError
+      const { data: signedData } = await supabase.storage
+        .from('receipts')
+        .createSignedUrl(filePath, 60 * 60 * 24)
+      const avatarUrl = signedData?.signedUrl ?? null
+      await supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', user.id)
+      setUser({ ...user, avatar_url: avatarUrl })
+      setToast({ message: 'Foto atualizada!', color: Colors.success })
+    } catch {
+      setToast({ message: 'Erro ao salvar foto.', color: Colors.danger })
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  const removeAvatar = async () => {
+    if (!user) return
+    setUploadingAvatar(true)
+    try {
+      await supabase.storage.from('receipts').remove([`${user.id}/avatar/profile.jpg`])
+      await supabase.from('users').update({ avatar_url: null }).eq('id', user.id)
+      setUser({ ...user, avatar_url: null })
+      setToast({ message: 'Foto removida.', color: Colors.success })
+    } catch {
+      setToast({ message: 'Erro ao remover foto.', color: Colors.danger })
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
   const cycleEnd = user?.cycle_start
     ? (user.cycle_start === 1 ? 'fim do mês' : `dia ${user.cycle_start - 1}`)
     : '—'
@@ -264,22 +351,26 @@ export default function ProfileScreen() {
       title: 'Potes e Cartões',
       items: [
         { label: 'Meus cartões de crédito', icon: '💳', onPress: () => setShowCards(true) },
-        {
-          label: 'Modo Mesada',
-          icon: '👶',
-          onPress: () => {},
-          toggle: true,
-          toggleValue: false,
-          onToggle: () => Alert.alert('Em breve', 'O Modo Mesada estará disponível em uma próxima versão.'),
-        },
       ],
     },
     {
       title: 'Notificações',
       items: [
-        { label: 'Alerta de gasto crítico', icon: '⚠️', onPress: () => {}, toggle: true, toggleValue: notifGasto, onToggle: setNotifGasto },
-        { label: 'Lembrete fim de ciclo', icon: '🔔', onPress: () => {}, toggle: true, toggleValue: notifCiclo, onToggle: setNotifCiclo },
-        { label: 'Incentivos e conquistas', icon: '🏆', onPress: () => {}, toggle: true, toggleValue: notifIncentivo, onToggle: setNotifIncentivo },
+        {
+          label: 'Alerta de gasto crítico', icon: '⚠️', onPress: () => {}, toggle: true,
+          toggleValue: notifGasto,
+          onToggle: (v: boolean) => { setNotifGasto(v); AsyncStorage.setItem('notif_gasto', String(v)).catch(() => {}) },
+        },
+        {
+          label: 'Lembrete fim de ciclo', icon: '🔔', onPress: () => {}, toggle: true,
+          toggleValue: notifCiclo,
+          onToggle: (v: boolean) => { setNotifCiclo(v); AsyncStorage.setItem('notif_ciclo', String(v)).catch(() => {}) },
+        },
+        {
+          label: 'Incentivos e conquistas', icon: '🏆', onPress: () => {}, toggle: true,
+          toggleValue: notifIncentivo,
+          onToggle: (v: boolean) => { setNotifIncentivo(v); AsyncStorage.setItem('notif_incentivo', String(v)).catch(() => {}) },
+        },
       ],
     },
     {
@@ -369,9 +460,24 @@ export default function ProfileScreen() {
       >
         {/* Header */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.name ? initials(user.name) : '?'}</Text>
-          </View>
+          <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} style={styles.avatarWrapper}>
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{user?.name ? initials(user.name) : '?'}</Text>
+              </View>
+            )}
+            {uploadingAvatar ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" size="small" />
+              </View>
+            ) : (
+              <View style={styles.avatarEditBadge}>
+                <Text style={{ fontSize: 10, color: '#fff' }}>✏️</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <Text style={styles.name}>{user?.name ?? '—'}</Text>
           {email ? <Text style={styles.email}>{email}</Text> : null}
           <View style={styles.cycleBadge}>
@@ -644,12 +750,29 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 20 },
   profileHeader: { alignItems: 'center', marginBottom: 20 },
+  avatarWrapper: { position: 'relative', marginBottom: 12 },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    alignItems: 'center', justifyContent: 'center',
     shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  avatarImg: {
+    width: 80, height: 80, borderRadius: 40,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8,
+  },
+  avatarOverlay: {
+    position: 'absolute', top: 0, left: 0, width: 80, height: 80,
+    borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarEditBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: Colors.primary, borderWidth: 2, borderColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 30, fontWeight: '800', color: '#fff' },
   name: { fontSize: 22, fontWeight: '800', color: Colors.textDark, marginBottom: 2 },

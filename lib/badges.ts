@@ -78,14 +78,20 @@ export async function checkAndGrantBadges(
     { data: receipts },
     { data: monthReceipts },
     { data: transactions },
+    { data: potExpenses },
+    { data: reserveRow },
   ] = await Promise.all([
-    supabase.from('pots').select('id, limit_amount').eq('user_id', userId),
+    supabase.from('pots').select('id, limit_amount').eq('user_id', userId).is('deleted_at', null),
     supabase.from('goals').select('id').eq('user_id', userId).limit(1),
     supabase.from('receipts').select('id').eq('user_id', userId).eq('processed', true).limit(1),
     supabase.from('receipts').select('id').eq('user_id', userId)
       .gte('created_at', startStr + 'T00:00:00').lte('created_at', endStr + 'T23:59:59'),
     supabase.from('transactions').select('amount, type').eq('user_id', userId)
       .gte('date', startStr).lte('date', endStr),
+    supabase.from('transactions').select('pot_id, amount').eq('user_id', userId)
+      .eq('type', 'expense').gte('date', startStr).lte('date', endStr),
+    supabase.from('emergency_reserve').select('current_amount, target_amount, created_at')
+      .eq('user_id', userId).maybeSingle(),
   ])
 
   if (pots && pots.length > 0) await grant('primeiro_pote')
@@ -103,6 +109,64 @@ export async function checkAndGrantBadges(
 
     const totalBudget = ((pots ?? []) as any[]).reduce((s, p) => s + Number(p.limit_amount ?? 0), 0)
     if (totalBudget > 0 && expense < totalBudget * 0.7) await grant('economizador')
+  }
+
+  // mestre_do_pote: closed cycle without any pot exceeding its limit
+  if (potExpenses && pots) {
+    const potList = pots as any[]
+    const limitedPots = potList.filter(p => p.limit_amount != null && Number(p.limit_amount) > 0)
+    if (limitedPots.length > 0) {
+      const expByPot: Record<string, number> = {}
+      for (const tx of potExpenses as any[]) {
+        if (tx.pot_id) expByPot[tx.pot_id] = (expByPot[tx.pot_id] ?? 0) + Number(tx.amount)
+      }
+      const noPotExceeded = limitedPots.every(p => (expByPot[p.id] ?? 0) <= Number(p.limit_amount))
+      if (noPotExceeded) await grant('mestre_do_pote')
+    }
+  }
+
+  // investidor_consistente: goal deposit in each of the last 3 months
+  const threeMonthsAgo = new Date(startStr)
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 2)
+  const { data: goalIds } = await supabase.from('goals').select('id').eq('user_id', userId)
+  if (goalIds && goalIds.length > 0) {
+    const ids = (goalIds as any[]).map(g => g.id)
+    const { data: goalTxs } = await supabase.from('goal_transactions')
+      .select('reference_month').in('goal_id', ids)
+      .in('type', ['deposit_external', 'deposit_from_cycle'])
+      .gte('reference_month', threeMonthsAgo.toISOString().split('T')[0])
+    if (goalTxs && goalTxs.length > 0) {
+      const months = new Set((goalTxs as any[]).map(t => (t.reference_month as string).substring(0, 7)))
+      if (months.size >= 3) await grant('investidor_consistente')
+    }
+  }
+
+  // zero_imprevisto: emergency reserve above 50% of target for last 6 months
+  const reserve = reserveRow as any
+  if (reserve && reserve.target_amount > 0) {
+    const sixMonthsAgo = new Date(startStr)
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5)
+    const reserveCreated = new Date(reserve.created_at)
+    if (reserveCreated <= sixMonthsAgo) {
+      const { data: reserveTxs } = await supabase.from('emergency_reserve_transactions')
+        .select('amount, type, created_at').eq('user_id', userId)
+        .gte('created_at', sixMonthsAgo.toISOString()).order('created_at', { ascending: true })
+      // Reconstruct balance at 6 months ago by walking backwards from current
+      let bal = Number(reserve.current_amount)
+      for (const tx of [...(reserveTxs ?? [] as any[])].reverse()) {
+        if ((tx as any).type.startsWith('deposit')) bal -= Number((tx as any).amount)
+        else bal += Number((tx as any).amount)
+      }
+      // Walk forward checking balance never drops below 50%
+      const threshold = Number(reserve.target_amount) * 0.5
+      let aboveThreshold = bal >= threshold
+      for (const tx of (reserveTxs ?? [] as any[]) as any[]) {
+        if (tx.type.startsWith('deposit')) bal += Number(tx.amount)
+        else bal -= Number(tx.amount)
+        if (bal < threshold) { aboveThreshold = false; break }
+      }
+      if (aboveThreshold) await grant('zero_imprevisto')
+    }
   }
 
   return newBadges

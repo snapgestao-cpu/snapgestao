@@ -28,6 +28,8 @@ import {
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
 import { useCycleStore } from '../stores/useCycleStore'
 import AIProviderSelector from '../components/AIProviderSelector'
+import { checkAndGrantBadges } from '../lib/badges'
+import { BadgeToast } from '../components/BadgeToast'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,6 +136,7 @@ export default function MentorScreen() {
   const [pdfUri, setPdfUri] = useState<string | null>(null)
   const [sharingPdf, setSharingPdf] = useState(false)
   const [aiTokens, setAiTokens] = useState<number | null>(null)
+  const [pendingBadges, setPendingBadges] = useState<import('../lib/badges').Badge[]>([])
 
   const fadeAnim = useRef(new Animated.Value(1)).current
 
@@ -222,6 +225,10 @@ export default function MentorScreen() {
       } catch {
         // PDF failure is non-fatal
       }
+
+      checkAndGrantBadges(user.id, user.cycle_start ?? 1)
+        .then(badges => { if (badges.length > 0) setPendingBadges(badges) })
+        .catch(() => {})
 
       setStep('result')
     } catch (e: any) {
@@ -519,6 +526,9 @@ export default function MentorScreen() {
           </TouchableOpacity>
         )}
       </View>
+      {pendingBadges.length > 0 && (
+        <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
+      )}
     </SafeAreaView>
   )
 }
