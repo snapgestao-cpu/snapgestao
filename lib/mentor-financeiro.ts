@@ -12,6 +12,7 @@
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
 import { AIProvider, callAI } from './ai-provider'
+import { getIncomeSourcesForMonth } from './income-history'
 
 export type QuestionarioRespostas = {
   objetivo: { opcao: string | null; comentario: string }
@@ -20,6 +21,15 @@ export type QuestionarioRespostas = {
   prazo: { opcao: string | null; comentario: string }
   tom: { opcao: string | null; comentario: string }
   periodo: { opcao: string | null; comentario: string }
+}
+
+export type ReceitaMes = {
+  label: string      // ex: "Jun/2026"
+  cycleStart: string // ISO date
+  receitaRecorrente: number
+  receitaAvulsa: number
+  total: number
+  futuro: boolean
 }
 
 export type ContextoFinanceiro = {
@@ -33,6 +43,7 @@ export type ContextoFinanceiro = {
   cicloStart: number
   periodoAnalise: string
   periodoAnalisado: { meses: number; descricao: string; ciclosIncluidos: number }
+  receitasPorMes: ReceitaMes[]   // histórico + meses futuros
 }
 
 export function getMesesParaAnalisar(opcao: string | null): number {
@@ -50,6 +61,12 @@ function periodoDescricao(maxMeses: number): string {
   if (maxMeses === 3) return 'Últimos 3 meses'
   if (maxMeses === 6) return 'Últimos 6 meses'
   return 'Todo o histórico disponível'
+}
+
+function cycleLabel(startISO: string): string {
+  const [year, month] = startISO.split('-')
+  const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${MONTHS[parseInt(month) - 1]}/${year}`
 }
 
 async function buscarMesesValidos(
@@ -95,6 +112,8 @@ Analise os dados financeiros e o questionário do usuário e gere um relatório 
 4. **Plano de Ação** — 5 recomendações específicas e práticas (numeradas)
 5. **Meta 90 dias** — Uma meta concreta e mensurável para os próximos 3 meses
 
+Quando houver receitas previstas em meses futuros, leve-as em conta no planejamento e nas recomendações — especialmente para decisões de reserva, metas e quitação de dívidas.
+
 Seja específico, use os valores reais do usuário. Evite conselhos genéricos.`
 
 export async function coletarContextoFinanceiro(
@@ -109,14 +128,14 @@ export async function coletarContextoFinanceiro(
   const mesesValidos = await buscarMesesValidos(userId, cycleStart, maxMeses)
   const periodoAnalise = mesesValidos.map(m => m.start.substring(0, 7)).join(', ')
 
+  // ── Dados base ─────────────────────────────────────────────────────────────
+
   const [
     { data: pots },
-    { data: incomeSources },
     { data: txsThisCycle },
     { data: goals },
   ] = await Promise.all([
     supabase.from('pots').select('id, name, limit_amount').eq('user_id', userId).is('deleted_at', null),
-    supabase.from('income_sources').select('amount').eq('user_id', userId),
     supabase.from('transactions')
       .select('type, amount, merchant, pot_id')
       .eq('user_id', userId)
@@ -125,6 +144,8 @@ export async function coletarContextoFinanceiro(
       .lte('date', cycleEndISO),
     supabase.from('goals').select('id').eq('user_id', userId),
   ])
+
+  // ── Top merchants (todos os meses válidos) ──────────────────────────────────
 
   const allTxsMerchant: any[] = []
   for (const mes of mesesValidos) {
@@ -138,9 +159,72 @@ export async function coletarContextoFinanceiro(
     allTxsMerchant.push(...(data ?? []))
   }
 
-  const totalReceita = ((incomeSources ?? []) as any[]).reduce((s: number, r: any) => s + Number(r.amount), 0)
+  // ── Receitas por mês: histórico + 3 meses futuros ──────────────────────────
+
+  // Todos os offsets a coletar: mesesValidos (passado/atual) + até +3 futuros
+  const receitasPorMes: ReceitaMes[] = []
+
+  // Histórico + atual (offsets <= 0)
+  for (const mes of mesesValidos) {
+    const [incomeSources, { data: avulsas }] = await Promise.all([
+      getIncomeSourcesForMonth(userId, cycleStart, offsetFromISO(mes.start, cycleStart)),
+      supabase.from('transactions')
+        .select('amount')
+        .eq('user_id', userId)
+        .eq('type', 'income')
+        .gte('date', mes.start)
+        .lte('date', mes.end),
+    ])
+    const recorrente = incomeSources.reduce((s, r) => s + r.amount, 0)
+    const avulsa = (avulsas ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+    receitasPorMes.push({
+      label: cycleLabel(mes.start),
+      cycleStart: mes.start,
+      receitaRecorrente: recorrente,
+      receitaAvulsa: avulsa,
+      total: recorrente + avulsa,
+      futuro: false,
+    })
+  }
+
+  // Meses futuros: +1, +2, +3
+  for (let offset = 1; offset <= 3; offset++) {
+    const futureCycle = getCycle(cycleStart, offset)
+    const futureStart = futureCycle.start.toISOString().split('T')[0]
+    const futureEnd = futureCycle.end.toISOString().split('T')[0]
+    const [incomeSources, { data: avulsas }] = await Promise.all([
+      getIncomeSourcesForMonth(userId, cycleStart, offset),
+      supabase.from('transactions')
+        .select('amount')
+        .eq('user_id', userId)
+        .eq('type', 'income')
+        .gte('date', futureStart)
+        .lte('date', futureEnd),
+    ])
+    const recorrente = incomeSources.reduce((s, r) => s + r.amount, 0)
+    const avulsa = (avulsas ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+    // Só inclui se há algum dado (não queremos poluir o contexto com zeros)
+    if (recorrente > 0 || avulsa > 0) {
+      receitasPorMes.push({
+        label: cycleLabel(futureStart),
+        cycleStart: futureStart,
+        receitaRecorrente: recorrente,
+        receitaAvulsa: avulsa,
+        total: recorrente + avulsa,
+        futuro: true,
+      })
+    }
+  }
+
+  // ── Cálculos do ciclo atual ─────────────────────────────────────────────────
+
+  const atualMes = receitasPorMes.find(m => m.cycleStart === cycleStartISO)
+  const totalReceita = atualMes?.total ?? 0
+
   const expenses = (txsThisCycle ?? []) as any[]
-  const totalGasto = expenses.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + Number(t.amount), 0)
+  const totalGasto = expenses
+    .filter((t: any) => t.type === 'expense')
+    .reduce((s: number, t: any) => s + Number(t.amount), 0)
 
   const spentByPot: Record<string, number> = {}
   expenses.forEach((t: any) => {
@@ -181,7 +265,19 @@ export async function coletarContextoFinanceiro(
       descricao: periodoDescricao(maxMeses),
       ciclosIncluidos: mesesValidos.length,
     },
+    receitasPorMes,
   }
+}
+
+// Calcula o offset de um ciclo a partir do seu startISO
+function offsetFromISO(startISO: string, cycleStart: number): number {
+  const cycle0 = getCycle(cycleStart, 0)
+  const startDate = new Date(startISO)
+  const base = cycle0.start
+  const diffMonths =
+    (startDate.getFullYear() - base.getFullYear()) * 12 +
+    (startDate.getMonth() - base.getMonth())
+  return diffMonths
 }
 
 function resolveField(
@@ -236,9 +332,28 @@ function buildPrompt(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro):
     `  - ${m.name}: R$ ${m.total.toFixed(2)}`
   ).join('\n')
 
-  return `PERÍODO ANALISADO: ${ctx.periodoAnalisado.descricao} (${ctx.periodoAnalisado.ciclosIncluidos} ciclos fechados + mês atual)
+  // Seção de receitas por mês (histórico)
+  const historicoMeses = ctx.receitasPorMes.filter(m => !m.futuro)
+  const receitaHistoricoLines = historicoMeses.map(m => {
+    const avulsaInfo = m.receitaAvulsa > 0 ? ` (+R$ ${m.receitaAvulsa.toFixed(2)} avulsa)` : ''
+    return `  - ${m.label}: R$ ${m.receitaRecorrente.toFixed(2)} recorrente${avulsaInfo} = R$ ${m.total.toFixed(2)} total`
+  }).join('\n')
+
+  // Seção de receitas futuras previstas
+  const mesesFuturos = ctx.receitasPorMes.filter(m => m.futuro)
+  const receitaFuturaSection = mesesFuturos.length > 0
+    ? `\nRECEITAS PREVISTAS (meses futuros — registradas no app):
+${mesesFuturos.map(m => {
+  const avulsaInfo = m.receitaAvulsa > 0
+    ? ` (inclui R$ ${m.receitaAvulsa.toFixed(2)} em receitas avulsas/extras)`
+    : ''
+  return `  - ${m.label}: R$ ${m.total.toFixed(2)} total${avulsaInfo}`
+}).join('\n')}
+IMPORTANTE: Leve esses valores futuros em conta no planejamento — especialmente para reservas de emergência, metas de poupança e decisões de quitação de dívidas.`
+    : ''
+
+  return `PERÍODO HISTÓRICO ANALISADO: ${ctx.periodoAnalisado.descricao} (${ctx.periodoAnalisado.ciclosIncluidos} ciclos fechados + mês atual)
 Ciclos incluídos: ${ctx.periodoAnalise}
-Considere APENAS estes meses na sua análise.
 
 QUESTIONÁRIO DO USUÁRIO:
 - Objetivo principal: ${resolveField(respostas.objetivo, objetivoMap)}
@@ -248,13 +363,16 @@ QUESTIONÁRIO DO USUÁRIO:
 - Tom preferido: ${resolveField(respostas.tom, tomMap)}
 - Período escolhido: ${resolveField(respostas.periodo, periodoMap)}
 
-DADOS FINANCEIROS REAIS (ciclo atual):
-- Receita mensal total: R$ ${ctx.totalReceita.toFixed(2)}
+DADOS FINANCEIROS — CICLO ATUAL:
+- Receita total (recorrente + avulsa): R$ ${ctx.totalReceita.toFixed(2)}
 - Total gasto no ciclo atual: R$ ${ctx.totalGasto.toFixed(2)}
 - Poupança estimada: R$ ${ctx.totalPoupado.toFixed(2)}
 - Taxa de poupança: ${ctx.totalReceita > 0 ? Math.round((ctx.totalPoupado / ctx.totalReceita) * 100) : 0}%
 - Metas ativas: ${ctx.metasAtivas}
 
+HISTÓRICO DE RECEITAS POR MÊS:
+${receitaHistoricoLines || '  (sem histórico)'}
+${receitaFuturaSection}
 POTES (orçamento por categoria):
 ${potLines || '  (nenhum pote cadastrado)'}
 
