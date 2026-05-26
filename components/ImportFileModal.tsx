@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase'
 import { getPotIcon } from '../lib/potIcons'
 import { brl } from '../lib/finance'
 import { Pot, CreditCard } from '../types'
+import { downloadImportTemplate } from '../lib/import-template'
 
 type ImportRow = {
   date: string
@@ -262,6 +263,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [savedCount, setSavedCount] = useState(0)
   const [cards, setCards] = useState<CreditCard[]>([])
   const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false)
+  const [templateSuccess, setTemplateSuccess] = useState(false)
 
   useEffect(() => {
     if (visible) loadCards()
@@ -276,7 +279,22 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   }
 
   const reset = () => {
-    setStep('pick'); setRows([]); setFilename(''); setSelectedCard(null)
+    setStep('pick'); setRows([]); setFilename('')
+    setSelectedCard(null); setTemplateSuccess(false)
+  }
+
+  const handleDownloadTemplate = async () => {
+    setDownloadingTemplate(true)
+    setTemplateSuccess(false)
+    try {
+      await downloadImportTemplate()
+      setTemplateSuccess(true)
+      setTimeout(() => setTemplateSuccess(false), 4000)
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível gerar o modelo.')
+    } finally {
+      setDownloadingTemplate(false)
+    }
   }
   const handleClose = () => { reset(); onClose() }
 
@@ -540,6 +558,30 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           <ScrollView contentContainerStyle={styles.pickContainer} showsVerticalScrollIndicator={false}>
             <Text style={styles.pickEmoji}>📊</Text>
             <Text style={styles.pickTitle}>Arquivo Excel (.xlsx)</Text>
+
+            {/* Template download banner */}
+            <View style={styles.templateBanner}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.templateBannerTitle}>📥 Baixar modelo de exemplo</Text>
+                <Text style={styles.templateBannerSub}>
+                  Use como base para preencher seus lançamentos corretamente
+                </Text>
+                {templateSuccess && (
+                  <Text style={styles.templateSuccess}>✅ Modelo baixado com sucesso!</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.templateBtn, downloadingTemplate && { opacity: 0.6 }]}
+                onPress={handleDownloadTemplate}
+                disabled={downloadingTemplate}
+              >
+                {downloadingTemplate
+                  ? <ActivityIndicator color={Colors.primary} size="small" />
+                  : <Text style={styles.templateBtnText}>Baixar</Text>
+                }
+              </TouchableOpacity>
+            </View>
+
             <ExcelPreview />
             <TouchableOpacity style={[styles.primaryBtn, { width: '100%' }]} onPress={pickFile}>
               <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
@@ -753,4 +795,23 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', marginTop: 8,
   },
+
+  // Template download banner
+  templateBanner: {
+    width: '100%',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.primary + '14',
+    borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: Colors.primary + '28',
+  },
+  templateBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 3 },
+  templateBannerSub: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
+  templateSuccess: { fontSize: 12, color: Colors.success, fontWeight: '600', marginTop: 4 },
+  templateBtn: {
+    backgroundColor: Colors.white, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderWidth: 1.5, borderColor: Colors.primary,
+    minWidth: 72, alignItems: 'center', justifyContent: 'center',
+  },
+  templateBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
 })
