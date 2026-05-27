@@ -41,6 +41,7 @@ import {
   submitPriceData,
 } from '../lib/price-database'
 import PriceShareOptInModal from '../components/PriceShareOptInModal'
+import { CreditCardModal } from '../components/CreditCardModal'
 
 function extractChaveAcesso(url: string): string | null {
   try {
@@ -165,6 +166,8 @@ export default function OCRScreen() {
     emission_date: string
   } | null>(null)
 
+  const [showCreditCardModal, setShowCreditCardModal] = useState(false)
+
   useEffect(() => {
     if (paymentMethod !== 'credit') { setIsInstallment(false); return }
     if (!user) return
@@ -173,6 +176,16 @@ export default function OCRScreen() {
         const list = (data as CreditCard[]) ?? []
         setCards(list)
         setSelectedCardId(list[0]?.id ?? null)
+        if (list.length === 0) {
+          Alert.alert(
+            'Nenhum cartão cadastrado',
+            'Você não tem cartões de crédito cadastrados. Cadastrar um cartão permite controlar os vencimentos das parcelas corretamente.',
+            [
+              { text: 'Cadastrar cartão', onPress: () => setShowCreditCardModal(true) },
+              { text: 'Usar genérico', style: 'cancel' },
+            ]
+          )
+        }
       })
   }, [paymentMethod])
 
@@ -534,6 +547,7 @@ export default function OCRScreen() {
 
   // ── STEP: review ──────────────────────────────────────────────────────────
   return (
+    <>
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setStep('qr_camera')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -912,6 +926,20 @@ export default function OCRScreen() {
         }}
       />
     </SafeAreaView>
+    <CreditCardModal
+      visible={showCreditCardModal}
+      onClose={() => {
+        setShowCreditCardModal(false)
+        if (!user) return
+        supabase.from('credit_cards').select('*').eq('user_id', user.id)
+          .then(({ data }) => {
+            const list = (data as CreditCard[]) ?? []
+            setCards(list)
+            setSelectedCardId(list[0]?.id ?? null)
+          })
+      }}
+    />
+    </>
   )
 }
 

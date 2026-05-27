@@ -16,6 +16,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as ImagePicker from 'expo-image-picker'
 import * as ImageManipulator from 'expo-image-manipulator'
+import * as FileSystem from 'expo-file-system/legacy'
+import { decode } from 'base64-arraybuffer'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
@@ -285,13 +287,13 @@ export default function ProfileScreen() {
         [{ resize: { width: 400, height: 400 } }],
         { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
       )
-      const response = await fetch(manipResult.uri)
-      const blob = await response.blob()
-      const arrayBuffer = await blob.arrayBuffer()
+      const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      })
       const filePath = `${user.id}/avatar/profile.jpg`
       const { error: uploadError } = await supabase.storage
         .from('receipts')
-        .upload(filePath, arrayBuffer, { contentType: 'image/jpeg', upsert: true })
+        .upload(filePath, decode(base64), { contentType: 'image/jpeg', upsert: true })
       if (uploadError) throw uploadError
       const { data: signedData } = await supabase.storage
         .from('receipts')
@@ -300,8 +302,14 @@ export default function ProfileScreen() {
       await supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', user.id)
       setUser({ ...user, avatar_url: avatarUrl })
       setToast({ message: 'Foto atualizada!', color: Colors.success })
-    } catch {
-      setToast({ message: 'Erro ao salvar foto.', color: Colors.danger })
+    } catch (error: any) {
+      if (error?.message?.includes('policy')) {
+        setToast({ message: 'Sem permissão para salvar a foto. Tente novamente.', color: Colors.danger })
+      } else if (error?.message?.includes('size') || error?.message?.includes('large')) {
+        setToast({ message: 'Foto muito grande. Tente uma imagem menor.', color: Colors.danger })
+      } else {
+        setToast({ message: 'Erro ao salvar foto. Verifique sua conexão e tente novamente.', color: Colors.danger })
+      }
     } finally {
       setUploadingAvatar(false)
     }

@@ -28,6 +28,7 @@ import { brl } from '../lib/finance'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 import { calcBillingDate } from '../lib/billing-date'
 import { getCardImage } from '../constants/cardBrands'
+import { CreditCardModal } from './CreditCardModal'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'voucher_alimentacao' | 'voucher_refeicao'
 
@@ -80,6 +81,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [installments, setInstallments] = useState(2)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCreditCardModal, setShowCreditCardModal] = useState(false)
 
   // IR
   const [isIrDeductible, setIsIrDeductible] = useState(false)
@@ -120,8 +122,19 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     if (!userId) return
     supabase.from('credit_cards').select('*').eq('user_id', userId)
       .then(({ data }) => {
-        setCards((data as CreditCard[]) ?? [])
-        setSelectedCardId((data?.[0] as CreditCard | undefined)?.id ?? null)
+        const list = (data as CreditCard[]) ?? []
+        setCards(list)
+        setSelectedCardId(list[0]?.id ?? null)
+        if (list.length === 0) {
+          Alert.alert(
+            'Nenhum cartão cadastrado',
+            'Você não tem cartões de crédito cadastrados. Cadastrar um cartão permite controlar os vencimentos das parcelas corretamente.',
+            [
+              { text: 'Cadastrar cartão', onPress: () => setShowCreditCardModal(true) },
+              { text: 'Usar genérico', style: 'cancel' },
+            ]
+          )
+        }
       })
   }, [paymentMethod])
 
@@ -215,6 +228,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const installmentValue = isInstallment && installments > 1 ? totalAmount / installments : 0
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.kav}
@@ -546,6 +560,21 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <CreditCardModal
+      visible={showCreditCardModal}
+      onClose={() => {
+        setShowCreditCardModal(false)
+        const userId = useAuthStore.getState().session?.user?.id
+        if (!userId) return
+        supabase.from('credit_cards').select('*').eq('user_id', userId)
+          .then(({ data }) => {
+            const list = (data as CreditCard[]) ?? []
+            setCards(list)
+            setSelectedCardId(list[0]?.id ?? null)
+          })
+      }}
+    />
+    </>
   )
 }
 

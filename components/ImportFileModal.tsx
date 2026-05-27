@@ -22,6 +22,7 @@ import { getPotIcon } from '../lib/potIcons'
 import { brl } from '../lib/finance'
 import { Pot, CreditCard } from '../types'
 import { downloadImportTemplate } from '../lib/import-template'
+import { CreditCardModal } from './CreditCardModal'
 
 type ImportRow = {
   date: string
@@ -281,6 +282,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
   const [downloadingTemplate, setDownloadingTemplate] = useState(false)
   const [templateSuccess, setTemplateSuccess] = useState(false)
+  const [showCreditCardModal, setShowCreditCardModal] = useState(false)
 
   useEffect(() => {
     if (visible) loadCards()
@@ -356,6 +358,17 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
 
   const handleConfirmPreview = () => {
     const hasCreditItems = rows.some(r => r.type === 'expense' && r.paymentMethod === 'credit')
+    if (hasCreditItems && cards.length === 0) {
+      Alert.alert(
+        'Nenhum cartão cadastrado',
+        'Há lançamentos de crédito na importação, mas você não tem cartões cadastrados. Cadastre um cartão ou use o cartão genérico.',
+        [
+          { text: 'Cadastrar cartão', onPress: () => setShowCreditCardModal(true) },
+          { text: 'Usar genérico', onPress: () => setStep('assign') },
+        ]
+      )
+      return
+    }
     setStep(hasCreditItems ? 'card_select' : 'assign')
   }
 
@@ -560,6 +573,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   }
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.container}>
         <View style={styles.header}>
@@ -715,6 +729,17 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         )}
       </View>
     </Modal>
+    <CreditCardModal
+      visible={showCreditCardModal}
+      onClose={() => {
+        setShowCreditCardModal(false)
+        loadCards().then(() => {
+          const hasCreditItems = rows.some(r => r.type === 'expense' && r.paymentMethod === 'credit')
+          setStep(hasCreditItems ? 'card_select' : 'assign')
+        })
+      }}
+    />
+    </>
   )
 }
 
