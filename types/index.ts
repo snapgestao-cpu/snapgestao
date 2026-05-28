@@ -11,7 +11,6 @@ export type User = {
   created_at: string
   terms_accepted_at: string | null
   terms_version: string | null
-  ir_module_enabled: boolean
   plan: 'free' | 'premium'
   avatar_url: string | null
 }

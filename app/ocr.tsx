@@ -150,7 +150,7 @@ export default function OCRScreen() {
   const [globalPotName, setGlobalPotName] = useState<string>(defaultPotName ?? '')
 
   // IR deduction
-  const irModuleEnabled = user?.ir_module_enabled ?? false
+  const irModuleEnabled = user?.plan === 'premium'
   const [isIrDeductible, setIsIrDeductible] = useState(false)
   const [irCategory, setIrCategory] = useState<IRCategory>('saude')
   const [irProviderName, setIrProviderName] = useState('')

@@ -19,6 +19,9 @@ import { CreditCard } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
+import { getFutureInstallments, deleteCardWithCascade, recalculateFutureInstallments, analyzeRecalculation } from '../lib/credit-cards'
+import { getCycle } from '../lib/cycle'
+import { brl } from '../lib/finance'
 import { PLAN_LIMITS } from '../constants/plans'
 import { router } from 'expo-router'
 import { getCardImage } from '../constants/cardBrands'
@@ -107,21 +110,86 @@ export function CreditCardModal({ visible, onClose }: Props) {
     setShowForm(true)
   }
 
-  const handleDelete = (card: CreditCard) => {
-    Alert.alert(
-      'Excluir cartão',
-      `Deseja excluir "${card.name}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            await supabase.from('credit_cards').delete().eq('id', card.id)
-            loadCards()
+  const handleDelete = async (card: CreditCard) => {
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    const cycleStart = useAuthStore.getState().user?.cycle_start ?? 1
+    const { endISO } = getCycle(cycleStart, 0)
+
+    const { count, total } = await getFutureInstallments(userId, card.id, endISO)
+
+    if (count > 0) {
+      const nextMonth = endISO.substring(0, 7).replace(/(\d{4})-(\d{2})/, (_, y, m) => {
+        const next = new Date(Number(y), Number(m), 1)
+        return `${String(next.getMonth() + 1).padStart(2, '0')}/${next.getFullYear()}`
+      })
+      Alert.alert(
+        '⚠️ Cartão com parcelas futuras',
+        `O cartão "${card.name}" possui ${count} parcela(s) com vencimento a partir de ${nextMonth}, totalizando ${brl(total)}.\n\nAo excluir o cartão, todas essas parcelas serão permanentemente removidas.\n\nEsta ação não pode ser desfeita.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Excluir cartão e parcelas', style: 'destructive',
+            onPress: async () => {
+              await deleteCardWithCascade(userId, card.id, endISO)
+              loadCards()
+            },
           },
-        },
-      ]
-    )
+        ]
+      )
+    } else {
+      Alert.alert(
+        'Excluir cartão',
+        `Tem certeza que deseja excluir o cartão "${card.name}"?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Excluir', style: 'destructive',
+            onPress: async () => {
+              await deleteCardWithCascade(userId, card.id, endISO)
+              loadCards()
+            },
+          },
+        ]
+      )
+    }
+  }
+
+  const doSave = async (
+    userId: string,
+    closing: number,
+    due: number,
+    original: CreditCard | undefined,
+    cycleEndISO: string | null
+  ) => {
+    const payload = {
+      user_id: userId,
+      name: form.name.trim(),
+      last_four: form.lastFour.trim() || null,
+      closing_day: closing,
+      due_day: due,
+      credit_limit: centsToFloat(form.limitDigits) > 0 ? centsToFloat(form.limitDigits) : null,
+      brand: form.brand || 'generic',
+    }
+    setLoading(true)
+    try {
+      if (editingId) {
+        await supabase.from('credit_cards').update(payload).eq('id', editingId)
+        if (cycleEndISO && original) {
+          const updatedCard = { ...original, closing_day: closing, due_day: due }
+          const count = await recalculateFutureInstallments(editingId, updatedCard as any, cycleEndISO)
+          if (count > 0) {
+            Alert.alert('Datas atualizadas', `${count} lançamento(s) futuro(s) reagendados para o novo vencimento.`)
+          }
+        }
+      } else {
+        await supabase.from('credit_cards').insert(payload)
+      }
+      setShowForm(false)
+      loadCards()
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSave = async () => {
@@ -133,30 +201,39 @@ export function CreditCardModal({ visible, onClose }: Props) {
 
     const userId = useAuthStore.getState().session?.user?.id
     if (!userId) return
-
     setError(null)
-    setLoading(true)
-    try {
-      const payload = {
-        user_id: userId,
-        name: form.name.trim(),
-        last_four: form.lastFour.trim() || null,
-        closing_day: closing,
-        due_day: due,
-        credit_limit: centsToFloat(form.limitDigits) > 0 ? centsToFloat(form.limitDigits) : null,
-        brand: form.brand || 'generic',
-      }
 
-      if (editingId) {
-        await supabase.from('credit_cards').update(payload).eq('id', editingId)
-      } else {
-        await supabase.from('credit_cards').insert(payload)
+    if (editingId) {
+      const original = cards.find(c => c.id === editingId)
+      const datesChanged = original && (original.closing_day !== closing || original.due_day !== due)
+
+      if (datesChanged) {
+        const cycleStart = useAuthStore.getState().user?.cycle_start ?? 1
+        const { endISO, monthYear } = getCycle(cycleStart, 0)
+        const updatedCard = { ...original!, closing_day: closing, due_day: due }
+
+        setLoading(true)
+        const { total, movingToCurrent } = await analyzeRecalculation(editingId, updatedCard as any, endISO)
+        setLoading(false)
+
+        if (movingToCurrent > 0) {
+          Alert.alert(
+            '⚠️ Parcelas antecipadas',
+            `${movingToCurrent} parcela(s) futura(s) serão trazidas para o ciclo de ${monthYear} devido à mudança no fechamento.\n\nElas aparecerão imediatamente na tela Mensal.\n\nDeseja continuar?`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Confirmar', onPress: () => doSave(userId, closing, due, original, endISO) },
+            ]
+          )
+          return
+        }
+
+        doSave(userId, closing, due, original, total > 0 ? endISO : null)
+        return
       }
-      setShowForm(false)
-      loadCards()
-    } finally {
-      setLoading(false)
     }
+
+    doSave(userId, closing, due, undefined, null)
   }
 
   // ── Brand picker modal ───────────────────────────────────────────────────

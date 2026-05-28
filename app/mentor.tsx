@@ -24,6 +24,7 @@ import {
   coletarContextoFinanceiro,
   gerarRelatorioMentor,
   getMesesParaAnalisar,
+  getMesesFuturos,
 } from '../lib/mentor-financeiro'
 import { gerarPDF, compartilharPDF } from '../lib/gerar-pdf'
 import { checkAndGrantBadges } from '../lib/badges'
@@ -40,6 +41,7 @@ type Pergunta = {
   opcoes: PerguntaOpcao[]
   dinamico?: boolean
   placeholder: string
+  opcional?: boolean
 }
 
 // ── Perguntas ─────────────────────────────────────────────────────────────────
@@ -114,6 +116,27 @@ const PERGUNTAS_BASE: Pergunta[] = [
     ],
     placeholder: 'Ou especifique o período...',
   },
+  {
+    id: 'mesesFuturos',
+    titulo: 'Incluir meses futuros\nna análise?',
+    emoji: '🔮',
+    opcoes: [
+      { key: '0',  label: '🚫 Não incluir meses futuros' },
+      { key: '1',  label: '📅 1 mês futuro' },
+      { key: '3',  label: '🗓️ 3 meses futuros' },
+      { key: '6',  label: '📆 6 meses futuros' },
+      { key: '12', label: '🔭 12 meses futuros' },
+    ],
+    placeholder: 'Ou especifique quantos meses...',
+  },
+  {
+    id: 'observacaoFinal',
+    titulo: 'Deseja acrescentar\nalguma observação?',
+    emoji: '💭',
+    opcoes: [],
+    opcional: true,
+    placeholder: 'Ex: vou receber uma herança em julho, tenho uma viagem planejada, quero trocar de carro...',
+  },
 ]
 
 type Step = 'intro' | 'quiz' | 'generating' | 'result' | 'error'
@@ -174,7 +197,7 @@ export default function MentorScreen() {
     const opcaoSelecionada = selectedOpcoes[pergunta.id] ?? ''
     const comentario = (comentarios[pergunta.id] ?? '').trim()
 
-    if (!opcaoSelecionada && !comentario) {
+    if (!pergunta.opcional && !opcaoSelecionada && !comentario) {
       Alert.alert('Responda a pergunta', 'Selecione uma opção ou escreva um comentário para continuar.')
       return
     }
@@ -193,6 +216,8 @@ export default function MentorScreen() {
         prazo: buildField('prazo'),
         tom: buildField('tom'),
         periodo: buildField('periodo'),
+        mesesFuturos: buildField('mesesFuturos'),
+        observacaoFinal: buildField('observacaoFinal'),
       }
       gerarRelatorio(r)
     }
@@ -215,7 +240,8 @@ export default function MentorScreen() {
     setStep('generating')
     try {
       const maxMeses = getMesesParaAnalisar(r.periodo.opcao)
-      const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1, maxMeses)
+      const maxMesesFuturos = getMesesFuturos(r.mesesFuturos.opcao)
+      const ctx = await coletarContextoFinanceiro(user!.id, user!.cycle_start ?? 1, maxMeses, maxMesesFuturos)
       const texto = await gerarRelatorioMentor(r, ctx, provider)
       setRelatorio(texto)
 
@@ -284,7 +310,7 @@ export default function MentorScreen() {
 
           <View style={styles.disclaimer}>
             <Text style={styles.disclaimerText}>
-              Responda 6 perguntas rápidas e a IA vai gerar seu relatório personalizado em segundos.
+              Responda 8 perguntas rápidas e a IA vai gerar seu relatório personalizado em segundos.
             </Text>
           </View>
 
@@ -344,8 +370,9 @@ export default function MentorScreen() {
     const progress = ((currentQ) / PERGUNTAS.length) * 100
     const opcaoAtual = selectedOpcoes[pergunta.id] ?? ''
     const comentarioAtual = comentarios[pergunta.id] ?? ''
-    const podeAvancar = !!opcaoAtual || comentarioAtual.trim().length > 0
+    const podeAvancar = !!opcaoAtual || comentarioAtual.trim().length > 0 || !!pergunta.opcional
     const isLast = currentQ === PERGUNTAS.length - 1
+    const isPulando = pergunta.opcional && !opcaoAtual && !comentarioAtual.trim()
 
     return (
       <SafeAreaView style={styles.root} edges={['top']}>
@@ -405,12 +432,14 @@ export default function MentorScreen() {
               {/* Free text */}
               <View style={styles.comentarioWrap}>
                 <Text style={styles.comentarioLabel}>
-                  💬 {pergunta.opcoes.length === 0 ? pergunta.placeholder : 'Adicionar comentário (opcional):'}
+                  💬 {pergunta.opcoes.length === 0
+                    ? (pergunta.opcional ? 'Observação (opcional):' : pergunta.placeholder)
+                    : 'Adicionar comentário (opcional):'}
                 </Text>
                 <TextInput
                   value={comentarioAtual}
                   onChangeText={(text) => setComentarios(prev => ({ ...prev, [pergunta.id]: text }))}
-                  placeholder={pergunta.opcoes.length === 0 ? 'Descreva sua meta principal...' : pergunta.placeholder}
+                  placeholder={pergunta.placeholder}
                   placeholderTextColor={Colors.textMuted}
                   multiline
                   numberOfLines={3}
@@ -428,7 +457,7 @@ export default function MentorScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.primaryBtnText}>
-                {isLast ? 'Gerar relatório 🚀' : 'Próxima →'}
+                {isLast ? (isPulando ? 'Pular e gerar relatório 🚀' : 'Gerar relatório 🚀') : 'Próxima →'}
               </Text>
             </TouchableOpacity>
           </View>

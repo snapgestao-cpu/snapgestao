@@ -77,6 +77,15 @@ export function getApiKey(provider: AIProvider): string {
   }
 }
 
+const AI_TIMEOUT_MS = 90_000
+
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer))
+}
+
 export async function callAI(
   provider: AIProvider,
   prompt: string,
@@ -92,63 +101,64 @@ export async function callAI(
   switch (provider) {
 
     case 'claude': {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4096,
-          system: systemPrompt || '',
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
+      let response: Response
+      try {
+        response = await fetchWithTimeout(
+          'https://api.anthropic.com/v1/messages',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 4096,
+              system: systemPrompt || '',
+              messages: [{ role: 'user', content: prompt }],
+            }),
+          },
+          AI_TIMEOUT_MS
+        )
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error('A IA demorou muito para responder. Tente novamente.')
+        throw e
+      }
       if (!response.ok) throw new Error('Erro Claude: ' + await response.text())
       const data = await response.json()
       return data.content?.[0]?.text || ''
     }
 
-    // case 'gemini': {
-    //   const body: any = {
-    //     contents: [{ parts: [{ text: prompt }] }],
-    //     generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-    //   }
-    //   if (systemPrompt) {
-    //     body.system_instruction = { parts: [{ text: systemPrompt }] }
-    //   }
-    //   const response = await fetch(
-    //     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey,
-    //     {
-    //       method: 'POST',
-    //       headers: { 'Content-Type': 'application/json' },
-    //       body: JSON.stringify(body),
-    //     }
-    //   )
-    //   if (!response.ok) throw new Error('Erro Gemini: ' + await response.text())
-    //   const data = await response.json()
-    //   return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    // }
+    // case 'gemini': { ... }
 
     case 'groq': {
       const messages: any[] = []
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
       messages.push({ role: 'user', content: prompt })
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + apiKey,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          max_tokens: 4096,
-          temperature: 0.7,
-          messages,
-        }),
-      })
+      let response: Response
+      try {
+        response = await fetchWithTimeout(
+          'https://api.groq.com/openai/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + apiKey,
+            },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              max_tokens: 4096,
+              temperature: 0.7,
+              messages,
+            }),
+          },
+          AI_TIMEOUT_MS
+        )
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error('A IA demorou muito para responder. Tente novamente.')
+        throw e
+      }
       if (!response.ok) throw new Error('Erro Groq: ' + await response.text())
       const data = await response.json()
       return data.choices?.[0]?.message?.content || ''

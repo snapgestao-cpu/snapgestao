@@ -13,6 +13,7 @@ import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'
 import { getIRDeductibles, groupByCategory, IR_LIMITS, IR_CATEGORY_LABELS } from './ir'
+import { getHealthReimbursement } from './ir-reimbursement'
 import { brl } from './finance'
 
 function escapeHtml(str: string): string {
@@ -238,9 +239,16 @@ export async function gerarAnalisadorPDF(relatorio: string, userName: string, pr
 }
 
 export async function gerarRelatorioIR(userId: string, year: number, userName: string): Promise<string> {
-  const items = await getIRDeductibles(userId, year)
+  const [items, reimbursement] = await Promise.all([
+    getIRDeductibles(userId, year),
+    getHealthReimbursement(userId, year),
+  ])
   const groups = groupByCategory(items)
-  const totalGeral = groups.reduce((s, g) => s + g.total, 0)
+  const saudeTotal = groups.find(g => g.category === 'saude')?.total ?? 0
+  const saudeLiquido = Math.max(0, saudeTotal - reimbursement.amount)
+  const totalGeral = groups.reduce((s, g) =>
+    s + (g.category === 'saude' ? saudeLiquido : g.total), 0
+  )
 
   const dataGeracao = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'long', year: 'numeric',
@@ -265,6 +273,17 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
       </div>`
     }).join('')
 
+    let reimbHtml = ''
+    if (group.category === 'saude' && reimbursement.amount > 0) {
+      const liquido = Math.max(0, group.total - reimbursement.amount)
+      reimbHtml = `<div class="reimb-section">
+        <div class="reimb-row"><span>Total de gastos:</span><span>${brl(group.total)}</span></div>
+        <div class="reimb-row reimb-minus"><span>(-) Reembolso do plano:</span><span>-${brl(reimbursement.amount)}</span></div>
+        <div class="reimb-row reimb-net"><span>(=) Valor dedutível líquido:</span><span>${brl(liquido)}</span></div>
+        ${reimbursement.description ? `<div class="reimb-note">* Reembolso: "${escapeHtml(reimbursement.description)}"</div>` : ''}
+      </div>`
+    }
+
     return `<div class="cat-block">
       <div class="cat-header">
         <span class="cat-name">${escapeHtml(group.label)}</span>
@@ -273,6 +292,7 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
       ${limitInfo}
       ${group.limit != null ? `<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, (group.total / group.limit) * 100).toFixed(1)}%;background:${group.total > group.limit ? '#E24B4A' : '#1EB87A'};"></div></div>` : ''}
       <div class="tx-list">${itemsHtml}</div>
+      ${reimbHtml}
     </div>`
   }).join('')
 
@@ -308,6 +328,11 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
   .footer-text { font-size:11px; color:#7A8499; line-height:1.5; }
   .footer-brand { font-size:12px; font-weight:700; color:#0F5EA8; margin-top:8px; }
   .empty { text-align:center; padding:40px; color:#7A8499; font-size:14px; }
+  .reimb-section { padding:12px 16px; background:#EAF6F1; border-top:1px solid #E8EEF5; }
+  .reimb-row { display:flex; justify-content:space-between; font-size:13px; color:#374151; padding:3px 0; }
+  .reimb-minus { color:#E24B4A; }
+  .reimb-net { font-weight:700; color:#1D9E75; border-top:1px solid #D1EAE2; margin-top:4px; padding-top:6px; }
+  .reimb-note { font-size:11px; color:#7A8499; margin-top:6px; font-style:italic; }
 </style>
 </head>
 <body>
@@ -334,7 +359,8 @@ export async function gerarRelatorioIR(userId: string, year: number, userName: s
     <div class="total-box">
       <span class="total-label">TOTAL DE DEDUÇÕES ${year}</span>
       <span class="total-value">${brl(totalGeral)}</span>
-    </div>` : ''}
+    </div>
+    ${reimbursement.amount > 0 ? `<div style="font-size:11px;color:#7A8499;margin-top:8px;padding:0 4px;">* Saúde: valor líquido após reembolso de ${brl(reimbursement.amount)}</div>` : ''}` : ''}
   </div>
   <div class="footer">
     <div class="footer-text">Este relatório é gerado com base nos lançamentos marcados como dedutíveis no IR.<br>Consulte um contador para validar os valores antes de declarar.</div>

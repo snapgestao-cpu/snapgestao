@@ -43,7 +43,7 @@ function initials(name: string): string {
 }
 
 export default function ProfileScreen() {
-  const { user, setUser, signOut } = useAuthStore()
+  const { user, setUser, signOut, isPremium } = useAuthStore()
 
   const [cycleSaldo, setCycleSaldo] = useState(0)
   const [activeGoalsCount, setActiveGoalsCount] = useState(0)
@@ -430,7 +430,7 @@ export default function ProfileScreen() {
           label: 'Deduções de IR',
           icon: '',
           iconImage: require('../../assets/receita-federal.png'),
-          value: user?.ir_module_enabled ? undefined : 'Premium',
+          value: isPremium ? undefined : 'Premium',
           onPress: () => router.push('/ir'),
         },
       ],

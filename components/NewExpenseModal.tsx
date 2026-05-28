@@ -90,7 +90,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [irProviderDocument, setIrProviderDocument] = useState('')
   const [irReceiptNumber, setIrReceiptNumber] = useState('')
   const [irReceiptImageUri, setIrReceiptImageUri] = useState<string | null>(null)
-  const irModuleEnabled = useAuthStore.getState().user?.ir_module_enabled ?? false
+  const irModuleEnabled = useAuthStore.getState().user?.plan === 'premium'
 
   useEffect(() => {
     if (!visible) return

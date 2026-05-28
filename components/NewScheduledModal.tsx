@@ -50,7 +50,7 @@ export default function NewScheduledModal({
   visible, potId, potName, cycleStart, cycleOffset, onClose, onSuccess,
 }: Props) {
   const user = useAuthStore(s => s.user)
-  const irModuleEnabled = user?.ir_module_enabled ?? false
+  const irModuleEnabled = user?.plan === 'premium'
   const [description, setDescription] = useState('')
   const [amountCents, setAmountCents] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState('debit')

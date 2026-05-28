@@ -42,7 +42,7 @@ export async function getIncomeSourcesForMonth(
 
   const { data: sources } = await supabase
     .from('income_sources')
-    .select('id, name, type')
+    .select('id, name, type, amount')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
@@ -61,7 +61,8 @@ export async function getIncomeSourcesForMonth(
 
       return {
         ...source,
-        amount: Number(history?.amount || 0),
+        // Fallback para income_sources.amount quando não há histórico (fontes novas sem seed)
+        amount: Number(history?.amount ?? source.amount ?? 0),
       }
     })
   )

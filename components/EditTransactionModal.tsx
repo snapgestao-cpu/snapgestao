@@ -85,7 +85,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
   const [irReceiptImageUri, setIrReceiptImageUri] = useState<string | null>(null)
   const [irReceiptImageChanged, setIrReceiptImageChanged] = useState(false)
   const [irReceiptImageLoading, setIrReceiptImageLoading] = useState(false)
-  const irModuleEnabled = useAuthStore.getState().user?.ir_module_enabled ?? false
+  const irModuleEnabled = useAuthStore.getState().user?.plan === 'premium'
 
   useEffect(() => {
     if (!visible || !transaction) return

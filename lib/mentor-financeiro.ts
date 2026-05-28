@@ -21,6 +21,8 @@ export type QuestionarioRespostas = {
   prazo: { opcao: string | null; comentario: string }
   tom: { opcao: string | null; comentario: string }
   periodo: { opcao: string | null; comentario: string }
+  mesesFuturos: { opcao: string | null; comentario: string }
+  observacaoFinal: { opcao: string | null; comentario: string }
 }
 
 export type ReceitaMes = {
@@ -53,6 +55,17 @@ export function getMesesParaAnalisar(opcao: string | null): number {
     case '6meses': return 6
     case 'tudo':   return 24
     default:       return 3
+  }
+}
+
+export function getMesesFuturos(opcao: string | null): number {
+  switch (opcao) {
+    case '0':  return 0
+    case '1':  return 1
+    case '3':  return 3
+    case '6':  return 6
+    case '12': return 12
+    default:   return 3
   }
 }
 
@@ -112,14 +125,17 @@ Analise os dados financeiros e o questionário do usuário e gere um relatório 
 4. **Plano de Ação** — 5 recomendações específicas e práticas (numeradas)
 5. **Meta 90 dias** — Uma meta concreta e mensurável para os próximos 3 meses
 
-Quando houver receitas previstas em meses futuros, leve-as em conta no planejamento e nas recomendações — especialmente para decisões de reserva, metas e quitação de dívidas.
-
-Seja específico, use os valores reais do usuário. Evite conselhos genéricos.`
+REGRAS IMPORTANTES:
+- Quando o usuário deixar comentários ou observações nas perguntas, interprete-os como contexto essencial e adapte o diagnóstico com base neles — eles revelam intenções, situações específicas e prioridades que os dados financeiros sozinhos não mostram.
+- Se houver uma observação final do usuário, ela deve ser levada em conta com prioridade máxima — pode mudar completamente o foco do relatório.
+- Quando houver receitas previstas em meses futuros, leve-as em conta no planejamento — especialmente para reservas, metas e quitação de dívidas.
+- Seja específico, use os valores reais do usuário. Evite conselhos genéricos.`
 
 export async function coletarContextoFinanceiro(
   userId: string,
   cycleStart: number,
-  maxMeses = 3
+  maxMeses = 3,
+  maxMesesFuturos = 3
 ): Promise<ContextoFinanceiro> {
   const cycle = getCycle(cycleStart, 0)
   const cycleStartISO = cycle.start.toISOString().split('T')[0]
@@ -145,19 +161,17 @@ export async function coletarContextoFinanceiro(
     supabase.from('goals').select('id').eq('user_id', userId),
   ])
 
-  // ── Top merchants (todos os meses válidos) ──────────────────────────────────
+  // ── Top merchants (todos os meses válidos — única query por range) ────────────
 
-  const allTxsMerchant: any[] = []
-  for (const mes of mesesValidos) {
-    const { data } = await supabase
-      .from('transactions')
-      .select('type, amount, merchant')
-      .eq('user_id', userId)
-      .in('type', ['expense', 'goal_deposit'])
-      .gte('date', mes.start)
-      .lte('date', mes.end)
-    allTxsMerchant.push(...(data ?? []))
-  }
+  const oldestMes = mesesValidos[mesesValidos.length - 1]
+  const newestMes = mesesValidos[0]
+  const { data: allTxsMerchant } = await supabase
+    .from('transactions')
+    .select('type, amount, merchant')
+    .eq('user_id', userId)
+    .in('type', ['expense', 'goal_deposit'])
+    .gte('date', oldestMes.start)
+    .lte('date', newestMes.end)
 
   // ── Receitas por mês: histórico + 3 meses futuros ──────────────────────────
 
@@ -187,8 +201,8 @@ export async function coletarContextoFinanceiro(
     })
   }
 
-  // Meses futuros: +1, +2, +3
-  for (let offset = 1; offset <= 3; offset++) {
+  // Meses futuros: configurável pelo usuário
+  for (let offset = 1; offset <= maxMesesFuturos; offset++) {
     const futureCycle = getCycle(cycleStart, offset)
     const futureStart = futureCycle.start.toISOString().split('T')[0]
     const futureEnd = futureCycle.end.toISOString().split('T')[0]
@@ -239,8 +253,8 @@ export async function coletarContextoFinanceiro(
     spent: spentByPot[p.id] ?? 0,
   }))
 
-  const merchantMap: Record<string, number> = {}
-  allTxsMerchant
+  const merchantMap: Record<string, number> = {};
+  (allTxsMerchant ?? [])
     .filter((t: any) => t.type === 'expense' && t.merchant)
     .forEach((t: any) => {
       merchantMap[t.merchant] = (merchantMap[t.merchant] ?? 0) + Number(t.amount)
@@ -321,6 +335,13 @@ function buildPrompt(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro):
     '6meses': 'Últimos 6 meses',
     tudo: 'Todo o histórico disponível',
   }
+  const mesesFuturosMap: Record<string, string> = {
+    '0':  'Não analisar meses futuros',
+    '1':  '1 mês futuro',
+    '3':  '3 meses futuros',
+    '6':  '6 meses futuros',
+    '12': '12 meses futuros',
+  }
 
   const potLines = ctx.potes.map(p => {
     const limit = p.limit_amount ? `R$ ${p.limit_amount.toFixed(2)}` : 'sem limite'
@@ -352,16 +373,24 @@ ${mesesFuturos.map(m => {
 IMPORTANTE: Leve esses valores futuros em conta no planejamento — especialmente para reservas de emergência, metas de poupança e decisões de quitação de dívidas.`
     : ''
 
+  const observacaoFinalSection = respostas.observacaoFinal.comentario.trim()
+    ? `\nOBSERVAÇÃO FINAL DO USUÁRIO (leve com prioridade máxima — pode redirecionar todo o foco do relatório):
+"${respostas.observacaoFinal.comentario.trim()}"
+`
+    : ''
+
   return `PERÍODO HISTÓRICO ANALISADO: ${ctx.periodoAnalisado.descricao} (${ctx.periodoAnalisado.ciclosIncluidos} ciclos fechados + mês atual)
 Ciclos incluídos: ${ctx.periodoAnalise}
 
-QUESTIONÁRIO DO USUÁRIO:
+QUESTIONÁRIO DO USUÁRIO (comentários do usuário revelam contexto essencial — interprete-os):
 - Objetivo principal: ${resolveField(respostas.objetivo, objetivoMap)}
 - Maior dificuldade: ${resolveField(respostas.dificuldade, dificuldadeMap)}
 - Meta principal: ${resolveField(respostas.metaPrincipal, {}, '(não informada)')}
 - Prazo: ${resolveField(respostas.prazo, prazoMap)}
 - Tom preferido: ${resolveField(respostas.tom, tomMap)}
-- Período escolhido: ${resolveField(respostas.periodo, periodoMap)}
+- Período histórico escolhido: ${resolveField(respostas.periodo, periodoMap)}
+- Meses futuros a considerar: ${resolveField(respostas.mesesFuturos, mesesFuturosMap)}
+${observacaoFinalSection}
 
 DADOS FINANCEIROS — CICLO ATUAL:
 - Receita total (recorrente + avulsa): R$ ${ctx.totalReceita.toFixed(2)}
