@@ -49,6 +49,21 @@ import {
   getCompletedGoals,
   GoalTransaction,
 } from '../../lib/goal-transactions'
+import {
+  getDebts,
+  getCompletedDebts,
+  createDebt,
+  updateDebt,
+  deleteDebt,
+  completeDebt,
+  payDebtExternal,
+  payDebtFromCycle,
+  getDebtTransactions,
+  calcDebtMonthsRemaining,
+  Debt,
+  DebtTransaction,
+} from '../../lib/debts'
+import { formatCents, digitsOnly, centsToFloat } from '../../lib/onboardingDraft'
 
 type TimelineItem = { year: number; label: string }
 
@@ -92,13 +107,11 @@ type GoalCardProps = {
   goal: Goal
   onDeposit: () => void
   onWithdraw: () => void
-  onHistory: () => void
+  onOptions: () => void
   onComplete: () => void
-  onDelete: () => void
-  onLongPress: () => void
 }
 
-function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete, onLongPress }: GoalCardProps) {
+function GoalCard({ goal, onDeposit, onWithdraw, onOptions, onComplete }: GoalCardProps) {
   const progress = goal.target_amount > 0
     ? Math.min(goal.current_amount / goal.target_amount, 1)
     : 0
@@ -111,11 +124,7 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete
     : null
 
   return (
-    <TouchableOpacity
-      onLongPress={onLongPress}
-      activeOpacity={0.85}
-      style={[gcStyles.card, { borderLeftColor: meta.color }]}
-    >
+    <View style={[gcStyles.card, { borderLeftColor: meta.color }]}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -125,23 +134,7 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete
             <Text style={[gcStyles.horizonText, { color: meta.color }]}>{formatPrazo(goal.horizon_years, goal.target_date)}</Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <TouchableOpacity
-            onPress={onHistory}
-            style={{ padding: 6, backgroundColor: Colors.background, borderRadius: 8 }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={{ fontSize: 16 }}>📋</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onDelete}
-            style={{ padding: 6, backgroundColor: '#FEF2F2', borderRadius: 8, marginLeft: 2 }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={{ fontSize: 16 }}>🗑️</Text>
-          </TouchableOpacity>
-          <Image source={getPotImage(percent)} style={{ width: 56, height: 68, resizeMode: 'contain', marginLeft: 4 }} />
-        </View>
+        <Image source={getPotImage(percent)} style={{ width: 56, height: 68, resizeMode: 'contain', marginLeft: 4 }} />
       </View>
 
       {/* Amounts */}
@@ -172,27 +165,18 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete
         </View>
       ) : null}
 
-      {/* Botões menores */}
+      {/* Botões */}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
         <TouchableOpacity
           onPress={onDeposit}
-          style={{
-            flex: 1, backgroundColor: Colors.primary, borderRadius: 12,
-            paddingVertical: 10, alignItems: 'center',
-            flexDirection: 'row', justifyContent: 'center', gap: 4,
-          }}
+          style={{ flex: 1, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
         >
           <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>+ Depositar</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={onWithdraw}
-          style={{
-            flex: 1, backgroundColor: Colors.white, borderRadius: 12,
-            paddingVertical: 10, alignItems: 'center',
-            flexDirection: 'row', justifyContent: 'center', gap: 4,
-            borderWidth: 1.5, borderColor: Colors.border,
-          }}
+          style={{ flex: 1, backgroundColor: Colors.white, borderRadius: 12, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border }}
         >
           <Text style={{ color: Colors.textDark, fontSize: 13, fontWeight: '700' }}>− Sacar</Text>
         </TouchableOpacity>
@@ -200,17 +184,20 @@ function GoalCard({ goal, onDeposit, onWithdraw, onHistory, onComplete, onDelete
         {isComplete && (
           <TouchableOpacity
             onPress={onComplete}
-            style={{
-              flex: 1, backgroundColor: '#D1FAE5', borderRadius: 12,
-              paddingVertical: 10, alignItems: 'center',
-              flexDirection: 'row', justifyContent: 'center', gap: 4,
-            }}
+            style={{ flex: 1, backgroundColor: '#D1FAE5', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
           >
             <Text style={{ color: Colors.success, fontSize: 13, fontWeight: '700' }}>✅ Concluir</Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          onPress={onOptions}
+          style={{ backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border }}
+        >
+          <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: '700' }}>•••</Text>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   )
 }
 
@@ -243,6 +230,110 @@ const gcStyles = StyleSheet.create({
   simValue: { fontWeight: '700', color: Colors.textDark },
 })
 
+// ─── DebtCard ───────────────────────────────────────────────────────────────
+
+type DebtCardProps = {
+  debt: Debt
+  onPay: () => void
+  onOptions: () => void
+}
+
+function DebtCard({ debt, onPay, onOptions }: DebtCardProps) {
+  const remaining = Math.max(0, debt.total_amount - debt.paid_amount)
+  const progress = debt.total_amount > 0 ? Math.min(1, debt.paid_amount / debt.total_amount) : 0
+  const percent = Math.round(progress * 100)
+  const isQuitada = debt.paid_amount >= debt.total_amount
+  const monthsLeft = calcDebtMonthsRemaining(debt)
+
+  const prazo = debt.target_date
+    ? formatPrazo(0, debt.target_date)
+    : monthsLeft != null ? `~${monthsLeft} ${monthsLeft === 1 ? 'mês' : 'meses'}` : null
+
+  return (
+    <View style={dcStyles.card}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+        <Text style={{ fontSize: 22, marginRight: 8 }}>💸</Text>
+        <Text style={dcStyles.name} numberOfLines={1}>{debt.name}</Text>
+        {prazo && (
+          <View style={dcStyles.badge}>
+            <Text style={dcStyles.badgeText}>{prazo}</Text>
+          </View>
+        )}
+        {isQuitada && (
+          <View style={[dcStyles.badge, { backgroundColor: '#D1FAE5', marginLeft: 4 }]}>
+            <Text style={[dcStyles.badgeText, { color: Colors.success }]}>✅ Quitada!</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Valores */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 }}>
+        <Text style={dcStyles.paid}>{brl(debt.paid_amount)}</Text>
+        <Text style={dcStyles.total}> de {brl(debt.total_amount)}</Text>
+      </View>
+
+      {/* Barra */}
+      <View style={dcStyles.track}>
+        <View style={[dcStyles.fill, { width: `${percent}%` as any }]} />
+      </View>
+      <Text style={dcStyles.percent}>{percent}% pago · Restam {brl(remaining)}</Text>
+
+      {/* Aporte mensal */}
+      {debt.monthly_payment && monthsLeft != null && monthsLeft > 0 ? (
+        <Text style={dcStyles.projection}>
+          Aporte mensal: {brl(debt.monthly_payment)} · Quita em ~{monthsLeft} {monthsLeft === 1 ? 'mês' : 'meses'}
+        </Text>
+      ) : null}
+
+      {/* Botões */}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+        {!isQuitada && (
+          <TouchableOpacity
+            onPress={onPay}
+            style={{ flex: 1, backgroundColor: Colors.danger, borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>💰 Pagar</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={onOptions}
+          style={{ backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border }}
+        >
+          <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: '700' }}>•••</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
+const dcStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    borderTopLeftRadius: 3,
+    borderBottomLeftRadius: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#E53E3E',
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  name: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.textDark },
+  badge: { backgroundColor: '#FEE2E2', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#C53030' },
+  paid: { fontSize: 20, fontWeight: '800', color: Colors.textDark },
+  total: { fontSize: 13, color: Colors.textMuted },
+  track: { height: 8, backgroundColor: '#FED7D7', borderRadius: 4, overflow: 'hidden', marginBottom: 4 },
+  fill: { height: '100%', borderRadius: 4, backgroundColor: '#E53E3E' },
+  percent: { fontSize: 11, color: Colors.textMuted, marginBottom: 6 },
+  projection: { fontSize: 12, color: Colors.warning, fontWeight: '500' },
+})
+
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
 export default function GoalsScreen() {
@@ -251,9 +342,44 @@ export default function GoalsScreen() {
   const { cycleOffset } = useCycleStore()
 
   const [goals, setGoals] = useState<Goal[]>([])
+  const [debts, setDebts] = useState<Debt[]>([])
   const [timelineYears, setTimelineYears] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Opções de meta (⋯)
+  const [goalOptions, setGoalOptions] = useState<Goal | null>(null)
+
+  // Dívidas — opções (⋯)
+  const [debtOptions, setDebtOptions] = useState<Debt | null>(null)
+
+  // Modal criar/editar dívida
+  const [showDebtForm, setShowDebtForm] = useState(false)
+  const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
+  const [debtFormName, setDebtFormName] = useState('')
+  const [debtFormTotalCents, setDebtFormTotalCents] = useState('')
+  const [debtFormPaidCents, setDebtFormPaidCents] = useState('')
+  const [debtFormMonthlyCents, setDebtFormMonthlyCents] = useState('')
+  const [debtFormTargetDate, setDebtFormTargetDate] = useState<Date | null>(null)
+  const [debtFormError, setDebtFormError] = useState<string | null>(null)
+  const [savingDebtForm, setSavingDebtForm] = useState(false)
+
+  // Modal pagamento de dívida
+  const [showDebtPayModal, setShowDebtPayModal] = useState(false)
+  const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
+  const [debtPayType, setDebtPayType] = useState<'external' | 'from_cycle' | null>(null)
+  const [debtPayAmountCents, setDebtPayAmountCents] = useState('')
+  const [debtPayDesc, setDebtPayDesc] = useState('')
+  const [debtPayMonthOffset, setDebtPayMonthOffset] = useState(0)
+  const [savingDebtPay, setSavingDebtPay] = useState(false)
+
+  // Histórico de dívida
+  const [showDebtHistory, setShowDebtHistory] = useState(false)
+  const [debtTxs, setDebtTxs] = useState<DebtTransaction[]>([])
+  const [historyDebt, setHistoryDebt] = useState<Debt | null>(null)
+
+  // Dívidas concluídas (no modal de concluídas)
+  const [completedDebts, setCompletedDebts] = useState<Debt[]>([])
 
   // Reserva
   const [reserve, setReserve] = useState<EmergencyReserve | null>(null)
@@ -278,7 +404,6 @@ export default function GoalsScreen() {
   // Metas — modais
   const [showNewGoal, setShowNewGoal] = useState(false)
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
-  const [actionGoal, setActionGoal] = useState<Goal | null>(null)
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null)
 
   // Depósito na meta
@@ -321,7 +446,7 @@ export default function GoalsScreen() {
   const loadGoals = useCallback(async () => {
     if (!user) return
     try {
-      const [reserveData, goalsResult, txsData] = await Promise.all([
+      const [reserveData, goalsResult, txsData, debtsData] = await Promise.all([
         getOrCreateReserve(user.id),
         supabase
           .from('goals')
@@ -330,9 +455,11 @@ export default function GoalsScreen() {
           .eq('status', 'active')
           .order('created_at', { ascending: true }),
         getReserveTransactions(user.id),
+        getDebts(user.id),
       ])
       setReserve(reserveData)
       setReserveTxs(txsData)
+      setDebts(debtsData)
 
       const loaded = (goalsResult.data as Goal[]) ?? []
       setGoals(loaded)
@@ -364,27 +491,6 @@ export default function GoalsScreen() {
   const handleSuccess = (msg: string) => {
     loadGoals()
     setToast({ message: msg, color: Colors.primary })
-  }
-
-  const handleDeleteGoal = () => {
-    if (!actionGoal) return
-    const goal = actionGoal
-    Alert.alert(
-      'Excluir meta',
-      `Deseja excluir "${goal.name}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            setActionGoal(null)
-            await supabase.from('goals').delete().eq('id', goal.id)
-            loadGoals()
-            setToast({ message: 'Meta excluída.', color: Colors.textMuted })
-          },
-        },
-      ]
-    )
   }
 
   const resetDepositModal = () => {
@@ -434,8 +540,12 @@ export default function GoalsScreen() {
             onPress={async () => {
               setCompletedPage(0)
               setCompletedHasMore(true)
-              const first = await getCompletedGoals(user!.id, 50, 0)
+              const [first, doneDebts] = await Promise.all([
+                getCompletedGoals(user!.id, 50, 0),
+                getCompletedDebts(user!.id),
+              ])
               setCompletedGoals(first)
+              setCompletedDebts(doneDebts)
               setCompletedHasMore(first.length === 50)
               setShowCompletedGoals(true)
             }}
@@ -570,10 +680,35 @@ export default function GoalsScreen() {
           </View>
         )}
 
+        {/* Dívidas ativas */}
+        {!loading && debts.length > 0 && (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: 8 }]}>💸 Dívidas</Text>
+            {debts.map(debt => (
+              <DebtCard
+                key={debt.id}
+                debt={debt}
+                onPay={() => {
+                  setPayingDebt(debt)
+                  setDebtPayType(null)
+                  setDebtPayAmountCents('')
+                  setDebtPayDesc('')
+                  setDebtPayMonthOffset(cycleOffset)
+                  setShowDebtPayModal(true)
+                }}
+                onOptions={() => setDebtOptions(debt)}
+              />
+            ))}
+          </>
+        )}
+
         {/* Lista de metas ativas */}
+        {!loading && goals.length > 0 && (
+          <Text style={[styles.sectionLabel, { marginTop: debts.length > 0 ? 4 : 8 }]}>🎯 Metas</Text>
+        )}
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={styles.loader} />
-        ) : goals.length === 0 ? (
+        ) : goals.length === 0 && debts.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🎯</Text>
             <Text style={styles.emptyTitle}>Nenhuma meta ainda</Text>
@@ -596,34 +731,7 @@ export default function GoalsScreen() {
                 setWithdrawMonthOffset(cycleOffset)
                 setShowWithdrawModal(true)
               }}
-              onHistory={async () => {
-                setSelectedGoal(goal)
-                const txs = await getGoalTransactions(goal.id)
-                setGoalTxs(txs)
-                setShowGoalHistory(true)
-              }}
-              onDelete={() => {
-                Alert.alert(
-                  '🗑️ Excluir meta',
-                  `Deseja excluir a meta "${goal.name}"?\n\nTodos os dados serão removidos permanentemente.`,
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Excluir',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await supabase.from('goal_transactions').delete().eq('goal_id', goal.id)
-                          await supabase.from('goals').delete().eq('id', goal.id).eq('user_id', user!.id)
-                          await loadGoals()
-                        } catch (err) {
-                          Alert.alert('Erro', String(err))
-                        }
-                      },
-                    },
-                  ]
-                )
-              }}
+              onOptions={() => setGoalOptions(goal)}
               onComplete={() => {
                 Alert.alert(
                   '🎉 Concluir Meta',
@@ -647,54 +755,177 @@ export default function GoalsScreen() {
                   ]
                 )
               }}
-              onLongPress={() => setActionGoal(goal)}
             />
           ))
         )}
       </ScrollView>
 
-      {/* Botão fixo na base */}
+      {/* Botões fixos na base */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity
-          onPress={() => {
-            const plan = useAuthStore.getState().user?.plan ?? 'free'
-            const limit = PLAN_LIMITS[plan].goals
-            if (limit !== Infinity && goals.length >= limit) {
-              Alert.alert(
-                'Limite atingido',
-                `Você atingiu o limite de ${limit} metas no plano gratuito. Faça upgrade para o Premium e crie metas ilimitadas.`,
-                [
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => {
+              const plan = useAuthStore.getState().user?.plan ?? 'free'
+              const limit = PLAN_LIMITS[plan].goals
+              if (limit !== Infinity && goals.length + debts.length >= limit) {
+                Alert.alert('Limite atingido', `Você atingiu o limite de ${limit} metas/dívidas no plano gratuito.`, [
                   { text: 'Agora não', style: 'cancel' },
                   { text: 'Ver Premium', onPress: () => router.push('/premium' as any) },
-                ]
-              )
-              return
-            }
-            setShowNewGoal(true)
-          }}
-          style={styles.newGoalBtn}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.newGoalBtnPlus}>+</Text>
-          <Text style={styles.newGoalBtnText}>Nova meta</Text>
-        </TouchableOpacity>
+                ])
+                return
+              }
+              setShowNewGoal(true)
+            }}
+            style={[styles.newGoalBtn, { flex: 1 }]}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.newGoalBtnPlus}>+</Text>
+            <Text style={styles.newGoalBtnText}>Nova meta</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              const plan = useAuthStore.getState().user?.plan ?? 'free'
+              const limit = PLAN_LIMITS[plan].goals
+              if (limit !== Infinity && goals.length + debts.length >= limit) {
+                Alert.alert('Limite atingido', `Você atingiu o limite de ${limit} metas/dívidas no plano gratuito.`, [
+                  { text: 'Agora não', style: 'cancel' },
+                  { text: 'Ver Premium', onPress: () => router.push('/premium' as any) },
+                ])
+                return
+              }
+              setEditingDebt(null)
+              setDebtFormName('')
+              setDebtFormTotalCents('')
+              setDebtFormPaidCents('')
+              setDebtFormMonthlyCents('')
+              setDebtFormTargetDate(null)
+              setDebtFormError(null)
+              setShowDebtForm(true)
+            }}
+            style={[styles.newGoalBtn, { flex: 1, backgroundColor: '#C53030' }]}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.newGoalBtnPlus}>+</Text>
+            <Text style={styles.newGoalBtnText}>Registrar dívida</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Action sheet (long press) */}
-      <Modal visible={!!actionGoal} transparent animationType="fade" onRequestClose={() => setActionGoal(null)}>
-        <TouchableOpacity style={styles.actionBackdrop} activeOpacity={1} onPress={() => setActionGoal(null)}>
+      {/* ── Opções da Meta (⋯) ── */}
+      <Modal visible={!!goalOptions} transparent animationType="fade" onRequestClose={() => setGoalOptions(null)}>
+        <TouchableOpacity style={styles.actionBackdrop} activeOpacity={1} onPress={() => setGoalOptions(null)}>
           <View style={styles.actionSheet}>
-            <Text style={styles.actionTitle}>{actionGoal?.name}</Text>
+            <Text style={styles.actionTitle}>{goalOptions?.name}</Text>
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => { setEditingGoal(actionGoal); setActionGoal(null) }}
+              onPress={async () => {
+                setSelectedGoal(goalOptions)
+                const txs = await getGoalTransactions(goalOptions!.id)
+                setGoalTxs(txs)
+                setGoalOptions(null)
+                setShowGoalHistory(true)
+              }}
+            >
+              <Text style={styles.actionBtnText}>📋  Ver histórico</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => { setEditingGoal(goalOptions); setGoalOptions(null) }}
             >
               <Text style={styles.actionBtnText}>✏️  Editar meta</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleDeleteGoal}>
-              <Text style={[styles.actionBtnText, { color: Colors.danger }]}>🗑  Excluir meta</Text>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => {
+                const goal = goalOptions!
+                setGoalOptions(null)
+                Alert.alert(
+                  '🗑️ Excluir meta',
+                  `Deseja excluir a meta "${goal.name}"?\n\nTodos os dados serão removidos permanentemente.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Excluir', style: 'destructive',
+                      onPress: async () => {
+                        await supabase.from('goal_transactions').delete().eq('goal_id', goal.id)
+                        await supabase.from('goals').delete().eq('id', goal.id).eq('user_id', user!.id)
+                        await loadGoals()
+                        setToast({ message: 'Meta excluída.', color: Colors.textMuted })
+                      },
+                    },
+                  ]
+                )
+              }}
+            >
+              <Text style={[styles.actionBtnText, { color: Colors.danger }]}>🗑️  Excluir meta</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtnCancel} onPress={() => setActionGoal(null)}>
+            <TouchableOpacity style={styles.actionBtnCancel} onPress={() => setGoalOptions(null)}>
+              <Text style={styles.actionCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Opções da Dívida (⋯) ── */}
+      <Modal visible={!!debtOptions} transparent animationType="fade" onRequestClose={() => setDebtOptions(null)}>
+        <TouchableOpacity style={styles.actionBackdrop} activeOpacity={1} onPress={() => setDebtOptions(null)}>
+          <View style={styles.actionSheet}>
+            <Text style={styles.actionTitle}>{debtOptions?.name}</Text>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={async () => {
+                const d = debtOptions!
+                setHistoryDebt(d)
+                const txs = await getDebtTransactions(d.id)
+                setDebtTxs(txs)
+                setDebtOptions(null)
+                setShowDebtHistory(true)
+              }}
+            >
+              <Text style={styles.actionBtnText}>📋  Ver histórico de pagamentos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => {
+                const d = debtOptions!
+                setEditingDebt(d)
+                setDebtFormName(d.name)
+                setDebtFormTotalCents(String(Math.round(d.total_amount * 100)))
+                setDebtFormPaidCents(d.paid_amount > 0 ? String(Math.round(d.paid_amount * 100)) : '')
+                setDebtFormMonthlyCents(d.monthly_payment ? String(Math.round(d.monthly_payment * 100)) : '')
+                setDebtFormTargetDate(d.target_date ? new Date(d.target_date + 'T12:00:00') : null)
+                setDebtFormError(null)
+                setDebtOptions(null)
+                setShowDebtForm(true)
+              }}
+            >
+              <Text style={styles.actionBtnText}>✏️  Editar dívida</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => {
+                const d = debtOptions!
+                setDebtOptions(null)
+                Alert.alert(
+                  '🗑️ Excluir dívida',
+                  `Deseja excluir "${d.name}"?\n\nTodos os pagamentos registrados serão removidos.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Excluir', style: 'destructive',
+                      onPress: async () => {
+                        await deleteDebt(d.id, user!.id)
+                        await loadGoals()
+                        setToast({ message: 'Dívida excluída.', color: Colors.textMuted })
+                      },
+                    },
+                  ]
+                )
+              }}
+            >
+              <Text style={[styles.actionBtnText, { color: Colors.danger }]}>🗑️  Excluir dívida</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtnCancel} onPress={() => setDebtOptions(null)}>
               <Text style={styles.actionCancelText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
@@ -1110,75 +1341,104 @@ export default function GoalsScreen() {
             <TouchableOpacity onPress={() => setShowCompletedGoals(false)}>
               <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
             </TouchableOpacity>
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>🏆 Metas Concluídas</Text>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>🏆 Concluídas</Text>
             <View style={{ width: 60 }} />
           </View>
 
-          <FlatList
-            data={completedGoals}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ padding: 16 }}
-            onEndReachedThreshold={0.3}
-            onEndReached={async () => {
-              if (!completedHasMore || completedLoadingMore) return
-              setCompletedLoadingMore(true)
-              const nextPage = completedPage + 1
-              const more = await getCompletedGoals(user!.id, 50, nextPage * 50)
-              setCompletedGoals(prev => [...prev, ...more])
-              setCompletedPage(nextPage)
-              setCompletedHasMore(more.length === 50)
-              setCompletedLoadingMore(false)
-            }}
-            ListFooterComponent={completedLoadingMore ? (
-              <ActivityIndicator size="small" color={Colors.primary} style={{ paddingVertical: 12 }} />
-            ) : null}
-            ListEmptyComponent={
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Text style={{ fontSize: 48 }}>🏆</Text>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textDark, marginTop: 12 }}>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            {/* Seção: Metas concluídas */}
+            <Text style={styles.sectionLabel}>🎯 Metas concluídas</Text>
+            {completedGoals.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <Text style={{ fontSize: 32 }}>🏆</Text>
+                <Text style={{ fontSize: 13, color: Colors.textMuted, marginTop: 8, textAlign: 'center' }}>
                   Nenhuma meta concluída ainda
                 </Text>
-                <Text style={{ fontSize: 14, color: Colors.textMuted, marginTop: 6, textAlign: 'center' }}>
-                  Conclua suas metas para vê-las aqui!
+              </View>
+            ) : (
+              completedGoals.map(item => {
+                const icon = getGoalIcon(item.name)
+                const isCompleted = item.status === 'completed'
+                return (
+                  <View key={item.id} style={[styles.historyItem, { alignItems: 'flex-start', gap: 14 }]}>
+                    <View style={[styles.historyIcon, { backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6' }]}>
+                      <Text style={{ fontSize: 20 }}>{icon}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.textDark }}>{item.name}</Text>
+                        <View style={{
+                          backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6',
+                          borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
+                        }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: isCompleted ? Colors.success : Colors.textMuted }}>
+                            {isCompleted ? '✅ Concluída' : '⏸ Cancelada'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.primary }}>
+                        {Number(item.current_amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        <Text style={{ fontSize: 12, fontWeight: '400', color: Colors.textMuted }}>
+                          {' '}de {Number(item.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </Text>
+                      </Text>
+                      {item.completed_at && (
+                        <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 2 }}>
+                          {new Date(item.completed_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )
+              })
+            )}
+
+            {/* Seção: Dívidas quitadas */}
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>💸 Dívidas quitadas</Text>
+            {completedDebts.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <Text style={{ fontSize: 32 }}>💸</Text>
+                <Text style={{ fontSize: 13, color: Colors.textMuted, marginTop: 8, textAlign: 'center' }}>
+                  Nenhuma dívida quitada ainda
                 </Text>
               </View>
-            }
-            renderItem={({ item }) => {
-              const icon = getGoalIcon(item.name)
-              const isCompleted = item.status === 'completed'
-              return (
-                <View style={[styles.historyItem, { alignItems: 'flex-start', gap: 14 }]}>
-                  <View style={[styles.historyIcon, { backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6' }]}>
-                    <Text style={{ fontSize: 20 }}>{icon}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.textDark }}>{item.name}</Text>
-                      <View style={{
-                        backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6',
-                        borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
-                      }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: isCompleted ? Colors.success : Colors.textMuted }}>
-                          {isCompleted ? '✅ Concluída' : '⏸ Cancelada'}
-                        </Text>
-                      </View>
+            ) : (
+              completedDebts.map(item => {
+                const isCompleted = item.status === 'completed'
+                return (
+                  <View key={item.id} style={[styles.historyItem, { alignItems: 'flex-start', gap: 14 }]}>
+                    <View style={[styles.historyIcon, { backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6' }]}>
+                      <Text style={{ fontSize: 20 }}>💸</Text>
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.primary }}>
-                      {Number(item.current_amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      <Text style={{ fontSize: 12, fontWeight: '400', color: Colors.textMuted }}>
-                        {' '}de {Number(item.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.textDark }}>{item.name}</Text>
+                        <View style={{
+                          backgroundColor: isCompleted ? '#D1FAE5' : '#F3F4F6',
+                          borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
+                        }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: isCompleted ? Colors.success : Colors.textMuted }}>
+                            {isCompleted ? '✅ Quitada' : '⏸ Cancelada'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#C53030' }}>
+                        {brl(item.paid_amount)}
+                        <Text style={{ fontSize: 12, fontWeight: '400', color: Colors.textMuted }}>
+                          {' '}de {brl(item.total_amount)}
+                        </Text>
                       </Text>
-                    </Text>
-                    {item.completed_at && (
-                      <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 2 }}>
-                        {new Date(item.completed_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      </Text>
-                    )}
+                      {item.updated_at && (
+                        <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 2 }}>
+                          {new Date(item.updated_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                </View>
-              )
-            }}
-          />
+                )
+              })
+            )}
+          </ScrollView>
         </View>
       </Modal>
 
@@ -1499,6 +1759,324 @@ export default function GoalsScreen() {
         </View>
       </Modal>
 
+      {/* ── Modal Pagamento de Dívida ── */}
+      <Modal
+        visible={showDebtPayModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setShowDebtPayModal(false); setDebtPayType(null) }}
+      >
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => { setShowDebtPayModal(false); setDebtPayType(null) }}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>💰 Pagar — {payingDebt?.name}</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {!debtPayType ? (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <Text style={styles.modalSectionTitle}>Como deseja pagar?</Text>
+              <TouchableOpacity onPress={() => setDebtPayType('external')} style={styles.optionCard}>
+                <View style={[styles.optionIcon, { backgroundColor: '#D1FAE5' }]}><Text style={{ fontSize: 24 }}>💰</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Pagamento externo</Text>
+                  <Text style={styles.optionSubtitle}>Dinheiro próprio, não afeta o ciclo mensal</Text>
+                </View>
+                <Text style={styles.optionArrow}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setDebtPayType('from_cycle')} style={styles.optionCard}>
+                <View style={[styles.optionIcon, { backgroundColor: Colors.lightBlue }]}><Text style={{ fontSize: 24 }}>📅</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Do ciclo</Text>
+                  <Text style={styles.optionSubtitle}>Gera despesa no mês escolhido</Text>
+                </View>
+                <Text style={styles.optionArrow}>›</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <TouchableOpacity onPress={() => setDebtPayType(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 }}>
+                <Text style={{ fontSize: 16, color: Colors.primary }}>‹</Text>
+                <Text style={{ fontSize: 14, color: Colors.primary }}>{debtPayType === 'external' ? '💰 Pagamento externo' : '📅 Do ciclo'}</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.modalLabel}>Valor *</Text>
+              <TextInput
+                value={debtPayAmountCents ? formatCents(debtPayAmountCents) : ''}
+                onChangeText={t => setDebtPayAmountCents(digitsOnly(t))}
+                placeholder="R$ 0,00"
+                keyboardType="numeric"
+                style={styles.amountInput}
+              />
+
+              <Text style={styles.modalLabel}>Descrição (opcional)</Text>
+              <TextInput value={debtPayDesc} onChangeText={setDebtPayDesc} placeholder="Ex: Parcela de maio..." style={styles.descInput} />
+
+              {debtPayType === 'from_cycle' && (
+                <>
+                  <Text style={[styles.modalLabel, { marginTop: 8 }]}>Mês de referência</Text>
+                  <View style={styles.monthPicker}>
+                    <TouchableOpacity onPress={() => setDebtPayMonthOffset(debtPayMonthOffset - 1)} style={styles.monthArrow}>
+                      <Text style={{ fontSize: 18 }}>‹</Text>
+                    </TouchableOpacity>
+                    <View style={styles.monthLabel}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary, textTransform: 'capitalize' }}>
+                        {cycleLabel(debtPayMonthOffset)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setDebtPayMonthOffset(debtPayMonthOffset + 1)} style={[styles.monthArrow, { backgroundColor: Colors.primary }]}>
+                      <Text style={{ fontSize: 18, color: '#fff' }}>›</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          )}
+
+          {debtPayType && (
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                disabled={savingDebtPay || !debtPayAmountCents || centsToFloat(debtPayAmountCents) <= 0}
+                onPress={async () => {
+                  setSavingDebtPay(true)
+                  try {
+                    const amount = centsToFloat(debtPayAmountCents)
+                    let newPaid: number
+                    if (debtPayType === 'external') {
+                      newPaid = await payDebtExternal(payingDebt!.id, user!.id, amount, debtPayDesc || undefined)
+                    } else {
+                      newPaid = await payDebtFromCycle(payingDebt!.id, user!.id, amount, user?.cycle_start || 1, debtPayMonthOffset, payingDebt!.name, debtPayDesc || undefined)
+                    }
+                    await loadGoals()
+                    setShowDebtPayModal(false)
+                    setDebtPayType(null)
+                    if (newPaid >= payingDebt!.total_amount) {
+                      Alert.alert('🎉 Dívida quitada!', 'Parabéns! Deseja marcar esta dívida como concluída?', [
+                        { text: 'Agora não', style: 'cancel' },
+                        { text: 'Marcar concluída', onPress: async () => {
+                          await completeDebt(payingDebt!.id, user!.id)
+                          await loadGoals()
+                          setToast({ message: '🎉 Dívida quitada!', color: Colors.success })
+                        }},
+                      ])
+                    } else {
+                      setToast({ message: 'Pagamento registrado!', color: Colors.success })
+                    }
+                  } catch (err) {
+                    Alert.alert('Erro', String(err))
+                  } finally {
+                    setSavingDebtPay(false)
+                  }
+                }}
+                style={[styles.confirmBtn, { backgroundColor: !debtPayAmountCents || centsToFloat(debtPayAmountCents) <= 0 ? Colors.border : '#C53030' }]}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                  {savingDebtPay ? 'Processando...' : 'Confirmar pagamento'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal Criar/Editar Dívida ── */}
+      <Modal
+        visible={showDebtForm}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowDebtForm(false)}
+      >
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowDebtForm(false)}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+              {editingDebt ? '✏️ Editar dívida' : '💸 Registrar dívida'}
+            </Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <Text style={styles.modalLabel}>Nome da dívida *</Text>
+            <TextInput
+              value={debtFormName}
+              onChangeText={t => { setDebtFormName(t); setDebtFormError(null) }}
+              placeholder="Ex: Empréstimo banco, Cartão fatura..."
+              style={styles.descInput}
+            />
+
+            <Text style={styles.modalLabel}>Valor total da dívida *</Text>
+            <TextInput
+              value={debtFormTotalCents ? formatCents(debtFormTotalCents) : ''}
+              onChangeText={t => setDebtFormTotalCents(digitsOnly(t))}
+              placeholder="R$ 0,00"
+              keyboardType="numeric"
+              style={styles.amountInput}
+            />
+
+            {!editingDebt && (
+              <>
+                <Text style={styles.modalLabel}>Já paguei (opcional)</Text>
+                <TextInput
+                  value={debtFormPaidCents ? formatCents(debtFormPaidCents) : ''}
+                  onChangeText={t => setDebtFormPaidCents(digitsOnly(t))}
+                  placeholder="R$ 0,00"
+                  keyboardType="numeric"
+                  style={styles.amountInput}
+                />
+              </>
+            )}
+
+            <Text style={styles.modalLabel}>Aporte mensal (opcional)</Text>
+            <TextInput
+              value={debtFormMonthlyCents ? formatCents(debtFormMonthlyCents) : ''}
+              onChangeText={t => setDebtFormMonthlyCents(digitsOnly(t))}
+              placeholder="R$ 0,00"
+              keyboardType="numeric"
+              style={styles.amountInput}
+            />
+
+            <Text style={styles.modalLabel}>Prazo para quitação (opcional)</Text>
+            <TouchableOpacity
+              style={[styles.descInput, { justifyContent: 'center' }]}
+              onPress={() => {/* DatePicker aberto via state abaixo */}}
+            >
+              <Text style={{ color: debtFormTargetDate ? Colors.textDark : Colors.textMuted, fontSize: 15 }}>
+                {debtFormTargetDate ? debtFormTargetDate.toLocaleDateString('pt-BR') : 'Selecionar data'}
+              </Text>
+            </TouchableOpacity>
+            {/* Botões rápidos de prazo */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {[6, 12, 24, 36].map(m => {
+                const d = new Date(); d.setMonth(d.getMonth() + m)
+                return (
+                  <TouchableOpacity
+                    key={m}
+                    onPress={() => setDebtFormTargetDate(d)}
+                    style={{ flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.border, paddingVertical: 8, alignItems: 'center', backgroundColor: Colors.white }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.textMuted }}>{m}m</Text>
+                  </TouchableOpacity>
+                )
+              })}
+              {debtFormTargetDate && (
+                <TouchableOpacity
+                  onPress={() => setDebtFormTargetDate(null)}
+                  style={{ borderRadius: 10, borderWidth: 1.5, borderColor: Colors.danger, paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center', backgroundColor: Colors.white }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.danger }}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {debtFormError && (
+              <View style={styles.warningBox}>
+                <Text style={{ fontSize: 13, color: Colors.danger }}>⚠️ {debtFormError}</Text>
+              </View>
+            )}
+          </ScrollView>
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              disabled={savingDebtForm}
+              onPress={async () => {
+                if (!debtFormName.trim()) { setDebtFormError('Informe o nome da dívida.'); return }
+                const total = centsToFloat(debtFormTotalCents)
+                if (total <= 0) { setDebtFormError('Informe o valor total da dívida.'); return }
+                setSavingDebtForm(true)
+                try {
+                  if (editingDebt) {
+                    await updateDebt(editingDebt.id, user!.id, {
+                      name: debtFormName.trim(),
+                      total_amount: total,
+                      monthly_payment: debtFormMonthlyCents ? centsToFloat(debtFormMonthlyCents) : null,
+                      target_date: debtFormTargetDate ? debtFormTargetDate.toISOString().split('T')[0] : null,
+                    })
+                  } else {
+                    await createDebt(user!.id, {
+                      name: debtFormName.trim(),
+                      total_amount: total,
+                      paid_amount: debtFormPaidCents ? centsToFloat(debtFormPaidCents) : 0,
+                      monthly_payment: debtFormMonthlyCents ? centsToFloat(debtFormMonthlyCents) : null,
+                      target_date: debtFormTargetDate ? debtFormTargetDate.toISOString().split('T')[0] : null,
+                    })
+                  }
+                  await loadGoals()
+                  setShowDebtForm(false)
+                  setToast({ message: editingDebt ? 'Dívida atualizada!' : 'Dívida registrada!', color: Colors.primary })
+                } catch (err) {
+                  setDebtFormError(String(err))
+                } finally {
+                  setSavingDebtForm(false)
+                }
+              }}
+              style={[styles.confirmBtn, { backgroundColor: Colors.primary }]}
+            >
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                {savingDebtForm ? 'Salvando...' : editingDebt ? 'Salvar alterações' : 'Registrar dívida'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Histórico de Pagamentos da Dívida ── */}
+      <Modal
+        visible={showDebtHistory}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowDebtHistory(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: Colors.background }}>
+          <View style={[styles.modalHeader, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+            <TouchableOpacity onPress={() => setShowDebtHistory(false)}>
+              <Text style={{ color: '#fff', fontSize: 16 }}>Fechar</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>📋 {historyDebt?.name}</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <View style={{ backgroundColor: '#FFF5F5', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+            <Text style={{ fontSize: 12, color: '#C53030' }}>Saldo devedor</Text>
+            <Text style={{ fontSize: 28, fontWeight: '800', color: '#C53030' }}>
+              {brl(Math.max(0, (historyDebt?.total_amount ?? 0) - (historyDebt?.paid_amount ?? 0)))}
+            </Text>
+            <Text style={{ fontSize: 12, color: Colors.textMuted, marginTop: 2 }}>
+              Pago: {brl(historyDebt?.paid_amount ?? 0)} de {brl(historyDebt?.total_amount ?? 0)}
+            </Text>
+          </View>
+          <FlatList
+            data={debtTxs}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ padding: 16 }}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Text style={{ fontSize: 40 }}>💸</Text>
+                <Text style={{ fontSize: 14, color: Colors.textMuted, marginTop: 12, textAlign: 'center' }}>Nenhum pagamento ainda</Text>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <View style={styles.historyItem}>
+                <View style={[styles.historyIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <Text style={{ fontSize: 18 }}>↓</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.textDark }}>
+                    {item.description || (item.type === 'payment_external' ? 'Pagamento externo' : 'Do ciclo mensal')}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 2 }}>
+                    {item.type === 'payment_external' ? 'Externo' : `Ciclo ${item.cycle_month}/${item.cycle_year}`} · {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#C53030' }}>
+                  −{brl(item.amount)}
+                </Text>
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
+
       <NewGoalModal
         visible={showNewGoal}
         onClose={() => setShowNewGoal(false)}
@@ -1655,5 +2233,10 @@ const styles = StyleSheet.create({
   historyIcon: {
     width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
+  },
+  sectionLabel: {
+    fontSize: 13, fontWeight: '700', color: Colors.textMuted,
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    marginBottom: 10,
   },
 })

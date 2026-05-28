@@ -45,18 +45,33 @@ export default function Step1() {
   const insets = useSafeAreaInsets()
   const [rawDigits, setRawDigits] = useState('')
   const [currency, setCurrency] = useState<Currency>('BRL')
-  const [error] = useState<string | null>(null)
+  const [isNegative, setIsNegative] = useState(false)
+
+  const balance = centsToFloat(rawDigits)
 
   const displayValue = rawDigits
     ? formatCents(rawDigits).replace('R$', CURRENCY_SYMBOL[currency])
     : ''
+
+  const helpText = balance === 0
+    ? 'Tudo bem! Você pode começar com saldo zerado'
+    : isNegative
+      ? 'Seu saldo inicial ficará negativo e será compensado com suas receitas'
+      : 'Este é o dinheiro disponível hoje para começar'
+
+  const helpColor = balance === 0
+    ? Colors.textMuted
+    : isNegative
+      ? Colors.warning
+      : Colors.success
 
   const handleChange = (text: string) => {
     setRawDigits(digitsOnly(text))
   }
 
   const handleContinue = () => {
-    onboardingDraft.set({ balance: centsToFloat(rawDigits), currency })
+    const value = isNegative ? -balance : balance
+    onboardingDraft.set({ balance: value, currency })
     router.push('/onboarding/step2')
   }
 
@@ -88,19 +103,33 @@ export default function Step1() {
             Opcional. Informe quanto você tem disponível agora para começar o controle. Pode deixar em zero.
           </Text>
 
-          {/* Input de valor */}
-          <TextInput
-            style={styles.balanceInput}
-            value={displayValue}
-            onChangeText={handleChange}
-            keyboardType="numeric"
-            placeholder={`${CURRENCY_SYMBOL[currency]} 0,00`}
-            placeholderTextColor={Colors.textMuted}
-            textAlign="center"
-            returnKeyType="done"
-          />
+          {/* Input de valor com toggle de sinal */}
+          <View style={styles.inputRow}>
+            <TouchableOpacity
+              style={[styles.signBtn, isNegative ? styles.signBtnNeg : styles.signBtnPos]}
+              onPress={() => setIsNegative(n => !n)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.signBtnText, isNegative ? styles.signBtnTextNeg : styles.signBtnTextPos]}>
+                {isNegative ? '−' : '+'}
+              </Text>
+            </TouchableOpacity>
+            <TextInput
+              style={[
+                styles.balanceInput,
+                { color: isNegative && balance > 0 ? Colors.danger : Colors.textDark },
+              ]}
+              value={displayValue}
+              onChangeText={handleChange}
+              keyboardType="numeric"
+              placeholder={`${CURRENCY_SYMBOL[currency]} 0,00`}
+              placeholderTextColor={Colors.textMuted}
+              textAlign="center"
+              returnKeyType="done"
+            />
+          </View>
 
-          {error && <Text style={styles.error}>{error}</Text>}
+          <Text style={[styles.helpText, { color: helpColor }]}>{helpText}</Text>
 
           {/* Seletor de moeda */}
           <Text style={styles.label}>Moeda</Text>
@@ -207,7 +236,37 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
 
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  signBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  signBtnPos: {
+    backgroundColor: Colors.lightBlue,
+    borderColor: Colors.primary,
+  },
+  signBtnNeg: {
+    backgroundColor: Colors.lightRed,
+    borderColor: Colors.danger,
+  },
+  signBtnText: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  signBtnTextPos: { color: Colors.primary },
+  signBtnTextNeg: { color: Colors.danger },
   balanceInput: {
+    flex: 1,
     backgroundColor: Colors.white,
     borderRadius: 16,
     borderWidth: 2,
@@ -217,19 +276,17 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 8,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 2,
   },
-
-  error: {
+  helpText: {
     fontSize: 13,
-    color: Colors.danger,
-    marginBottom: 16,
     textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 18,
   },
 
   label: {

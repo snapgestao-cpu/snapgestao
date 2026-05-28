@@ -4,6 +4,7 @@ import { PLAN_LIMITS } from '../constants/plans'
 type PlanLimitsInput = {
   currentPots?: number
   currentGoals?: number
+  currentDebts?: number
   currentCreditCards?: number
   currentIncomeSources?: number
 }
@@ -16,19 +17,23 @@ export function usePlanLimits(counts: PlanLimitsInput = {}) {
   const {
     currentPots = 0,
     currentGoals = 0,
+    currentDebts = 0,
     currentCreditCards = 0,
     currentIncomeSources = 0,
   } = counts
+
+  const goalsAndDebtsTotal = currentGoals + currentDebts
 
   const aiTokensRemaining = user?.ai_tokens ?? 0
 
   return {
     isPremium,
     canAddPot: currentPots < limits.pots,
-    canAddGoal: currentGoals < limits.goals,
+    canAddGoal: goalsAndDebtsTotal < limits.goals,
+    canAddDebt: goalsAndDebtsTotal < limits.goals,
     canAddCreditCard: currentCreditCards < limits.creditCards,
     canAddIncomeSource: currentIncomeSources < limits.incomeSources,
-    canUseIR: isPremium && (user?.ir_module_enabled ?? false),
+    canUseIR: isPremium,
     canExportExcel: limits.excelExport,
     canUseAI: aiTokensRemaining > 0,
     aiTokensRemaining,

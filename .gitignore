@@ -41,3 +41,12 @@ yarn-error.*
 /ios
 # /android — rastreado para preservar customizações de build (local_repo asyncstorage)
 *.apk
+*.aab
+*.ipa
+
+# Android build outputs
+android/app/build/
+android/build/
+
+# env de produção (nunca commitar com valores reais)
+.env.production
