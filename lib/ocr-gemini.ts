@@ -39,65 +39,87 @@ export type GeminiOCRResult = {
   recipient_name: string | null
   service_description: string | null
   competence_period: string | null
+  access_key: string | null    // chave de 44 dígitos da NF-e
   notes: string | null
 }
 
-const PROMPT_OCR = `Você é um especialista em documentos financeiros brasileiros.
-IMPORTANTE: Retorne datas SEMPRE no formato brasileiro DD/MM/AAAA.
+const PROMPT_OCR = `
+Você é um especialista em documentos fiscais brasileiros.
 
-Analise esta imagem e identifique o tipo de documento:
-- cupom_fiscal: Cupom NFC-e ou CF-e de estabelecimento comercial
-- nota_servico: Nota Fiscal de Serviço (NFS-e) de prestador
-- nota_compra: Nota Fiscal de Produto (NF-e)
+Analise esta imagem/documento e identifique o tipo:
+- cupom_fiscal: Cupom NFC-e ou CF-e (emitido em lojas/mercados)
+- nota_compra: NF-e / DANFE (Nota Fiscal Eletrônica de produto)
+- nota_servico: NFS-e (Nota Fiscal de Serviço Eletrônica)
 - comprovante_pix: Comprovante de pagamento via Pix
-- comprovante_ted: Comprovante de transferência TED ou DOC
+- comprovante_ted: Comprovante TED ou DOC bancário
 - comprovante_cartao: Comprovante de maquininha (crédito/débito)
 - recibo: Recibo simples ou informal
 - fatura: Fatura de conta (água, luz, gás, internet, telefone)
 - desconhecido: Não foi possível identificar
 
-Extraia os dados disponíveis conforme o tipo identificado.
+INSTRUÇÕES ESPECÍFICAS POR TIPO:
 
-Retorne APENAS JSON válido, sem texto adicional, markdown ou explicações:
+Para NF-e / DANFE (nota_compra):
+- Emitente = campo "EMITENTE" ou "NOME/RAZÃO SOCIAL" do emissor
+- CNPJ do emitente está no campo "CNPJ" da seção emitente
+- Data de emissão está em "DATA DE EMISSÃO" ou "DHEMI" — formato DD/MM/AAAA
+- Itens estão na tabela "DADOS DOS PRODUTOS E SERVIÇOS"
+- Valor total está em "VALOR TOTAL DA NOTA" ou "TOTAL DA NF-e"
+- Chave de acesso tem 44 dígitos numéricos
+
+Para NFS-e (nota_servico):
+- Prestador = empresa que prestou o serviço
+- Tomador = empresa/pessoa que contratou
+- Descrição do serviço = campo "DISCRIMINAÇÃO DOS SERVIÇOS"
+- Valor = "VALOR LÍQUIDO DA NOTA" ou "VALOR DOS SERVIÇOS"
+- Competência = mês/ano de referência do serviço
+
+Para cupom_fiscal (NFC-e):
+- Emitente = nome do estabelecimento no topo
+- Itens = lista de produtos com código, descrição, qtd, valor
+- Total = "TOTAL" ou "VALOR A PAGAR"
+
+REGRAS OBRIGATÓRIAS:
+- Datas SEMPRE no formato DD/MM/AAAA
+- CNPJ SEMPRE no formato XX.XXX.XXX/XXXX-XX
+- Valores SEMPRE como número (ex: 150.90, não "R$ 150,90")
+- Se um campo não estiver visível, retornar null
+
+Retorne APENAS JSON válido, sem markdown, sem texto adicional:
 
 {
-  "document_type": "string (um dos tipos acima)",
+  "document_type": "string",
   "confidence": 0.0,
-
-  "merchant": "nome do estabelecimento/prestador ou null",
+  "merchant": "razão social do emitente/prestador ou null",
   "cnpj": "XX.XXX.XXX/XXXX-XX ou null",
-  "cpf": "CPF do prestador se pessoa física ou null",
+  "cpf": "CPF se pessoa física ou null",
   "date": "DD/MM/AAAA ou null",
   "time": "HH:MM ou null",
-
   "total": null,
   "subtotal": null,
   "discount": null,
   "tax": null,
-
   "items": [
     {
-      "name": "descrição do item/serviço",
+      "name": "descrição do produto/serviço",
       "qty": null,
       "unit_price": null,
       "total": 0
     }
   ],
-
   "payment_method": "dinheiro|debito|credito|pix|transferencia|null",
   "installments": null,
-
-  "pix_key": "chave pix do destinatário ou null",
-  "pix_end_to_end": "ID da transação pix ou null",
-  "bank_origin": "banco de origem ou null",
-  "bank_destination": "banco de destino ou null",
-  "recipient_name": "nome do destinatário ou null",
-
-  "service_description": "descrição do serviço para notas de serviço ou null",
-  "competence_period": "período de competência (mês/ano) ou null",
-
+  "service_description": "discriminação dos serviços para NFS-e ou null",
+  "competence_period": "MM/AAAA ou null",
+  "access_key": "chave de 44 dígitos da NF-e ou null",
+  "recipient_name": "nome do destinatário/tomador ou null",
+  "pix_key": null,
+  "pix_end_to_end": null,
+  "bank_origin": null,
+  "bank_destination": null,
   "notes": "observações relevantes ou null"
-}`
+}
+`
 
 const FALLBACK_RESULT: GeminiOCRResult = {
   document_type: 'desconhecido',
@@ -121,6 +143,7 @@ const FALLBACK_RESULT: GeminiOCRResult = {
   recipient_name: null,
   service_description: null,
   competence_period: null,
+  access_key: null,
   notes: null,
 }
 
@@ -223,6 +246,7 @@ export async function analyzeReceiptWithGemini(
       recipient_name: p.recipient_name ?? null,
       service_description: p.service_description ?? null,
       competence_period: p.competence_period ?? null,
+      access_key: typeof p.access_key === 'string' ? p.access_key : null,
       notes: p.notes ?? null,
     }
   } catch {
