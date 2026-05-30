@@ -22,9 +22,9 @@ import { Colors } from '../constants/colors'
 import { captureReceipt, pickReceiptFromGallery } from '../lib/ocr'
 import type { NFCeResult } from '../lib/ocr'
 import { analyzeReceiptWithGemini, normalizeDate } from '../lib/ocr-gemini'
-import * as ImageManipulator from 'expo-image-manipulator'
 import * as DocumentPicker from 'expo-document-picker'
 import { readAsStringAsync, getInfoAsync, EncodingType } from 'expo-file-system/legacy'
+import { Image as CompressorImage } from 'react-native-compressor'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
@@ -264,13 +264,28 @@ export default function OCRScreen() {
         mimeType = 'application/pdf'
         console.log('[Gemini PDF] base64 length:', base64.length, '| prefix:', base64.slice(0, 20))
       } else {
-        const compressed = await ImageManipulator.manipulateAsync(
-          uri,
-          [{ resize: { width: 1200 } }],
-          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-        )
-        if (!compressed.base64) throw new Error('ImageManipulator não retornou base64')
-        base64 = compressed.base64
+        try {
+          const compressedUri = await CompressorImage.compress(uri, {
+            maxWidth: 1200,
+            quality: 0.8,
+            input: 'uri',
+            output: 'jpg',
+            returnableOutputType: 'uri',
+          })
+          base64 = await readAsStringAsync(compressedUri, { encoding: EncodingType.Base64 })
+          console.log('[OCR] compressão OK, base64 length:', base64.length)
+        } catch (compressError) {
+          console.warn('[OCR] compressor falhou, usando fallback fetch:', compressError)
+          const resp = await fetch(uri)
+          const blob = await resp.blob()
+          base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve((reader.result as string).split(',')[1])
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          })
+          console.log('[OCR] fallback base64 length:', base64.length)
+        }
         mimeType = 'image/jpeg'
       }
 
