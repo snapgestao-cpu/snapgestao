@@ -24,7 +24,7 @@ import type { NFCeResult } from '../lib/ocr'
 import { analyzeReceiptWithGemini } from '../lib/ocr-gemini'
 import * as ImageManipulator from 'expo-image-manipulator'
 import * as DocumentPicker from 'expo-document-picker'
-import * as FileSystem from 'expo-file-system'
+import { readAsStringAsync, getInfoAsync, EncodingType } from 'expo-file-system/legacy'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
@@ -265,8 +265,10 @@ export default function OCRScreen() {
       let mimeType: 'image/jpeg' | 'application/pdf'
 
       if (mode === 'pdf') {
-        base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any })
+        const raw = await readAsStringAsync(uri, { encoding: EncodingType.Base64 })
+        base64 = raw.replace(/^data:[^;]+;base64,/, '')
         mimeType = 'application/pdf'
+        console.log('[Gemini PDF] base64 length:', base64.length, '| prefix:', base64.slice(0, 20))
       } else {
         const compressed = await ImageManipulator.manipulateAsync(
           uri,
@@ -363,6 +365,16 @@ export default function OCRScreen() {
     })
     if (result.canceled || !result.assets?.[0]) return
     const asset = result.assets[0]
+    console.log('[Gemini PDF] picked uri:', asset.uri)
+
+    const fileInfo = await getInfoAsync(asset.uri)
+    console.log('[Gemini PDF] file info:', JSON.stringify(fileInfo))
+
+    if (fileInfo.exists && (fileInfo as any).size > 20 * 1024 * 1024) {
+      Alert.alert('PDF muito grande', 'O arquivo deve ter menos de 20 MB. Tente um arquivo menor.')
+      return
+    }
+
     await handleOCRCapture(asset.uri, 'pdf')
   }
 
