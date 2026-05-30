@@ -267,7 +267,7 @@ export async function captureReceipt(): Promise<string | null> {
   const { status } = await ImagePicker.requestCameraPermissionsAsync()
   if (status !== 'granted') return null
   const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: 'images',
     quality: 0.8,
     base64: false,
   })
@@ -279,7 +279,7 @@ export async function pickReceiptFromGallery(): Promise<string | null> {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
   if (status !== 'granted') return null
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: 'images',
     quality: 0.8,
   })
   if (result.canceled) return null
