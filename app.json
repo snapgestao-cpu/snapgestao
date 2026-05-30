@@ -26,7 +26,7 @@
         "backgroundColor": "#65a7c1"
       },
       "package": "com.snapgestao.app",
-      "versionCode": 21,
+      "versionCode": 22,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

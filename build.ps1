@@ -5,6 +5,22 @@ Write-Host "Iniciando build do SnapGestao..." -ForegroundColor Cyan
 
 Set-Location C:\snapgestao\snapgestao
 
+# Carregar variaveis do .env na sessao atual (necessario para Metro inlinar EXPO_PUBLIC_*)
+Write-Host "Carregando variaveis do .env..." -ForegroundColor Yellow
+if (Test-Path .env) {
+  Get-Content .env | ForEach-Object {
+    if ($_ -match '^([^#=][^=]*)=(.*)$') {
+      $envName  = $matches[1].Trim()
+      $envValue = $matches[2].Trim()
+      [System.Environment]::SetEnvironmentVariable($envName, $envValue, 'Process')
+    }
+  }
+  Write-Host "Variaveis carregadas." -ForegroundColor Green
+} else {
+  Write-Host "AVISO: arquivo .env nao encontrado!" -ForegroundColor Red
+  exit 1
+}
+
 # 1. Commitar assets atualizados
 Write-Host "Commitando assets..." -ForegroundColor Yellow
 git add assets/

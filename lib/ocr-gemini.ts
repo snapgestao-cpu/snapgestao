@@ -208,6 +208,8 @@ export async function analyzeReceiptWithGemini(
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf' = 'image/jpeg'
 ): Promise<GeminiOCRResult> {
   const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
+  console.log('[Gemini OCR] API key disponível:', !!apiKey)
+  console.log('[Gemini OCR] API key prefix:', apiKey?.slice(0, 8) ?? 'VAZIA')
   if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')
 
   const isPDF = mimeType === 'application/pdf'
