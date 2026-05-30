@@ -17,17 +17,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
-import {
-  processReceipt,
-} from '../lib/ocr'
+// Google Vision — substituído pelo Gemini OCR (lib/ocr-gemini.ts)
+// import { processReceipt } from '../lib/ocr'
+import { imageToBase64, captureReceipt, pickReceiptFromGallery } from '../lib/ocr'
 import type { NFCeResult } from '../lib/ocr'
+import { analyzeReceiptWithGemini } from '../lib/ocr-gemini'
+import * as ImageManipulator from 'expo-image-manipulator'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
 import { getPotIcon } from '../lib/potIcons'
 import { BadgeToast } from '../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
-import { Pot, CreditCard, IRCategory } from '../types'
+import { Pot, CreditCard, IRCategory, ReceiptDocumentType } from '../types'
 import { IR_CATEGORY_LABELS } from '../lib/ir'
 import QRCameraScanner from '../components/QRCameraScanner'
 import NFCeWebView, { sanitizeNFCeUrl } from '../components/NFCeWebView'
@@ -79,6 +81,18 @@ const PAYMENT_OPTIONS = [
   { key: 'voucher_refeicao',    label: '🍴 Refeição' },
 ]
 
+const DOC_TYPE_CONFIG = {
+  cupom_fiscal:       { icon: '🛒', label: 'Cupom Fiscal',             bg: '#E6F1FB', color: '#0F5EA8' },
+  nota_servico:       { icon: '🧾', label: 'Nota de Serviço',          bg: '#EDE9F8', color: '#6B4BB5' },
+  nota_compra:        { icon: '📄', label: 'Nota Fiscal de Produto',    bg: '#E6F1FB', color: '#0F5EA8' },
+  comprovante_pix:    { icon: '🔄', label: 'Comprovante Pix',           bg: '#EAF3DE', color: '#1EB87A' },
+  comprovante_ted:    { icon: '🔄', label: 'Comprovante TED/DOC',       bg: '#EAF3DE', color: '#1EB87A' },
+  comprovante_cartao: { icon: '💳', label: 'Comprovante de Cartão',     bg: '#E6F1FB', color: '#0F5EA8' },
+  recibo:             { icon: '📋', label: 'Recibo',                    bg: '#FAEEDA', color: '#BA7517' },
+  fatura:             { icon: '📃', label: 'Fatura',                    bg: '#FAEEDA', color: '#BA7517' },
+  desconhecido:       { icon: '❓', label: 'Documento não identificado', bg: '#F4F6F9', color: '#7A8499' },
+}
+
 function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   const [y, m, d] = txISO.split('-').map(Number)
   let month0 = m - 1
@@ -124,7 +138,7 @@ export default function OCRScreen() {
 
   const initialDate = cycleDate ?? new Date().toISOString().split('T')[0]
 
-  const [step, setStep] = useState<OCRStep>('qr_camera')
+  const [step, setStep] = useState<OCRStep>('menu')
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
@@ -168,6 +182,17 @@ export default function OCRScreen() {
 
   const [showCreditCardModal, setShowCreditCardModal] = useState(false)
 
+  // Gemini OCR extra state
+  const [documentType, setDocumentType] = useState<ReceiptDocumentType>('desconhecido')
+  const [ocrConfidence, setOcrConfidence] = useState(1)
+  const [pixKey, setPixKey] = useState<string | null>(null)
+  const [pixEndToEnd, setPixEndToEnd] = useState<string | null>(null)
+  const [bankOrigin, setBankOrigin] = useState<string | null>(null)
+  const [bankDestination, setBankDestination] = useState<string | null>(null)
+  const [recipientName, setRecipientName] = useState<string | null>(null)
+  const [serviceDescription, setServiceDescription] = useState<string | null>(null)
+  const [competencePeriod, setCompetencePeriod] = useState<string | null>(null)
+
   useEffect(() => {
     if (paymentMethod !== 'credit') { setIsInstallment(false); return }
     if (!user) return
@@ -206,48 +231,101 @@ export default function OCRScreen() {
     }
   }, [globalPotId])
 
-  // OCR path: photograph → Google Vision
+  function parseGeminiDate(d: string | null): string {
+    if (!d) return initialDate
+    const parts = d.match(/(\d{2})\/(\d{2})\/(\d{4})/)
+    if (!parts) return initialDate
+    return `${parts[3]}-${parts[2]}-${parts[1]}`
+  }
+
+  function mapGeminiPayment(pm: string | null): string {
+    switch (pm) {
+      case 'dinheiro': return 'cash'
+      case 'debito': return 'debit'
+      case 'credito': return 'credit'
+      case 'pix': return 'pix'
+      case 'transferencia': return 'transfer'
+      default: return 'debit'
+    }
+  }
+
+  // OCR path: photograph → Gemini Vision
   const handleOCRCapture = async (uri: string | null) => {
     if (!uri || !user) return
     setImageUri(uri)
-    setProcessingMessage('Lendo o cupom...')
+    setProcessingMessage('Analisando documento...')
     setStep('processing')
     await loadPots()
 
     let result
     try {
-      result = await processReceipt(uri, user.id)
-    } catch {
-      Alert.alert('Erro de conexão', 'Verifique sua conexão e tente novamente.')
-      setStep('menu')
-      return
-    }
-
-    if (!result.success) {
-      Alert.alert(
-        'Erro no processamento',
-        result.error?.includes('500') || result.error?.includes('non-2xx')
-          ? 'Serviço de leitura indisponível. Tente novamente em instantes.'
-          : (result.error ?? 'Não foi possível ler o cupom. Verifique a iluminação e tente novamente.'),
+      const compressed = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       )
-      setStep('menu')
+      const base64 = await imageToBase64(compressed.uri)
+      result = await analyzeReceiptWithGemini(base64, 'image/jpeg')
+    } catch {
+      Alert.alert(
+        'Serviço indisponível',
+        'Serviço de leitura temporariamente indisponível. Preencha manualmente.',
+        [{ text: 'OK' }]
+      )
+      setDocumentType('desconhecido')
+      setOcrConfidence(0)
+      setStep('review')
       return
     }
 
-    setReceiptId(result.receipt_id ?? null)
+    setDocumentType(result.document_type)
+    setOcrConfidence(result.confidence)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
-    setReceiptDate(result.receipt_date ?? initialDate)
-    setPaymentMethod('debit')
-    setReviewItems((result.items ?? []).map((item, i) => ({
+    setReceiptDate(parseGeminiDate(result.date))
+    setPaymentMethod(mapGeminiPayment(result.payment_method))
+    setPixKey(result.pix_key)
+    setPixEndToEnd(result.pix_end_to_end)
+    setBankOrigin(result.bank_origin)
+    setBankDestination(result.bank_destination)
+    setRecipientName(result.recipient_name)
+    setServiceDescription(result.service_description)
+    setCompetencePeriod(result.competence_period)
+    if (result.merchant) setIrProviderName(result.merchant)
+    if (result.cnpj ?? result.cpf) setIrProviderDocument(result.cnpj ?? result.cpf ?? '')
+    if (result.document_type === 'nota_servico' && irModuleEnabled) setIsIrDeductible(true)
+
+    const forceSimplified = ['comprovante_pix', 'comprovante_ted', 'nota_servico', 'fatura', 'comprovante_cartao'].includes(result.document_type)
+    setSimplified(forceSimplified || result.items.length === 0)
+
+    setReviewItems(result.items.map((item, i) => ({
       id: String(i),
       name: item.name,
-      valueCents: Math.round(item.value * 100),
-      quantity: 1,
+      valueCents: Math.round((item.total ?? 0) * 100),
+      quantity: item.qty ?? 1,
       unit: 'UN',
       potId: defaultPotId ?? null,
     })))
+
+    if (result.confidence < 0.5) {
+      Alert.alert(
+        'Leitura parcial',
+        'Não foi possível ler o documento com clareza. Verifique os dados antes de salvar.',
+        [{ text: 'Entendi' }]
+      )
+    }
+
     setStep('review')
+  }
+
+  const handlePhotoCapture = async () => {
+    const uri = await captureReceipt()
+    if (uri) await handleOCRCapture(uri)
+  }
+
+  const handleGalleryCapture = async () => {
+    const uri = await pickReceiptFromGallery()
+    if (uri) await handleOCRCapture(uri)
   }
 
   // QR Code path: detect state → sanitize URL → WebView
@@ -471,13 +549,68 @@ export default function OCRScreen() {
       name: '', valueCents: 0, quantity: 1, unit: 'UN', potId: null,
     }])
 
+  // ── STEP: menu ────────────────────────────────────────────────────────────
+  if (step === 'menu') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={styles.backBtn}>‹ Voltar</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Registrar documento</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        {defaultPotName ? (
+          <View style={[styles.potBadge, { marginTop: 12 }]}>
+            <Text style={styles.potBadgeText}>🫙 {defaultPotName}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.menuContainer}>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: 'center', marginBottom: 4 }}>
+            Escolha como registrar
+          </Text>
+
+          <TouchableOpacity style={styles.menuOptionPrimary} onPress={() => setStep('qr_camera')}>
+            <Text style={styles.menuOptionIcon}>📷</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitlePrimary}>QR Code do cupom</Text>
+              <Text style={styles.menuOptionDescPrimary}>Leia o QR Code do cupom NFC-e via câmera SEFAZ</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuOptionSecondary} onPress={handlePhotoCapture}>
+            <Text style={styles.menuOptionIcon}>📸</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitleSecondary}>Foto pela câmera</Text>
+              <Text style={styles.menuOptionDescSecondary}>Fotografe cupons, comprovantes, notas e faturas</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuOptionSecondary} onPress={handleGalleryCapture}>
+            <Text style={styles.menuOptionIcon}>🖼️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitleSecondary}>Da galeria</Text>
+              <Text style={styles.menuOptionDescSecondary}>Selecione uma imagem salva no dispositivo</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.back()} style={styles.cancelLink}>
+            <Text style={styles.cancelLinkText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
   // ── STEP: qr_camera ───────────────────────────────────────────────────────
   if (step === 'qr_camera') {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <QRCameraScanner
           onQRCodeScanned={handleQRCodeScanned}
-          onCancel={() => router.back()}
+          onCancel={() => setStep('menu')}
         />
       </SafeAreaView>
     )
@@ -550,10 +683,10 @@ export default function OCRScreen() {
     <>
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setStep('qr_camera')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => setStep('menu')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.backBtn}>‹ Novo scan</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Revisar cupom</Text>
+        <Text style={styles.headerTitle}>Revisar documento</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -561,6 +694,63 @@ export default function OCRScreen() {
 
         {imageUri && (
           <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
+        )}
+
+        {/* Document type banner — shown only for Gemini OCR path (not NFC-e) */}
+        {!nfceMeta && imageUri && (() => {
+          const cfg = DOC_TYPE_CONFIG[documentType]
+          return (
+            <View style={[styles.docTypeBanner, { backgroundColor: cfg.bg, borderColor: cfg.color + '40' }]}>
+              <Text style={[styles.docTypeIcon]}>{cfg.icon}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.docTypeLabel, { color: cfg.color }]}>{cfg.label} identificado</Text>
+                {ocrConfidence > 0 && ocrConfidence < 0.5 && (
+                  <Text style={[styles.docTypeHint, { color: cfg.color }]}>
+                    ⚠️ Confiança baixa — verifique os dados
+                  </Text>
+                )}
+              </View>
+            </View>
+          )
+        })()}
+
+        {/* Extra fields for Pix / TED */}
+        {(documentType === 'comprovante_pix' || documentType === 'comprovante_ted') && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>
+              {documentType === 'comprovante_pix' ? '🔄 Dados do Pix' : '🔄 Dados da Transferência'}
+            </Text>
+            {recipientName ? <><Text style={styles.fieldLabel}>Destinatário</Text>
+              <Text style={styles.docInfoText}>{recipientName}</Text></> : null}
+            {bankOrigin ? <><Text style={styles.fieldLabel}>Banco de origem</Text>
+              <Text style={styles.docInfoText}>{bankOrigin}</Text></> : null}
+            {bankDestination ? <><Text style={styles.fieldLabel}>Banco de destino</Text>
+              <Text style={styles.docInfoText}>{bankDestination}</Text></> : null}
+            {pixKey ? <><Text style={styles.fieldLabel}>Chave Pix</Text>
+              <Text style={styles.docInfoText}>{pixKey}</Text></> : null}
+            {pixEndToEnd ? <><Text style={styles.fieldLabel}>ID da transação</Text>
+              <Text style={[styles.docInfoText, { fontSize: 11 }]}>{pixEndToEnd}</Text></> : null}
+          </View>
+        )}
+
+        {/* Extra fields for Nota de Serviço */}
+        {documentType === 'nota_servico' && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>🧾 Nota de Serviço</Text>
+            {serviceDescription ? <><Text style={styles.fieldLabel}>Descrição do serviço</Text>
+              <Text style={styles.docInfoText}>{serviceDescription}</Text></> : null}
+            {competencePeriod ? <><Text style={styles.fieldLabel}>Período de competência</Text>
+              <Text style={styles.docInfoText}>{competencePeriod}</Text></> : null}
+          </View>
+        )}
+
+        {/* Extra fields for Fatura */}
+        {documentType === 'fatura' && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>📃 Fatura</Text>
+            {competencePeriod ? <><Text style={styles.fieldLabel}>Período de referência</Text>
+              <Text style={styles.docInfoText}>{competencePeriod}</Text></> : null}
+          </View>
         )}
 
         {/* Merchant / total / date */}
@@ -1063,4 +1253,13 @@ const styles = StyleSheet.create({
   irToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
   irToggleHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  // Document type banner
+  docTypeBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12,
+  },
+  docTypeIcon: { fontSize: 22 },
+  docTypeLabel: { fontSize: 14, fontWeight: '700' },
+  docTypeHint: { fontSize: 11, marginTop: 2 },
+  docInfoText: { fontSize: 14, color: Colors.textDark, marginBottom: 8 },
 })

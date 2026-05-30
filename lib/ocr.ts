@@ -247,6 +247,9 @@ export async function extractReceiptData(base64Image: string): Promise<OCRResult
   return { success: false, error: 'Use processReceipt() instead.' }
 }
 
+// Google Vision — substituído pelo Gemini OCR em lib/ocr-gemini.ts
+// Esta função chama a Edge Function process-receipt (Google Cloud Vision API).
+// Mantida para referência; não é mais chamada pelo app.
 export async function processReceipt(imageUri: string, userId: string): Promise<OCRResult> {
   try {
     const base64 = await imageToBase64(imageUri)

@@ -1,5 +1,16 @@
 export type IRCategory = 'saude' | 'educacao' | 'previdencia_pgbl' | 'previdencia_social' | 'doacao' | 'pensao' | 'outros'
 
+export type ReceiptDocumentType =
+  | 'cupom_fiscal'       // NFC-e / CF-e
+  | 'nota_servico'       // NFS-e — nota fiscal de serviço
+  | 'nota_compra'        // NF-e — nota fiscal de produto
+  | 'comprovante_pix'    // Comprovante de transferência Pix
+  | 'comprovante_ted'    // Comprovante TED/DOC
+  | 'comprovante_cartao' // Comprovante de maquininha
+  | 'recibo'             // Recibo simples
+  | 'fatura'             // Fatura de serviço (água, luz, internet)
+  | 'desconhecido'       // Não identificado
+
 export type User = {
   id: string
   name: string
