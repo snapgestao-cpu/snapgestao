@@ -7,8 +7,7 @@
 
 import { ReceiptDocumentType } from '../types'
 
-export const GEMINI_OCR_MODEL = 'gemini-2.5-flash'   // imagens
-export const GEMINI_PDF_MODEL  = 'gemini-1.5-flash'   // PDF — menor latência
+export const GEMINI_OCR_MODEL = 'gemini-2.5-flash'
 
 export type GeminiOCRItem = {
   name: string
@@ -171,7 +170,7 @@ export async function analyzeReceiptWithGemini(
   if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')
 
   const isPDF = mimeType === 'application/pdf'
-  const model = isPDF ? GEMINI_PDF_MODEL : GEMINI_OCR_MODEL
+  const model = GEMINI_OCR_MODEL
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
   const controller = new AbortController()
