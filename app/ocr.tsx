@@ -21,7 +21,7 @@ import { Colors } from '../constants/colors'
 // import { processReceipt } from '../lib/ocr'
 import { imageToBase64, captureReceipt, pickReceiptFromGallery } from '../lib/ocr'
 import type { NFCeResult } from '../lib/ocr'
-import { analyzeReceiptWithGemini } from '../lib/ocr-gemini'
+import { analyzeReceiptWithGemini, normalizeDate } from '../lib/ocr-gemini'
 import * as ImageManipulator from 'expo-image-manipulator'
 import * as DocumentPicker from 'expo-document-picker'
 import { readAsStringAsync, getInfoAsync, EncodingType } from 'expo-file-system/legacy'
@@ -297,7 +297,7 @@ export default function OCRScreen() {
     setOcrConfidence(result.confidence)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
-    setReceiptDate(parseGeminiDate(result.date))
+    setReceiptDate(parseGeminiDate(normalizeDate(result.date)))
     setPaymentMethod(mapGeminiPayment(result.payment_method))
     setPixKey(result.pix_key)
     setPixEndToEnd(result.pix_end_to_end)

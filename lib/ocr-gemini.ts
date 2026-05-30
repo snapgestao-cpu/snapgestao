@@ -43,6 +43,11 @@ export type GeminiOCRResult = {
 }
 
 const PROMPT_OCR = `
+⚠️ REGRA CRÍTICA: Datas SEMPRE no formato DD/MM/AAAA.
+NUNCA use YYYY-MM-DD nem MM/DD/YYYY.
+Exemplo correto: 12/05/2026
+Exemplo ERRADO: 2026-05-12 ou 2026-12-05
+
 Você é um especialista em documentos fiscais brasileiros.
 
 Analise este documento e identifique o tipo:
@@ -145,26 +150,35 @@ const FALLBACK_RESULT: GeminiOCRResult = {
   notes: null,
 }
 
-function normalizeDate(raw: string | null | undefined): string | null {
+export function normalizeDate(raw: string | null | undefined): string | null {
   if (!raw) return null
   const s = raw.trim()
-  // YYYY-MM-DD → DD/MM/YYYY
+  // YYYY-MM-DD → DD/MM/YYYY (mais comum vindo do Gemini)
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split('-')
+    return `${d}/${m}/${y}`
+  }
+  // YYYY/MM/DD → DD/MM/YYYY
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('/')
     return `${d}/${m}/${y}`
   }
   // MM/DD/YYYY ou DD/MM/YYYY — distinguir pelos valores
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
     const [a, b, y] = s.split('/')
-    const aNum = parseInt(a), bNum = parseInt(b)
-    if (aNum > 12) return s                // já é DD/MM/YYYY (dia inambíguo)
-    if (bNum > 12) return `${b}/${a}/${y}` // claramente MM/DD — inverter
-    return `${b}/${a}/${y}`               // ambíguo — assumir MM/DD e inverter
+    const aNum = parseInt(a)
+    if (aNum > 12) return s           // já é DD/MM/YYYY (dia inambíguo)
+    return `${b}/${a}/${y}`           // assumir MM/DD e inverter
   }
   return s
 }
 
 const PROMPT_PDF_TEST = `
+⚠️ REGRA CRÍTICA: Datas SEMPRE no formato DD/MM/AAAA.
+NUNCA use YYYY-MM-DD nem MM/DD/YYYY.
+Exemplo correto: 12/05/2026
+Exemplo ERRADO: 2026-05-12 ou 2026-12-05
+
 Analise este DANFE (Nota Fiscal Eletrônica brasileira) e extraia em JSON:
 {
   "document_type": "nota_compra",
@@ -281,13 +295,15 @@ export async function analyzeReceiptWithGemini(
 
   try {
     const p = JSON.parse(jsonMatch[0])
+    const normalizedDate = normalizeDate(p.date ?? null)
+    if (isPDF) console.log('[Gemini OCR] date raw:', p.date, '→ normalizado:', normalizedDate)
     return {
       document_type: (p.document_type as ReceiptDocumentType) ?? 'desconhecido',
       confidence: typeof p.confidence === 'number' ? p.confidence : 0,
       merchant: p.merchant ?? null,
       cnpj: p.cnpj ?? null,
       cpf: p.cpf ?? null,
-      date: normalizeDate(p.date ?? null),
+      date: normalizedDate,
       time: p.time ?? null,
       total: typeof p.total === 'number' ? p.total : null,
       subtotal: typeof p.subtotal === 'number' ? p.subtotal : null,
