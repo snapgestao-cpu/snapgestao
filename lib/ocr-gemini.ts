@@ -124,7 +124,7 @@ const FALLBACK_RESULT: GeminiOCRResult = {
 
 export async function analyzeReceiptWithGemini(
   base64Image: string,
-  mimeType: 'image/jpeg' | 'image/png' | 'image/webp' = 'image/jpeg'
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf' = 'image/jpeg'
 ): Promise<GeminiOCRResult> {
   const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
   if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')

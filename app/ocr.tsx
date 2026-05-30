@@ -23,6 +23,8 @@ import { imageToBase64, captureReceipt, pickReceiptFromGallery } from '../lib/oc
 import type { NFCeResult } from '../lib/ocr'
 import { analyzeReceiptWithGemini } from '../lib/ocr-gemini'
 import * as ImageManipulator from 'expo-image-manipulator'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system'
 import { useAuthStore } from '../stores/useAuthStore'
 import { supabase } from '../lib/supabase'
 import { getCycle } from '../lib/cycle'
@@ -249,23 +251,33 @@ export default function OCRScreen() {
     }
   }
 
-  // OCR path: photograph → Gemini Vision
-  const handleOCRCapture = async (uri: string | null) => {
+  // OCR path: photograph/PDF → Gemini Vision
+  const handleOCRCapture = async (uri: string | null, mode: 'image' | 'pdf' = 'image') => {
     if (!uri || !user) return
-    setImageUri(uri)
-    setProcessingMessage('Analisando documento...')
+    setImageUri(mode === 'image' ? uri : null)
+    setProcessingMessage(mode === 'pdf' ? 'Analisando PDF...' : 'Analisando documento...')
     setStep('processing')
     await loadPots()
 
     let result
     try {
-      const compressed = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1200 } }],
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-      )
-      const base64 = await imageToBase64(compressed.uri)
-      result = await analyzeReceiptWithGemini(base64, 'image/jpeg')
+      let base64: string
+      let mimeType: 'image/jpeg' | 'application/pdf'
+
+      if (mode === 'pdf') {
+        base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any })
+        mimeType = 'application/pdf'
+      } else {
+        const compressed = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1200 } }],
+          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+        )
+        base64 = await imageToBase64(compressed.uri)
+        mimeType = 'image/jpeg'
+      }
+
+      result = await analyzeReceiptWithGemini(base64, mimeType)
     } catch {
       Alert.alert(
         'Serviço indisponível',
@@ -320,12 +332,38 @@ export default function OCRScreen() {
 
   const handlePhotoCapture = async () => {
     const uri = await captureReceipt()
-    if (uri) await handleOCRCapture(uri)
+    if (uri) await handleOCRCapture(uri, 'image')
   }
 
-  const handleGalleryCapture = async () => {
-    const uri = await pickReceiptFromGallery()
-    if (uri) await handleOCRCapture(uri)
+  const handleGalleryCapture = () => {
+    Alert.alert(
+      'Selecionar da galeria',
+      'Escolha o tipo de arquivo',
+      [
+        {
+          text: '🖼️  Imagem (JPG, PNG)',
+          onPress: async () => {
+            const uri = await pickReceiptFromGallery()
+            if (uri) await handleOCRCapture(uri, 'image')
+          },
+        },
+        {
+          text: '📄  Documento (PDF)',
+          onPress: handlePDFCapture,
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    )
+  }
+
+  const handlePDFCapture = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+    })
+    if (result.canceled || !result.assets?.[0]) return
+    const asset = result.assets[0]
+    await handleOCRCapture(asset.uri, 'pdf')
   }
 
   // QR Code path: detect state → sanitize URL → WebView
