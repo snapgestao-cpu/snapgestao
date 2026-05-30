@@ -45,78 +45,77 @@ export type GeminiOCRResult = {
 const PROMPT_OCR = `
 Você é um especialista em documentos fiscais brasileiros.
 
-Analise esta imagem/documento e identifique o tipo:
-- cupom_fiscal: Cupom NFC-e ou CF-e (emitido em lojas/mercados)
-- nota_compra: NF-e / DANFE (Nota Fiscal Eletrônica de produto)
-- nota_servico: NFS-e (Nota Fiscal de Serviço Eletrônica)
+Analise este documento e identifique o tipo:
+- cupom_fiscal: Cupom NFC-e ou CF-e (emitido em lojas/mercados, lista de itens simples)
+- nota_compra: DANFE / NF-e (Documento Auxiliar da Nota Fiscal Eletrônica — tem campos EMITENTE, DESTINATÁRIO/REMETENTE, DADOS DO PRODUTO/SERVIÇO, CÁLCULO DO IMPOSTO)
+- nota_servico: NFS-e (Nota Fiscal de Serviço Eletrônica — tem DISCRIMINAÇÃO DOS SERVIÇOS)
 - comprovante_pix: Comprovante de pagamento via Pix
 - comprovante_ted: Comprovante TED ou DOC bancário
 - comprovante_cartao: Comprovante de maquininha (crédito/débito)
 - recibo: Recibo simples ou informal
 - fatura: Fatura de conta (água, luz, gás, internet, telefone)
-- desconhecido: Não foi possível identificar
+- desconhecido: Não identificado
 
-INSTRUÇÕES ESPECÍFICAS POR TIPO:
+INSTRUÇÕES PARA DANFE/NF-e (nota_compra):
+- merchant = campo "IDENTIFICAÇÃO DO EMITENTE" — razão social do EMITENTE (quem vendeu)
+- cnpj = CNPJ do EMITENTE (não do destinatário)
+- date = campo "DATA DE EMISSÃO" — formato OBRIGATÓRIO DD/MM/AAAA
+- total = campo "VALOR TOTAL DA NOTA" ou "VALOR TOTAL DOS PRODUTOS"
+- payment_method = extrair de "DADOS ADICIONAIS" ou "INFORMAÇÕES COMPLEMENTARES":
+  - se contiver "CARTAO" → "credito"
+  - se contiver "PIX" → "pix"
+  - se contiver "DINHEIRO" ou "AVISTA" → "dinheiro"
+  - se contiver "BOLETO" ou "DUPLICATA" → "transferencia"
+- items = tabela "DADOS DO PRODUTO/SERVIÇO" — cada linha é um item com:
+  - name = DESCRIÇÃO DO PRODUTO/SERVIÇO
+  - qty = QUANT.
+  - unit_price = VALOR UNITÁRIO
+  - total = VALOR TOTAL
 
-Para NF-e / DANFE (nota_compra):
-- Emitente = campo "EMITENTE" ou "NOME/RAZÃO SOCIAL" do emissor
-- CNPJ do emitente está no campo "CNPJ" da seção emitente
-- Data de emissão está em "DATA DE EMISSÃO" ou "DHEMI" — formato DD/MM/AAAA
-- Itens estão na tabela "DADOS DOS PRODUTOS E SERVIÇOS"
-- Valor total está em "VALOR TOTAL DA NOTA" ou "TOTAL DA NF-e"
-- Chave de acesso tem 44 dígitos numéricos
+INSTRUÇÕES PARA NFS-e (nota_servico):
+- merchant = prestador do serviço
+- service_description = campo "DISCRIMINAÇÃO DOS SERVIÇOS"
+- competence_period = mês/ano de competência no formato MM/AAAA
 
-Para NFS-e (nota_servico):
-- Prestador = empresa que prestou o serviço
-- Tomador = empresa/pessoa que contratou
-- Descrição do serviço = campo "DISCRIMINAÇÃO DOS SERVIÇOS"
-- Valor = "VALOR LÍQUIDO DA NOTA" ou "VALOR DOS SERVIÇOS"
-- Competência = mês/ano de referência do serviço
-
-Para cupom_fiscal (NFC-e):
-- Emitente = nome do estabelecimento no topo
-- Itens = lista de produtos com código, descrição, qtd, valor
-- Total = "TOTAL" ou "VALOR A PAGAR"
-
-REGRAS OBRIGATÓRIAS:
-- Datas SEMPRE no formato DD/MM/AAAA
-- CNPJ SEMPRE no formato XX.XXX.XXX/XXXX-XX
-- Valores SEMPRE como número (ex: 150.90, não "R$ 150,90")
-- Se um campo não estiver visível, retornar null
-
-Retorne APENAS JSON válido, sem markdown, sem texto adicional:
+REGRAS OBRIGATÓRIAS — NUNCA VIOLAR:
+1. Datas SEMPRE no formato DD/MM/AAAA — NUNCA YYYY-MM-DD nem MM/DD/YYYY
+2. CNPJ SEMPRE no formato XX.XXX.XXX/XXXX-XX
+3. Valores SEMPRE como número sem símbolo (ex: 410.52 e não "R$ 410,52")
+4. Vírgula decimal brasileira deve ser convertida para ponto (410,52 → 410.52)
+5. Se um campo não estiver visível, retornar null
+6. Retornar APENAS JSON válido — sem markdown, sem texto, sem explicações
 
 {
   "document_type": "string",
-  "confidence": 0.0,
-  "merchant": "razão social do emitente/prestador ou null",
-  "cnpj": "XX.XXX.XXX/XXXX-XX ou null",
-  "cpf": "CPF se pessoa física ou null",
-  "date": "DD/MM/AAAA ou null",
+  "confidence": 0.95,
+  "merchant": "razão social do emitente",
+  "cnpj": "XX.XXX.XXX/XXXX-XX",
+  "cpf": null,
+  "date": "DD/MM/AAAA",
   "time": "HH:MM ou null",
-  "total": null,
+  "total": 410.52,
   "subtotal": null,
   "discount": null,
   "tax": null,
   "items": [
     {
-      "name": "descrição do produto/serviço",
-      "qty": null,
-      "unit_price": null,
-      "total": 0
+      "name": "descrição do produto",
+      "qty": 6,
+      "unit_price": 29.88,
+      "total": 179.28
     }
   ],
-  "payment_method": "dinheiro|debito|credito|pix|transferencia|null",
+  "payment_method": "credito",
   "installments": null,
-  "service_description": "discriminação dos serviços para NFS-e ou null",
-  "competence_period": "MM/AAAA ou null",
-  "access_key": "chave de 44 dígitos da NF-e ou null",
-  "recipient_name": "nome do destinatário/tomador ou null",
+  "service_description": null,
+  "competence_period": null,
+  "access_key": "44 dígitos ou null",
+  "recipient_name": "razão social do destinatário ou null",
   "pix_key": null,
   "pix_end_to_end": null,
   "bank_origin": null,
   "bank_destination": null,
-  "notes": "observações relevantes ou null"
+  "notes": null
 }
 `
 
@@ -146,20 +145,23 @@ const FALLBACK_RESULT: GeminiOCRResult = {
   notes: null,
 }
 
-function normalizeDate(raw: string | null): string | null {
+function normalizeDate(raw: string | null | undefined): string | null {
   if (!raw) return null
-  // YYYY-MM-DD → DD/MM/AAAA
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const [y, m, d] = raw.split('-')
+  const s = raw.trim()
+  // YYYY-MM-DD → DD/MM/YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-')
     return `${d}/${m}/${y}`
   }
-  // MM/DD/YYYY — detectar: se o primeiro segmento > 12 já é DD/MM (ok), senão inverter
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    const [a, b, y] = raw.split('/')
-    if (parseInt(a) > 12) return raw // primeiro segmento > 12 → já é DD/MM/AAAA
-    return `${b}/${a}/${y}`          // formato americano → inverter
+  // MM/DD/YYYY ou DD/MM/YYYY — distinguir pelos valores
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [a, b, y] = s.split('/')
+    const aNum = parseInt(a), bNum = parseInt(b)
+    if (aNum > 12) return s                // já é DD/MM/YYYY (dia inambíguo)
+    if (bNum > 12) return `${b}/${a}/${y}` // claramente MM/DD — inverter
+    return `${b}/${a}/${y}`               // ambíguo — assumir MM/DD e inverter
   }
-  return raw
+  return s
 }
 
 export async function analyzeReceiptWithGemini(
