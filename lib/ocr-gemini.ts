@@ -153,7 +153,7 @@ const FALLBACK_RESULT: GeminiOCRResult = {
 export function normalizeDate(raw: string | null | undefined): string | null {
   if (!raw) return null
   const s = raw.trim()
-  // YYYY-MM-DD → DD/MM/YYYY (mais comum vindo do Gemini)
+  // YYYY-MM-DD → DD/MM/YYYY
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split('-')
     return `${d}/${m}/${y}`
@@ -163,13 +163,8 @@ export function normalizeDate(raw: string | null | undefined): string | null {
     const [y, m, d] = s.split('/')
     return `${d}/${m}/${y}`
   }
-  // MM/DD/YYYY ou DD/MM/YYYY — distinguir pelos valores
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-    const [a, b, y] = s.split('/')
-    const aNum = parseInt(a)
-    if (aNum > 12) return s           // já é DD/MM/YYYY (dia inambíguo)
-    return `${b}/${a}/${y}`           // assumir MM/DD e inverter
-  }
+  // DD/MM/YYYY — já correto, não mexer
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s
   return s
 }
 
