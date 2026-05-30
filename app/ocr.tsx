@@ -19,7 +19,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../constants/colors'
 // Google Vision — substituído pelo Gemini OCR (lib/ocr-gemini.ts)
 // import { processReceipt } from '../lib/ocr'
-import { imageToBase64, captureReceipt, pickReceiptFromGallery } from '../lib/ocr'
+import { captureReceipt, pickReceiptFromGallery } from '../lib/ocr'
 import type { NFCeResult } from '../lib/ocr'
 import { analyzeReceiptWithGemini, normalizeDate } from '../lib/ocr-gemini'
 import * as ImageManipulator from 'expo-image-manipulator'
@@ -267,18 +267,21 @@ export default function OCRScreen() {
         const compressed = await ImageManipulator.manipulateAsync(
           uri,
           [{ resize: { width: 1200 } }],
-          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
         )
-        base64 = await imageToBase64(compressed.uri)
+        if (!compressed.base64) throw new Error('ImageManipulator não retornou base64')
+        base64 = compressed.base64
         mimeType = 'image/jpeg'
       }
 
       setProcessingMessage('Analisando com IA...')
       result = await analyzeReceiptWithGemini(base64, mimeType)
-    } catch {
+    } catch (err: any) {
+      const msg: string = err?.message ?? String(err)
+      console.error('[OCR] erro:', msg)
       Alert.alert(
-        'Serviço indisponível',
-        'Serviço de leitura temporariamente indisponível. Preencha manualmente.',
+        'Erro no OCR',
+        `${msg}\n\nPreencha os dados manualmente.`,
         [{ text: 'OK' }]
       )
       setDocumentType('desconhecido')
