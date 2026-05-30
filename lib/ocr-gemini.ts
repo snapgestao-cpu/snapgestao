@@ -164,6 +164,36 @@ function normalizeDate(raw: string | null | undefined): string | null {
   return s
 }
 
+const PROMPT_PDF_TEST = `
+Analise este DANFE (Nota Fiscal Eletrônica brasileira) e extraia em JSON:
+{
+  "document_type": "nota_compra",
+  "confidence": 0.9,
+  "merchant": "nome do emitente",
+  "cnpj": "CNPJ do emitente",
+  "date": "data de emissão DD/MM/AAAA",
+  "total": 0,
+  "items": [{"name": "descrição", "qty": 1, "unit_price": 0, "total": 0}],
+  "payment_method": "credito ou pix ou dinheiro",
+  "recipient_name": "nome do destinatário",
+  "access_key": "chave de 44 dígitos",
+  "service_description": null,
+  "competence_period": null,
+  "cpf": null,
+  "time": null,
+  "subtotal": null,
+  "discount": null,
+  "tax": null,
+  "installments": null,
+  "pix_key": null,
+  "pix_end_to_end": null,
+  "bank_origin": null,
+  "bank_destination": null,
+  "notes": null
+}
+Retorne APENAS o JSON, sem markdown.
+`
+
 export async function analyzeReceiptWithGemini(
   base64Image: string,
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf' = 'image/jpeg'
@@ -179,7 +209,32 @@ export async function analyzeReceiptWithGemini(
   const timeoutId = setTimeout(() => controller.abort(), 30_000)
 
   const startTime = Date.now()
-  if (isPDF) console.log('[Gemini PDF] iniciando chamada ao modelo', model)
+
+  const prompt = isPDF ? PROMPT_PDF_TEST : PROMPT_OCR
+
+  const body = {
+    contents: [{
+      role: 'user',
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64Image } },
+        { text: prompt },
+      ],
+    }],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 8192,
+    },
+  }
+
+  if (isPDF) {
+    const inlineData = (body.contents[0].parts[0] as { inline_data: { mime_type: string; data: string } }).inline_data
+    console.log('[Gemini PDF] iniciando chamada ao modelo', model)
+    console.log('[Gemini PDF] body keys:', Object.keys(body))
+    console.log('[Gemini PDF] mime_type:', inlineData.mime_type)
+    console.log('[Gemini PDF] data length:', inlineData.data.length)
+    console.log('[Gemini PDF] data prefix:', inlineData.data.slice(0, 20))
+    console.log('[Gemini PDF] prompt length:', prompt.length)
+  }
 
   let response: Response
   try {
@@ -187,18 +242,7 @@ export async function analyzeReceiptWithGemini(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: mimeType, data: base64Image } },
-            { text: PROMPT_OCR },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
-        },
-      }),
+      body: JSON.stringify(body),
     })
   } catch (e: any) {
     clearTimeout(timeoutId)
@@ -216,8 +260,20 @@ export async function analyzeReceiptWithGemini(
     throw new Error(`Gemini API ${response.status}: ${err}`)
   }
 
-  const data = await response.json()
-  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const responseData = await response.json()
+
+  if (isPDF) {
+    console.log('[Gemini PDF] candidates count:', responseData?.candidates?.length)
+    console.log('[Gemini PDF] finish reason:', responseData?.candidates?.[0]?.finishReason)
+    console.log('[Gemini PDF] safety ratings:', JSON.stringify(responseData?.candidates?.[0]?.safetyRatings))
+  }
+
+  const text: string = responseData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+  if (isPDF) {
+    console.log('[Gemini PDF] raw response length:', text.length)
+    console.log('[Gemini PDF] raw response FULL:', text)
+  }
 
   // Extract JSON — Gemini may wrap in markdown code blocks
   const jsonMatch = text.match(/\{[\s\S]*\}/)
