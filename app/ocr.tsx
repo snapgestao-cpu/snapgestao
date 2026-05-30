@@ -138,14 +138,15 @@ export default function OCRScreen() {
     defaultPotName?: string
   }>()
 
-  const initialDate = cycleDate ?? new Date().toISOString().split('T')[0]
+  const initialDate = cycleDate ?? new Date().toISOString().split('T')[0] // YYYY-MM-DD (fallback/DB)
+  const initialDisplayDate = normalizeDate(initialDate) ?? initialDate   // DD/MM/YYYY (exibição)
 
   const [step, setStep] = useState<OCRStep>('menu')
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
   const [total, setTotal] = useState('')
-  const [receiptDate, setReceiptDate] = useState(initialDate)
+  const [receiptDate, setReceiptDate] = useState(initialDisplayDate)
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [pots, setPots] = useState<Pot[]>([])
   const [simplified, setSimplified] = useState(false)
@@ -233,13 +234,6 @@ export default function OCRScreen() {
     }
   }, [globalPotId])
 
-  function parseGeminiDate(d: string | null): string {
-    if (!d) return initialDate
-    const parts = d.match(/(\d{2})\/(\d{2})\/(\d{4})/)
-    if (!parts) return initialDate
-    return `${parts[3]}-${parts[2]}-${parts[1]}`
-  }
-
   function mapGeminiPayment(pm: string | null): string {
     switch (pm) {
       case 'dinheiro': return 'cash'
@@ -297,7 +291,7 @@ export default function OCRScreen() {
     setOcrConfidence(result.confidence)
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
-    setReceiptDate(parseGeminiDate(normalizeDate(result.date)))
+    setReceiptDate(normalizeDate(result.date) ?? initialDisplayDate)
     setPaymentMethod(mapGeminiPayment(result.payment_method))
     setPixKey(result.pix_key)
     setPixEndToEnd(result.pix_end_to_end)
@@ -422,7 +416,7 @@ export default function OCRScreen() {
     setIrProviderName(result.merchant ?? '')
     setMerchant(result.merchant ?? '')
     setTotal(result.total != null ? String(result.total) : '')
-    setReceiptDate(result.emission_date ?? initialDate)
+    setReceiptDate(normalizeDate(result.emission_date) ?? initialDisplayDate)
     setPaymentMethod(result.payment_method ?? 'debit')
     setReviewItems((result.items ?? []).map((item, i) => ({
       id: String(i),
@@ -453,10 +447,17 @@ export default function OCRScreen() {
 
   const handleSave = async () => {
     if (!user) return
+    if (receiptDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(receiptDate)) {
+      Alert.alert('Data inválida', 'Use o formato DD/MM/AAAA.')
+      return
+    }
     setStep('saving')
 
     const userId = user.id
-    const today = receiptDate || new Date().toISOString().split('T')[0]
+    const todayISO = new Date().toISOString().split('T')[0]
+    const today = /^\d{2}\/\d{2}\/\d{4}$/.test(receiptDate)
+      ? receiptDate.split('/').reverse().join('-')
+      : receiptDate || todayISO
     const totalAmount = parseFloat(total) || 0
     const isCredit = paymentMethod === 'credit'
     const card = cards.find(c => c.id === selectedCardId) ?? null
@@ -563,9 +564,9 @@ export default function OCRScreen() {
           .map(i => ({ name: i.name, totalValue: i.valueCents / 100, quantity: i.quantity || 1 }))
 
         if (optIn === true) {
-          submitPriceData(priceItems, merchant, '', nfceMeta.cnpj, receiptDate).catch(() => {})
+          submitPriceData(priceItems, merchant, '', nfceMeta.cnpj, today).catch(() => {})
         } else if (optIn === null) {
-          localPriceData = { items: priceItems, merchant, cnpj: nfceMeta.cnpj, emission_date: receiptDate }
+          localPriceData = { items: priceItems, merchant, cnpj: nfceMeta.cnpj, emission_date: today }
           setPendingPriceData(localPriceData)
         }
       }
@@ -830,7 +831,7 @@ export default function OCRScreen() {
             style={styles.fieldInput}
             value={receiptDate}
             onChangeText={setReceiptDate}
-            placeholder="AAAA-MM-DD"
+            placeholder="DD/MM/AAAA"
             placeholderTextColor={Colors.textMuted}
           />
         </View>
