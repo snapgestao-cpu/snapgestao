@@ -255,7 +255,7 @@ export default function OCRScreen() {
   const handleOCRCapture = async (uri: string | null, mode: 'image' | 'pdf' = 'image') => {
     if (!uri || !user) return
     setImageUri(mode === 'image' ? uri : null)
-    setProcessingMessage(mode === 'pdf' ? 'Analisando PDF...' : 'Analisando documento...')
+    setProcessingMessage(mode === 'pdf' ? 'Lendo PDF...' : 'Lendo documento...')
     setStep('processing')
     await loadPots()
 
@@ -279,6 +279,7 @@ export default function OCRScreen() {
         mimeType = 'image/jpeg'
       }
 
+      setProcessingMessage('Analisando com IA...')
       result = await analyzeReceiptWithGemini(base64, mimeType)
     } catch {
       Alert.alert(

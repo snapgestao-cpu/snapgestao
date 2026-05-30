@@ -7,7 +7,8 @@
 
 import { ReceiptDocumentType } from '../types'
 
-export const GEMINI_OCR_MODEL = 'gemini-2.5-flash'
+export const GEMINI_OCR_MODEL = 'gemini-2.5-flash'   // imagens
+export const GEMINI_PDF_MODEL  = 'gemini-1.5-flash'   // PDF — menor latência
 
 export type GeminiOCRItem = {
   name: string
@@ -42,6 +43,7 @@ export type GeminiOCRResult = {
 }
 
 const PROMPT_OCR = `Você é um especialista em documentos financeiros brasileiros.
+IMPORTANTE: Retorne datas SEMPRE no formato brasileiro DD/MM/AAAA.
 
 Analise esta imagem e identifique o tipo de documento:
 - cupom_fiscal: Cupom NFC-e ou CF-e de estabelecimento comercial
@@ -122,6 +124,22 @@ const FALLBACK_RESULT: GeminiOCRResult = {
   notes: null,
 }
 
+function normalizeDate(raw: string | null): string | null {
+  if (!raw) return null
+  // YYYY-MM-DD → DD/MM/AAAA
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-')
+    return `${d}/${m}/${y}`
+  }
+  // MM/DD/YYYY — detectar: se o primeiro segmento > 12 já é DD/MM (ok), senão inverter
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [a, b, y] = raw.split('/')
+    if (parseInt(a) > 12) return raw // primeiro segmento > 12 → já é DD/MM/AAAA
+    return `${b}/${a}/${y}`          // formato americano → inverter
+  }
+  return raw
+}
+
 export async function analyzeReceiptWithGemini(
   base64Image: string,
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf' = 'image/jpeg'
@@ -129,11 +147,22 @@ export async function analyzeReceiptWithGemini(
   const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
   if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_OCR_MODEL}:generateContent?key=${apiKey}`,
-    {
+  const isPDF = mimeType === 'application/pdf'
+  const model = isPDF ? GEMINI_PDF_MODEL : GEMINI_OCR_MODEL
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30_000)
+
+  const startTime = Date.now()
+  if (isPDF) console.log('[Gemini PDF] iniciando chamada ao modelo', model)
+
+  let response: Response
+  try {
+    response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         contents: [{
           parts: [
@@ -146,8 +175,17 @@ export async function analyzeReceiptWithGemini(
           maxOutputTokens: 2048,
         },
       }),
-    }
-  )
+    })
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e?.name === 'AbortError') throw new Error('Tempo limite excedido. Tente novamente.')
+    throw e
+  }
+  clearTimeout(timeoutId)
+
+  if (isPDF) {
+    console.log('[Gemini PDF] resposta em', Date.now() - startTime, 'ms | status', response.status)
+  }
 
   if (!response.ok) {
     const err = await response.text()
@@ -169,7 +207,7 @@ export async function analyzeReceiptWithGemini(
       merchant: p.merchant ?? null,
       cnpj: p.cnpj ?? null,
       cpf: p.cpf ?? null,
-      date: p.date ?? null,
+      date: normalizeDate(p.date ?? null),
       time: p.time ?? null,
       total: typeof p.total === 'number' ? p.total : null,
       subtotal: typeof p.subtotal === 'number' ? p.subtotal : null,
