@@ -34,7 +34,13 @@ import { groupTransactionsByMerchantAndDate, groupByDate, formatDateHeader } fro
 import { SearchBar } from '../../components/SearchBar'
 import NewScheduledModal from '../../components/NewScheduledModal'
 import ScheduledItem from '../../components/ScheduledItem'
-import { getScheduledForMonth, confirmScheduled, cancelScheduledMonth } from '../../lib/scheduled-transactions'
+import EditScheduledModal from '../../components/EditScheduledModal'
+import {
+  getScheduledForMonth,
+  confirmScheduled,
+  cancelScheduledMonth,
+  cancelScheduledFromMonth,
+} from '../../lib/scheduled-transactions'
 
 type TxWithPot = Transaction & { potName?: string; potColor?: string }
 
@@ -71,6 +77,7 @@ export default function PotDetailScreen() {
   const [searchQuery, setSearchQuery] = useState('')
   const [scheduledItems, setScheduledItems] = useState<any[]>([])
   const [showScheduledModal, setShowScheduledModal] = useState(false)
+  const [editingScheduled, setEditingScheduled] = useState<any | null>(null)
 
   const loadData = useCallback(async () => {
     if (!user || !id) return
@@ -303,12 +310,20 @@ export default function PotDetailScreen() {
                 key={item.id}
                 item={item}
                 vencimento={item.vencimento}
+                onEdit={() => setEditingScheduled(item)}
                 onConfirm={() => {
                   const s = item.scheduled_transactions
-                  const amountFmt = Number(s?.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  // Usa overrides do mês se existirem, senão usa o pai
+                  const effDescription = item.description ?? s?.description
+                  const effAmount = item.amount != null ? item.amount : s?.amount
+                  const effPayment = item.payment_method ?? s?.payment_method
+                  const effCardId = item.credit_card_id ?? s?.credit_card_id ?? null
+                  const effMerchant = item.merchant !== undefined ? item.merchant : (s?.merchant ?? null)
+                  const effDate = item.date ?? item.vencimento ?? new Date().toISOString().split('T')[0]
+                  const amountFmt = Number(effAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                   Alert.alert(
                     '✅ Confirmar lançamento',
-                    `Confirmar "${s?.description}" de ${amountFmt}?`,
+                    `Confirmar "${effDescription}" de ${amountFmt}?`,
                     [
                       { text: 'Cancelar', style: 'cancel' },
                       {
@@ -318,15 +333,17 @@ export default function PotDetailScreen() {
                             await confirmScheduled(
                               item.id, s.id, user!.id, s.pot_id,
                               {
-                                description: s.description,
-                                amount: s.amount,
-                                payment_method: s.payment_method,
-                                merchant: s.merchant,
-                                date: new Date().toISOString().split('T')[0],
+                                description: effDescription,
+                                amount: effAmount,
+                                payment_method: effPayment,
+                                credit_card_id: effCardId,
+                                merchant: effMerchant,
+                                date: effDate,
                                 is_ir_deductible: s.is_ir_deductible,
                                 ir_category: s.ir_category,
                                 ir_provider_name: s.ir_provider_name,
                                 ir_provider_document: s.ir_provider_document,
+                                ir_receipt_number: s.ir_receipt_number,
                               }
                             )
                             await Promise.all([loadScheduled(), loadData()])
@@ -340,23 +357,35 @@ export default function PotDetailScreen() {
                   )
                 }}
                 onCancel={() => {
+                  const s = item.scheduled_transactions
                   Alert.alert(
-                    '🗑️ Excluir este mês',
-                    'Excluir apenas este mês? Os outros meses não serão afetados.',
+                    '🗑️ O que deseja cancelar?',
+                    '',
                     [
-                      { text: 'Cancelar', style: 'cancel' },
                       {
-                        text: 'Excluir',
-                        style: 'destructive',
+                        text: 'Apenas este mês',
                         onPress: async () => {
                           try {
                             await cancelScheduledMonth(item.id)
                             await loadScheduled()
                           } catch {
-                            Alert.alert('Erro', 'Não foi possível excluir.')
+                            Alert.alert('Erro', 'Não foi possível cancelar.')
                           }
                         },
                       },
+                      {
+                        text: 'Este e os próximos meses',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await cancelScheduledFromMonth(s.id, item.reference_month)
+                            await loadScheduled()
+                          } catch {
+                            Alert.alert('Erro', 'Não foi possível cancelar.')
+                          }
+                        },
+                      },
+                      { text: 'Cancelar', style: 'cancel' },
                     ]
                   )
                 }}
@@ -499,6 +528,18 @@ export default function PotDetailScreen() {
         onSuccess={msg => { setEditingTx(null); handleSuccess(msg) }}
       />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
+      <EditScheduledModal
+        visible={!!editingScheduled}
+        item={editingScheduled}
+        cycleStart={user?.cycle_start ?? 1}
+        cycleOffset={cycleOffset}
+        onClose={() => setEditingScheduled(null)}
+        onSuccess={() => {
+          setEditingScheduled(null)
+          loadScheduled()
+          setToast({ message: 'Agendamento atualizado!', color: Colors.primary })
+        }}
+      />
       <NewScheduledModal
         visible={showScheduledModal}
         potId={pot.id}

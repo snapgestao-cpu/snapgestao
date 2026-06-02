@@ -1,7 +1,7 @@
 /**
  * Criador: Diego Manhães
  * Data: 07/05/2026
- * Modificado em: 07/05/2026
+ * Modificado em: 02/06/2026
  *
  * Lançamentos a confirmar — transações recorrentes agendadas
  * dentro de um pote. O usuário confirma mês a mês para gerar
@@ -11,7 +11,8 @@
 
 import { supabase } from './supabase'
 import { getCycle } from './cycle'
-import type { IRCategory } from '../types'
+import { calcBillingDate, calcBillingDateNoCard } from './billing-date'
+import type { CreditCard, IRCategory } from '../types'
 
 export type ScheduledTransaction = {
   id: string
@@ -20,6 +21,7 @@ export type ScheduledTransaction = {
   description: string
   amount: number
   payment_method: string
+  credit_card_id: string | null
   merchant: string | null
   start_date: string
   total_months: number
@@ -28,6 +30,7 @@ export type ScheduledTransaction = {
   ir_category: IRCategory | null
   ir_provider_name: string | null
   ir_provider_document: string | null
+  ir_receipt_number: string | null
 }
 
 export type ScheduledTransactionMonth = {
@@ -38,6 +41,13 @@ export type ScheduledTransactionMonth = {
   status: 'pending' | 'confirmed' | 'cancelled'
   transaction_id: string | null
   confirmed_at: string | null
+  // overrides por mês (null = herda do pai)
+  description: string | null
+  amount: number | null
+  merchant: string | null
+  date: string | null
+  payment_method: string | null
+  credit_card_id: string | null
 }
 
 export async function createScheduledTransaction(
@@ -47,6 +57,7 @@ export async function createScheduledTransaction(
     description: string
     amount: number
     payment_method: string
+    credit_card_id?: string | null
     merchant?: string
     start_date: string
     total_months: number
@@ -54,6 +65,7 @@ export async function createScheduledTransaction(
     ir_category?: IRCategory | null
     ir_provider_name?: string | null
     ir_provider_document?: string | null
+    ir_receipt_number?: string | null
   }
 ): Promise<void> {
   const { data: scheduled, error } = await supabase
@@ -64,6 +76,7 @@ export async function createScheduledTransaction(
       description: data.description,
       amount: data.amount,
       payment_method: data.payment_method,
+      credit_card_id: data.credit_card_id ?? null,
       merchant: data.merchant || null,
       start_date: data.start_date,
       total_months: data.total_months,
@@ -71,6 +84,7 @@ export async function createScheduledTransaction(
       ir_category: data.is_ir_deductible ? (data.ir_category ?? null) : null,
       ir_provider_name: data.is_ir_deductible ? (data.ir_provider_name ?? null) : null,
       ir_provider_document: data.is_ir_deductible ? (data.ir_provider_document ?? null) : null,
+      ir_receipt_number: data.is_ir_deductible ? (data.ir_receipt_number ?? null) : null,
     })
     .select()
     .single()
@@ -104,10 +118,7 @@ export async function createScheduledTransaction(
   if (monthsError) throw monthsError
 }
 
-// Calcula o dia de vencimento de uma parcela:
-// mantém o dia de start_date, aplica o mês/ano de referenceMonth.
-// Ex: start_date=2026-05-01, referenceMonth=2026-06-01 → 2026-06-01
-// Ex: start_date=2026-01-31, referenceMonth=2026-02-01 → 2026-02-28 (clampado)
+// Mantém o dia de start_date no mês de referência (com clamp no último dia do mês)
 function getVencimentoForMonth(startDate: string, referenceMonth: string): string {
   const startDay = parseInt(startDate.split('-')[2], 10)
   const [refYear, refMonth] = referenceMonth.split('-')
@@ -132,8 +143,10 @@ export async function getScheduledForMonth(
       *,
       scheduled_transactions (
         id, description, amount,
-        payment_method, merchant, pot_id,
+        payment_method, credit_card_id,
+        merchant, pot_id,
         start_date,
+        is_ir_deductible, ir_category, ir_provider_name, ir_provider_document, ir_receipt_number,
         pots ( name, color )
       )
     `)
@@ -164,14 +177,33 @@ export async function confirmScheduled(
     description: string
     amount: number
     payment_method: string
+    credit_card_id?: string | null
     merchant: string | null
     date: string
     is_ir_deductible?: boolean | null
     ir_category?: IRCategory | null
     ir_provider_name?: string | null
     ir_provider_document?: string | null
+    ir_receipt_number?: string | null
   }
 ): Promise<void> {
+  let billingDate: string | null = null
+
+  if (data.payment_method === 'credit') {
+    if (data.credit_card_id) {
+      const { data: card } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('id', data.credit_card_id)
+        .single()
+      billingDate = card
+        ? calcBillingDate(data.date, card as CreditCard, 0)
+        : calcBillingDateNoCard(data.date, 0)
+    } else {
+      billingDate = calcBillingDateNoCard(data.date, 0)
+    }
+  }
+
   const { data: transaction, error } = await supabase
     .from('transactions')
     .insert({
@@ -183,11 +215,14 @@ export async function confirmScheduled(
       merchant: data.merchant,
       date: data.date,
       payment_method: data.payment_method,
-      billing_date: null,
+      card_id: data.credit_card_id ?? null,
+      billing_date: billingDate,
       is_ir_deductible: data.is_ir_deductible ?? false,
       ir_category: data.is_ir_deductible ? (data.ir_category ?? null) : null,
       ir_provider_name: data.is_ir_deductible ? (data.ir_provider_name ?? null) : null,
       ir_provider_document: data.is_ir_deductible ? (data.ir_provider_document ?? null) : null,
+      ir_receipt_number: data.is_ir_deductible ? (data.ir_receipt_number ?? null) : null,
+      ir_receipt_image_path: null,
     })
     .select()
     .single()
@@ -213,6 +248,118 @@ export async function cancelScheduledMonth(monthId: string): Promise<void> {
     .eq('id', monthId)
 
   if (error) throw error
+}
+
+// Cancela este mês e todos os próximos pendentes da mesma série
+export async function cancelScheduledFromMonth(
+  scheduledId: string,
+  referenceMonth: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('scheduled_transaction_months')
+    .update({ status: 'cancelled' })
+    .eq('scheduled_transaction_id', scheduledId)
+    .gte('reference_month', referenceMonth)
+    .eq('status', 'pending')
+
+  if (error) throw error
+}
+
+// Edita apenas este mês: overrides não-IR ficam no mês; campos IR sempre vão ao pai
+export async function updateScheduledMonthOnly(
+  monthId: string,
+  scheduledId: string,
+  data: {
+    // overrides por mês
+    description?: string | null
+    amount?: number | null
+    payment_method?: string | null
+    credit_card_id?: string | null
+    merchant?: string | null
+    date?: string | null
+    // campos IR — salvos no pai, valem para todos os meses
+    is_ir_deductible?: boolean
+    ir_category?: IRCategory | null
+    ir_provider_name?: string | null
+    ir_provider_document?: string | null
+    ir_receipt_number?: string | null
+  }
+): Promise<void> {
+  const { is_ir_deductible, ir_category, ir_provider_name, ir_provider_document, ir_receipt_number, ...monthData } = data
+
+  const { error: monthError } = await supabase
+    .from('scheduled_transaction_months')
+    .update(monthData)
+    .eq('id', monthId)
+  if (monthError) throw monthError
+
+  // Salva IR no pai (se veio algum campo IR)
+  if (is_ir_deductible !== undefined) {
+    const { error: irError } = await supabase
+      .from('scheduled_transactions')
+      .update({
+        is_ir_deductible,
+        ir_category: is_ir_deductible ? (ir_category ?? null) : null,
+        ir_provider_name: is_ir_deductible ? (ir_provider_name ?? null) : null,
+        ir_provider_document: is_ir_deductible ? (ir_provider_document ?? null) : null,
+        ir_receipt_number: is_ir_deductible ? (ir_receipt_number ?? null) : null,
+      })
+      .eq('id', scheduledId)
+    if (irError) throw irError
+  }
+}
+
+// Edita este mês e os próximos: atualiza o pai e limpa overrides dos meses pendentes
+export async function updateScheduledFromMonth(
+  scheduledId: string,
+  referenceMonth: string,
+  data: {
+    description: string
+    amount: number
+    payment_method: string
+    credit_card_id?: string | null
+    merchant?: string | null
+    is_ir_deductible?: boolean
+    ir_category?: IRCategory | null
+    ir_provider_name?: string | null
+    ir_provider_document?: string | null
+    ir_receipt_number?: string | null
+  }
+): Promise<void> {
+  const { error: parentError } = await supabase
+    .from('scheduled_transactions')
+    .update({
+      description: data.description,
+      amount: data.amount,
+      payment_method: data.payment_method,
+      credit_card_id: data.credit_card_id ?? null,
+      merchant: data.merchant ?? null,
+      is_ir_deductible: data.is_ir_deductible ?? false,
+      ir_category: data.is_ir_deductible ? (data.ir_category ?? null) : null,
+      ir_provider_name: data.is_ir_deductible ? (data.ir_provider_name ?? null) : null,
+      ir_provider_document: data.is_ir_deductible ? (data.ir_provider_document ?? null) : null,
+      ir_receipt_number: data.is_ir_deductible ? (data.ir_receipt_number ?? null) : null,
+    })
+    .eq('id', scheduledId)
+
+  if (parentError) throw parentError
+
+  // Limpa overrides de meses pendentes a partir deste mês
+  const { error: monthsError } = await supabase
+    .from('scheduled_transaction_months')
+    .update({
+      description: null,
+      amount: null,
+      payment_method: null,
+      credit_card_id: null,
+      merchant: null,
+      date: null,
+    })
+    .eq('scheduled_transaction_id', scheduledId)
+    .gte('reference_month', referenceMonth)
+    .eq('status', 'pending')
+
+  if (monthsError) throw monthsError
 }
 
 export async function deleteScheduledTransaction(

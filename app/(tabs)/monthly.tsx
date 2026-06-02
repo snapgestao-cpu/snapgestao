@@ -22,6 +22,7 @@ import { NewIncomeModal } from '../../components/NewIncomeModal'
 import { NewPotModal } from '../../components/NewPotModal'
 import { EditTransactionModal } from '../../components/EditTransactionModal'
 import { ImportFileModal } from '../../components/ImportFileModal'
+import NewScheduledModal from '../../components/NewScheduledModal'
 import { Toast } from '../../components/Toast'
 import { BadgeToast } from '../../components/BadgeToast'
 import { checkAndGrantBadges, Badge } from '../../lib/badges'
@@ -80,6 +81,7 @@ export default function MonthlyScreen() {
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showNewPot, setShowNewPot] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showScheduled, setShowScheduled] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const fabAnim = useRef(new Animated.Value(0)).current
   const [showExpense, setShowExpense] = useState(false)
@@ -186,10 +188,11 @@ export default function MonthlyScreen() {
   const fabRotate = fabAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] })
 
   const FAB_ITEMS = [
-    { key: 'import',  label: '+Arquivo',           color: '#534AB7',       icon: '📊' },
-    { key: 'ocr',     label: 'Escanear cupom',     color: Colors.primary,  icon: '📷' },
-    { key: 'income',  label: 'Registrar receita',  color: Colors.success,  icon: '↑' },
-    { key: 'expense', label: 'Registrar gasto',    color: Colors.danger,   icon: '↓' },
+    { key: 'import',    label: '+Arquivo',            color: '#534AB7',      icon: '📊' },
+    { key: 'ocr',       label: 'Escanear cupom',      color: Colors.primary, icon: '📷' },
+    { key: 'income',    label: 'Registrar receita',   color: Colors.success, icon: '↑' },
+    { key: 'expense',   label: 'Registrar gasto',     color: Colors.danger,  icon: '↓' },
+    { key: 'schedule',  label: 'Agendar lançamento',  color: '#92400E',      icon: '📋' },
   ]
 
   // For current cycle use today, for past cycles use cycle start
@@ -202,6 +205,7 @@ export default function MonthlyScreen() {
     if (key === 'expense') setShowExpense(true)
     else if (key === 'income') setShowIncome(true)
     else if (key === 'import') setShowImport(true)
+    else if (key === 'schedule') setShowScheduled(true)
     else if (key === 'ocr') {
       router.push({
         pathname: '/ocr',
@@ -868,6 +872,17 @@ export default function MonthlyScreen() {
           cycleEndISO={cycle.endISO}
         />
       )}
+      <NewScheduledModal
+        visible={showScheduled}
+        pots={expPots}
+        cycleStart={user?.cycle_start ?? 1}
+        cycleOffset={offset}
+        onClose={() => setShowScheduled(false)}
+        onSuccess={() => {
+          setShowScheduled(false)
+          handleTxSuccess('Lançamento agendado!')
+        }}
+      />
       {toast && <Toast message={toast.message} color={toast.color} onHide={() => setToast(null)} />}
       {pendingBadges.length > 0 && (
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />

@@ -1,11 +1,11 @@
 /**
  * Criador: Diego Manhães
- * Data: 07/05/2026
- * Modificado em: 02/06/2026
+ * Data: 02/06/2026
  *
- * Modal de criação de lançamento agendado — descrição, valor,
- * data de início, total de meses, forma de pagamento e cartão.
- * Cria as rows em scheduled_transactions e scheduled_transaction_months.
+ * Modal de edição de lançamento agendado pendente.
+ * Permite editar todos os campos. Campos IR só para Premium.
+ * Ao salvar, pergunta o escopo: apenas este mês ou este e os próximos.
+ * IR sempre salvo no pai (scheduled_transactions), independente do escopo.
  */
 
 import React, { useState, useEffect } from 'react'
@@ -15,18 +15,19 @@ import {
 } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Colors } from '../constants/colors'
-import { createScheduledTransaction } from '../lib/scheduled-transactions'
+import {
+  updateScheduledMonthOnly,
+  updateScheduledFromMonth,
+} from '../lib/scheduled-transactions'
+import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { getCycle } from '../lib/cycle'
-import { supabase } from '../lib/supabase'
-import { IRCategory, CreditCard, Pot } from '../types'
+import { CreditCard, IRCategory } from '../types'
 import { IR_CATEGORY_LABELS } from '../lib/ir'
 
 type Props = {
   visible: boolean
-  potId?: string | null
-  potName?: string | null
-  pots?: Pot[]
+  item: any | null
   cycleStart: number
   cycleOffset: number
   onClose: () => void
@@ -47,35 +48,50 @@ function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export default function NewScheduledModal({
-  visible, potId: propPotId, potName: propPotName, pots, cycleStart, cycleOffset, onClose, onSuccess,
+export default function EditScheduledModal({
+  visible, item, cycleStart, cycleOffset, onClose, onSuccess,
 }: Props) {
   const user = useAuthStore(s => s.user)
-  const irModuleEnabled = user?.plan === 'premium'
-  // Seleção de pote quando não vem pré-selecionado
-  const [selectedPotId, setSelectedPotId] = useState<string | null>(propPotId ?? null)
-  const [selectedPotName, setSelectedPotName] = useState<string>(propPotName ?? '')
-  const potId = propPotId ?? selectedPotId
-  const potName = propPotId ? (propPotName ?? '') : selectedPotName
+  const isPremium = user?.plan === 'premium'
+  const { start, end } = getCycle(cycleStart, cycleOffset)
+
   const [description, setDescription] = useState('')
   const [amountCents, setAmountCents] = useState(0)
+  const [merchant, setMerchant] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('debit')
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [cards, setCards] = useState<CreditCard[]>([])
-  const [merchant, setMerchant] = useState('')
-  const [totalMonths, setTotalMonths] = useState(1)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [showDatePicker, setShowDatePicker] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // IR state
   const [isIrDeductible, setIsIrDeductible] = useState(false)
   const [irCategory, setIrCategory] = useState<IRCategory>('saude')
   const [irProviderName, setIrProviderName] = useState('')
   const [irProviderDocument, setIrProviderDocument] = useState('')
   const [irReceiptNumber, setIrReceiptNumber] = useState('')
 
-  const { start, end } = getCycle(cycleStart, cycleOffset)
-  const [selectedDate, setSelectedDate] = useState<Date>(
-    cycleOffset === 0 ? new Date() : start
-  )
-  const [showDatePicker, setShowDatePicker] = useState(false)
+  // Re-init when item changes
+  useEffect(() => {
+    if (!item) return
+    const s = item.scheduled_transactions
+    setDescription(item.description ?? s?.description ?? '')
+    const amt = item.amount != null ? item.amount : (s?.amount ?? 0)
+    setAmountCents(Math.round(amt * 100))
+    setMerchant(item.merchant ?? s?.merchant ?? '')
+    const pm = item.payment_method ?? s?.payment_method ?? 'debit'
+    setPaymentMethod(pm)
+    setSelectedCardId(item.credit_card_id ?? s?.credit_card_id ?? null)
+    const ds = item.date ?? item.vencimento ?? new Date().toISOString().split('T')[0]
+    setSelectedDate(new Date(ds + 'T12:00:00'))
+    // IR — sempre do pai
+    setIsIrDeductible(s?.is_ir_deductible ?? false)
+    setIrCategory(s?.ir_category ?? 'saude')
+    setIrProviderName(s?.ir_provider_name ?? '')
+    setIrProviderDocument(s?.ir_provider_document ?? '')
+    setIrReceiptNumber(s?.ir_receipt_number ?? '')
+  }, [item?.id])
 
   useEffect(() => {
     if (paymentMethod !== 'credit') return
@@ -89,28 +105,7 @@ export default function NewScheduledModal({
       })
   }, [paymentMethod])
 
-  function reset() {
-    if (!propPotId) { setSelectedPotId(null); setSelectedPotName('') }
-    setDescription('')
-    setAmountCents(0)
-    setPaymentMethod('debit')
-    setSelectedCardId(null)
-    setCards([])
-    setMerchant('')
-    setTotalMonths(1)
-    setSelectedDate(cycleOffset === 0 ? new Date() : start)
-    setIsIrDeductible(false)
-    setIrCategory('saude')
-    setIrProviderName('')
-    setIrProviderDocument('')
-    setIrReceiptNumber('')
-  }
-
-  async function handleSave() {
-    if (!potId) {
-      Alert.alert('Atenção', 'Selecione o pote.')
-      return
-    }
+  function handleSave() {
     if (!description.trim()) {
       Alert.alert('Atenção', 'Informe a descrição.')
       return
@@ -120,32 +115,68 @@ export default function NewScheduledModal({
       return
     }
 
+    Alert.alert(
+      'Aplicar alterações em:',
+      '',
+      [
+        { text: 'Apenas este mês', onPress: () => saveScope('month') },
+        { text: 'Este e os próximos meses', onPress: () => saveScope('forward') },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    )
+  }
+
+  async function saveScope(scope: 'month' | 'forward') {
+    if (!item) return
     setSaving(true)
     try {
-      await createScheduledTransaction(user!.id, potId, {
-        description: description.trim(),
-        amount: amountCents / 100,
-        payment_method: paymentMethod,
-        credit_card_id: paymentMethod === 'credit' ? (selectedCardId ?? null) : null,
-        merchant: merchant.trim() || undefined,
-        start_date: selectedDate.toISOString().split('T')[0],
-        total_months: totalMonths,
-        is_ir_deductible: isIrDeductible,
-        ir_category: isIrDeductible ? irCategory : null,
-        ir_provider_name: isIrDeductible ? (irProviderName.trim() || null) : null,
-        ir_provider_document: isIrDeductible ? (irProviderDocument.trim() || null) : null,
-        ir_receipt_number: isIrDeductible ? (irReceiptNumber.trim() || null) : null,
-      })
-      reset()
+      const dateStr = selectedDate.toISOString().split('T')[0]
+      const effectiveCardId = paymentMethod === 'credit' ? (selectedCardId ?? null) : null
+
+      if (scope === 'month') {
+        await updateScheduledMonthOnly(item.id, item.scheduled_transaction_id, {
+          description: description.trim(),
+          amount: amountCents / 100,
+          payment_method: paymentMethod,
+          credit_card_id: effectiveCardId,
+          merchant: merchant.trim() || null,
+          date: dateStr,
+          // IR sempre vai ao pai
+          is_ir_deductible: isIrDeductible,
+          ir_category: isIrDeductible ? irCategory : null,
+          ir_provider_name: isIrDeductible ? (irProviderName.trim() || null) : null,
+          ir_provider_document: isIrDeductible ? (irProviderDocument.trim() || null) : null,
+          ir_receipt_number: isIrDeductible ? (irReceiptNumber.trim() || null) : null,
+        })
+      } else {
+        await updateScheduledFromMonth(
+          item.scheduled_transaction_id,
+          item.reference_month,
+          {
+            description: description.trim(),
+            amount: amountCents / 100,
+            payment_method: paymentMethod,
+            credit_card_id: effectiveCardId,
+            merchant: merchant.trim() || null,
+            is_ir_deductible: isIrDeductible,
+            ir_category: isIrDeductible ? irCategory : null,
+            ir_provider_name: isIrDeductible ? (irProviderName.trim() || null) : null,
+            ir_provider_document: isIrDeductible ? (irProviderDocument.trim() || null) : null,
+            ir_receipt_number: isIrDeductible ? (irReceiptNumber.trim() || null) : null,
+          }
+        )
+      }
       onSuccess()
     } catch (err: any) {
-      Alert.alert('Erro', err?.message ?? 'Erro ao registrar agendamento.')
+      Alert.alert('Erro', err?.message ?? 'Não foi possível salvar.')
     } finally {
       setSaving(false)
     }
   }
 
   const selectedCard = cards.find(c => c.id === selectedCardId)
+
+  if (!item) return null
 
   return (
     <Modal
@@ -156,53 +187,15 @@ export default function NewScheduledModal({
     >
       <View style={styles.root}>
         <View style={styles.headerBar}>
-          <Text style={styles.headerTitle}>📋 Lançamento a Confirmar</Text>
+          <Text style={styles.headerTitle}>✏️ Editar Agendamento</Text>
         </View>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body}>
-          {/* Pote pré-selecionado (via detalhe do pote) */}
-          {propPotId ? (
-            <View style={styles.potChip}>
-              <Text style={{ fontSize: 16 }}>🫙</Text>
-              <Text style={styles.potChipText}>Pote: {potName}</Text>
-            </View>
-          ) : (
-            /* Seletor de pote (via tela Mensal) */
-            <View style={{ marginBottom: 16 }}>
-              <Text style={styles.label}>Pote *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {(pots ?? []).filter(p => !p.is_emergency).map(p => {
-                  const active = selectedPotId === p.id
-                  return (
-                    <TouchableOpacity
-                      key={p.id}
-                      onPress={() => { setSelectedPotId(p.id); setSelectedPotName(p.name) }}
-                      style={[
-                        styles.chip,
-                        active && styles.chipActive,
-                        { borderLeftWidth: 3, borderLeftColor: p.color ?? Colors.primary },
-                      ]}
-                    >
-                      <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                        🫙 {p.name}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-              {selectedPotId ? null : (
-                <Text style={{ fontSize: 11, color: Colors.danger, marginTop: 4 }}>
-                  Selecione um pote para continuar
-                </Text>
-              )}
-            </View>
-          )}
-
           <Text style={styles.label}>Descrição *</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
-            placeholder="Ex: Conta de Luz"
+            placeholder="Descrição"
             placeholderTextColor={Colors.textMuted}
             style={styles.input}
           />
@@ -214,6 +207,19 @@ export default function NewScheduledModal({
             placeholder="Ex: CEMIG, Copasa..."
             placeholderTextColor={Colors.textMuted}
             style={styles.input}
+          />
+
+          <Text style={styles.label}>Valor *</Text>
+          <TextInput
+            value={amountCents === 0 ? '' : formatCents(amountCents)}
+            onChangeText={(text) => {
+              const digits = text.replace(/\D/g, '')
+              setAmountCents(parseInt(digits || '0', 10))
+            }}
+            placeholder="R$ 0,00"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="numeric"
+            style={[styles.input, styles.inputAmount]}
           />
 
           <Text style={styles.label}>Data do lançamento</Text>
@@ -240,19 +246,6 @@ export default function NewScheduledModal({
             />
           )}
 
-          <Text style={styles.label}>Valor *</Text>
-          <TextInput
-            value={amountCents === 0 ? '' : formatCents(amountCents)}
-            onChangeText={(text) => {
-              const digits = text.replace(/\D/g, '')
-              setAmountCents(parseInt(digits || '0', 10))
-            }}
-            placeholder="R$ 0,00"
-            placeholderTextColor={Colors.textMuted}
-            keyboardType="numeric"
-            style={[styles.input, styles.inputAmount]}
-          />
-
           <Text style={styles.label}>Forma de pagamento</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
             {PAYMENT_METHODS.map(pm => {
@@ -272,7 +265,7 @@ export default function NewScheduledModal({
           </ScrollView>
 
           {paymentMethod === 'credit' && (
-            <View style={styles.creditBox}>
+            <View style={{ marginBottom: 16 }}>
               {cards.length > 0 ? (
                 <>
                   <Text style={styles.label}>Cartão</Text>
@@ -312,44 +305,7 @@ export default function NewScheduledModal({
             </View>
           )}
 
-          <Text style={styles.label}>Por quantos meses?</Text>
-          <View style={styles.monthsRow}>
-            <TouchableOpacity
-              onPress={() => setTotalMonths(Math.max(1, totalMonths - 1))}
-              style={styles.monthBtn}
-            >
-              <Text style={styles.monthBtnText}>−</Text>
-            </TouchableOpacity>
-
-            <TextInput
-              value={String(totalMonths)}
-              onChangeText={(text) => {
-                const num = parseInt(text.replace(/\D/g, '') || '1')
-                if (num >= 1 && num <= 60) setTotalMonths(num)
-              }}
-              keyboardType="numeric"
-              style={styles.monthInput}
-            />
-
-            <TouchableOpacity
-              onPress={() => setTotalMonths(Math.min(60, totalMonths + 1))}
-              style={[styles.monthBtn, styles.monthBtnPrimary]}
-            >
-              <Text style={[styles.monthBtnText, { color: '#fff' }]}>+</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.monthHint}>
-            {totalMonths === 1
-              ? 'Apenas este mês'
-              : `${totalMonths} meses (até ${(() => {
-                  const d = new Date(selectedDate.toISOString().split('T')[0] + 'T12:00:00')
-                  d.setMonth(d.getMonth() + totalMonths - 1)
-                  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-                })()})`
-            }
-          </Text>
-
-          {irModuleEnabled && (
+          {isPremium && (
             <View style={styles.irCard}>
               <View style={styles.irToggleRow}>
                 <View>
@@ -406,17 +362,6 @@ export default function NewScheduledModal({
               )}
             </View>
           )}
-
-          <View style={styles.summary}>
-            <Text style={styles.summaryTitle}>📋 Resumo</Text>
-            <Text style={styles.summaryText}>
-              {description || 'Sem descrição'} · {formatCents(amountCents)} ·{' '}
-              {totalMonths === 1 ? 'Apenas este mês' : `${totalMonths} meses`}
-            </Text>
-            <Text style={styles.summaryDate}>
-              Data: {selectedDate.toLocaleDateString('pt-BR')}
-            </Text>
-          </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -425,9 +370,9 @@ export default function NewScheduledModal({
             disabled={saving}
             style={[styles.footerPrimary, saving && { opacity: 0.7 }]}
           >
-            <Text style={{ fontSize: 18 }}>📋</Text>
+            <Text style={{ fontSize: 18 }}>💾</Text>
             <Text style={styles.footerPrimaryText}>
-              {saving ? 'Registrando...' : 'Registrar Agendamento'}
+              {saving ? 'Salvando...' : 'Salvar Alterações'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={styles.footerSecondary}>
@@ -449,16 +394,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   body: { padding: 20 },
-  potChip: {
-    backgroundColor: Colors.lightBlue,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  potChipText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
   label: {
     fontSize: 13,
     fontWeight: '600',
@@ -478,8 +413,20 @@ const styles = StyleSheet.create({
   inputAmount: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.textDark,
   },
+  dateBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateBtnText: { fontSize: 15, color: Colors.textDark },
+  dateBtnAlt: { fontSize: 12, color: Colors.textMuted },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -502,81 +449,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
   },
-  creditBox: {
-    marginBottom: 16,
-  },
   cardInfoBox: {
     backgroundColor: Colors.lightBlue,
     borderRadius: 10,
     padding: 10,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   cardInfoText: {
     fontSize: 12,
     color: Colors.primary,
     lineHeight: 18,
   },
-  monthsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  monthBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthBtnPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  monthBtnText: {
-    fontSize: 22,
-    color: Colors.textDark,
-    fontWeight: '600',
-  },
-  monthInput: {
-    flex: 1,
+  irCard: {
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 14,
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.textDark,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    textAlign: 'center',
-  },
-  monthHint: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
     marginBottom: 16,
   },
-  summary: {
-    backgroundColor: Colors.lightBlue,
-    borderRadius: 12,
-    padding: 14,
-  },
-  summaryTitle: {
-    fontSize: 13,
-    color: Colors.primary,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  summaryText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    lineHeight: 20,
-  },
-  summaryDate: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 4,
-  },
+  irToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  irToggleHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   footer: {
     padding: 16,
     paddingBottom: 32,
@@ -604,34 +498,4 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   footerSecondaryText: { color: Colors.textMuted, fontSize: 15 },
-  dateBtn: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dateBtnText: {
-    fontSize: 15,
-    color: Colors.textDark,
-  },
-  dateBtnAlt: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  irCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 16,
-  },
-  irToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  irToggleLabel: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
-  irToggleHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
 })

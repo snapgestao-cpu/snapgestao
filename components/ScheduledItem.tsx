@@ -12,12 +12,14 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Colors } from '../constants/colors'
 import { brl } from '../lib/finance'
 import { PAYMENT_LABEL } from '../lib/payment-methods'
+import { IR_CATEGORY_LABELS } from '../lib/ir'
 
 type Props = {
   item: any
   vencimento?: string | null
   onConfirm: () => void
   onCancel: () => void
+  onEdit: () => void
 }
 
 function formatDate(dateStr: string): string {
@@ -26,7 +28,7 @@ function formatDate(dateStr: string): string {
 }
 
 
-export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }: Props) {
+export default function ScheduledItem({ item, vencimento, onConfirm, onCancel, onEdit }: Props) {
   const scheduled = item.scheduled_transactions
   const potColor = scheduled?.pots?.color || Colors.primary
 
@@ -58,6 +60,15 @@ export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }:
         </View>
       </View>
 
+      {scheduled?.is_ir_deductible ? (
+        <View style={styles.irBadge}>
+          <Text style={styles.irBadgeText}>
+            🎓 IR: {IR_CATEGORY_LABELS[scheduled.ir_category as keyof typeof IR_CATEGORY_LABELS] ?? scheduled.ir_category}
+            {scheduled.ir_provider_name ? ` · ${scheduled.ir_provider_name}` : ''}
+          </Text>
+        </View>
+      ) : null}
+
       {vencimento ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
           <Text style={{ fontSize: 11 }}>📅</Text>
@@ -71,6 +82,11 @@ export default function ScheduledItem({ item, vencimento, onConfirm, onCancel }:
         <TouchableOpacity onPress={onConfirm} style={styles.confirmBtn}>
           <Text style={{ fontSize: 14 }}>✅</Text>
           <Text style={styles.confirmLabel}>Confirmar</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onEdit} style={styles.editBtn}>
+          <Text style={{ fontSize: 14 }}>✏️</Text>
+          <Text style={styles.editLabel}>Editar</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onCancel} style={styles.cancelBtn}>
@@ -163,6 +179,36 @@ const styles = StyleSheet.create({
   },
   confirmLabel: {
     color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  irBadge: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  irBadgeText: {
+    fontSize: 11,
+    color: '#4338CA',
+    fontWeight: '600',
+  },
+  editBtn: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  editLabel: {
+    color: Colors.primary,
     fontSize: 13,
     fontWeight: '700',
   },
