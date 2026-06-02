@@ -234,6 +234,95 @@ export async function getCreditByCard(
   return result.sort((a, b) => b.total - a.total)
 }
 
+export type CardExpensesHistoryMonth = {
+  cycleLabel: string
+  cycleStart: string
+  cycleEnd: string
+  total: number
+  cards: CreditByCard[]
+}
+
+// Retorna os últimos meses com gastos no crédito (busca até searchBack ciclos para achar monthsBack com dados)
+export async function getCardExpensesHistory(
+  userId: string,
+  cycleStartDay: number,
+  monthsBack = 3,
+  searchBack = 6
+): Promise<CardExpensesHistoryMonth[]> {
+  const CARD_COLORS = ['#0F5EA8','#1D9E75','#7C3AED','#EA580C','#0891B2','#BA7517','#E24B4A']
+
+  const cycles = Array.from({ length: searchBack }, (_, i) => getCycle(cycleStartDay, -(i + 1)))
+  const earliest = cycles[cycles.length - 1].startISO
+  const latest   = cycles[0].endISO
+
+  const [{ data: txs }, { data: cardsList }, { data: potsList }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('id, amount, card_id, description, merchant, date, pot_id, installment_number, installment_total')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .eq('payment_method', 'credit')
+      .gte('date', earliest)
+      .lte('date', latest),
+    supabase.from('credit_cards').select('id, name, last_four, brand').eq('user_id', userId),
+    supabase.from('pots').select('id, name').eq('user_id', userId).is('deleted_at', null),
+  ])
+
+  const cardMap = new Map((cardsList ?? []).map(c => [c.id, c]))
+  const potMap  = new Map((potsList ?? []).map(p => [p.id, p.name as string]))
+
+  const result: CardExpensesHistoryMonth[] = []
+
+  for (const cycle of cycles) {
+    if (result.length >= monthsBack) break
+
+    const cycleTxs = (txs ?? []).filter(tx => tx.date >= cycle.startISO && tx.date <= cycle.endISO)
+    if (cycleTxs.length === 0) continue
+
+    const txsByCard = new Map<string | null, typeof cycleTxs>()
+    for (const tx of cycleTxs) {
+      const key = tx.card_id ?? null
+      if (!txsByCard.has(key)) txsByCard.set(key, [])
+      txsByCard.get(key)!.push(tx)
+    }
+
+    const cycleCards: CreditByCard[] = []
+    let colorIdx = 0
+    for (const [cardId, cardTxs] of txsByCard.entries()) {
+      const card     = cardId ? cardMap.get(cardId) : null
+      const cardName = card ? card.name : 'Sem cartão vinculado'
+      const lastFour = card?.last_four ?? null
+      const brand    = (card as any)?.brand ?? 'generic'
+      const total    = (cardTxs ?? []).reduce((s, t) => s + Number(t.amount), 0)
+      const transactions: CreditByCardTx[] = (cardTxs ?? [])
+        .map(tx => ({
+          id:                 tx.id as string,
+          description:        tx.description as string | null,
+          merchant:           tx.merchant as string | null,
+          amount:             Number(tx.amount),
+          date:               tx.date as string,
+          potName:            tx.pot_id ? (potMap.get(tx.pot_id) ?? null) : null,
+          installment_number: tx.installment_number as number | null,
+          installment_total:  tx.installment_total as number | null,
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date))
+      cycleCards.push({ cardId, cardName, lastFour, brand, color: CARD_COLORS[colorIdx % CARD_COLORS.length], total, transactions })
+      colorIdx++
+    }
+
+    const total = cycleCards.reduce((s, c) => s + c.total, 0)
+    result.push({
+      cycleLabel: cycle.monthYear,
+      cycleStart: cycle.startISO,
+      cycleEnd:   cycle.endISO,
+      total,
+      cards: cycleCards.sort((a, b) => b.total - a.total),
+    })
+  }
+
+  return result
+}
+
 export async function getMonthlyTotalsOptimized(
   userId: string,
   cycleStartDay: number,

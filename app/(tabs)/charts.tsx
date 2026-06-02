@@ -18,10 +18,10 @@ import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
   getGoalsProgress, getEmergencyReserveHistory, getFinancialScore,
-  getCreditByCard,
+  getCreditByCard, getCardExpensesHistory,
   PotExpense, MonthlyTotal, CreditCommitment, PaymentMethodShare,
   GoalProgress, ReservePoint, NecessityShare, FinancialScore,
-  CreditByCard, CreditByCardTx,
+  CreditByCard, CreditByCardTx, CardExpensesHistoryMonth,
 } from '../../lib/charts-data'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -88,7 +88,7 @@ function CardPurchasesModal({
     type: 'expense' as const,
     payment_method: 'credit',
     date: tx.date,
-    billing_date: null as string | null,
+    billing_date: tx.date as string | null,
     pot_id: null as string | null,
     potName: tx.potName ?? undefined,
     potColor: undefined as string | undefined,
@@ -639,14 +639,54 @@ function TopicMetas({ userId, isActive }: { userId: string; isActive: boolean })
 }
 
 // ── Topic 4: Crédito ───────────────────────────────────────────────────────
+function getEmptyMessage(cycleStart: string, cycleEnd: string, monthYear: string): string {
+  const today = new Date().toISOString().split('T')[0]
+  if (cycleStart > today) return `Ainda não há gastos registrados para ${monthYear}`
+  if (cycleEnd < today) return `Não houve gastos no crédito em ${monthYear}`
+  return `Nenhum gasto no crédito em ${monthYear}`
+}
+
+function CreditCardRow({
+  card, total, onPress,
+}: { card: CreditByCard; total: number; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={s.cardCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={s.cardCardTop}>
+        <View style={s.cardBrandWrap}>
+          <Image source={getCardImage(card.cardId ? card.brand : 'generic')} style={{ width: 80, height: 50 }} resizeMode="contain" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.cardCardName}>
+            {card.cardName}{card.lastFour ? ` (•••• ${card.lastFour})` : ''}
+          </Text>
+          <Text style={s.cardCardAmt}>
+            {brl(card.total)}{total > 0 ? ` · ${Math.round((card.total / total) * 100)}%` : ''}
+            {` · ${card.transactions.length} compra${card.transactions.length !== 1 ? 's' : ''}`}
+          </Text>
+        </View>
+        <Text style={s.cardChevron}>›</Text>
+      </View>
+      <View style={s.cardProgressBg}>
+        <View style={[s.cardProgressFill, {
+          width: total > 0 ? `${Math.round((card.total / total) * 100)}%` as any : '0%',
+          backgroundColor: card.color,
+        }]} />
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, isActive }: {
   userId: string; cycleStartDay: number; cycleStart: string; cycleEnd: string; monthYear: string; isActive: boolean
 }) {
-  const [commitments, setCommitments] = useState<CreditCommitment[]>([])
+  const [commitments, setCommitments]   = useState<CreditCommitment[]>([])
   const [creditByCard, setCreditByCard] = useState<CreditByCard[]>([])
+  const [history, setHistory]           = useState<CardExpensesHistoryMonth[]>([])
   const [loading, setLoading]           = useState(true)
   const [tooltipIdx, setTooltipIdx]     = useState<number | null>(null)
   const [selectedCard, setSelectedCard] = useState<CreditByCard | null>(null)
+  const [selectedMonthYear, setSelectedMonthYear] = useState(monthYear)
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const hasLoaded = useRef(false)
 
   useEffect(() => {
@@ -656,9 +696,11 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
     Promise.all([
       getCreditCommitmentsSimple(userId, cycleStartDay, 6),
       getCreditByCard(userId, cycleStart, cycleEnd),
-    ]).then(([c, cb]) => {
+      getCardExpensesHistory(userId, cycleStartDay, 3),
+    ]).then(([c, cb, h]) => {
       setCommitments(c)
       setCreditByCard(cb)
+      setHistory(h)
       setLoading(false)
     })
   }, [isActive, userId, cycleStartDay, cycleStart, cycleEnd])
@@ -682,6 +724,14 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
   }))
 
   const totalCard = creditByCard.reduce((sum, c) => sum + c.total, 0)
+
+  function toggleMonth(cycleStart: string) {
+    setExpandedMonths(prev => {
+      const next = new Set(prev)
+      next.has(cycleStart) ? next.delete(cycleStart) : next.add(cycleStart)
+      return next
+    })
+  }
 
   return (
     <>
@@ -724,33 +774,55 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
 
       <ChartCard title="Gastos por cartão de crédito" description="Veja quanto você gastou em cada cartão neste ciclo. Toque em um cartão para ver as compras.">
         {creditByCard.length === 0 ? (
-          <Empty icon="💳" text="Nenhum gasto no crédito neste ciclo" />
+          <View style={s.creditEmptyBox}>
+            <Text style={s.creditEmptyIcon}>💳</Text>
+            <Text style={s.creditEmptyText}>{getEmptyMessage(cycleStart, cycleEnd, monthYear)}</Text>
+          </View>
         ) : (
           <View style={{ gap: 10 }}>
             {creditByCard.map(c => (
-              <TouchableOpacity key={c.cardId ?? 'none'} style={s.cardCard} onPress={() => setSelectedCard(c)} activeOpacity={0.7}>
-                <View style={s.cardCardTop}>
-                  <View style={s.cardBrandWrap}>
-                    <Image source={getCardImage(c.cardId ? c.brand : 'generic')} style={{ width: 80, height: 50 }} resizeMode="contain" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.cardCardName}>
-                      {c.cardName}{c.lastFour ? ` (•••• ${c.lastFour})` : ''}
-                    </Text>
-                    <Text style={s.cardCardAmt}>
-                      {brl(c.total)}{totalCard > 0 ? ` · ${Math.round((c.total / totalCard) * 100)}%` : ''}
-                    </Text>
-                  </View>
-                  <Text style={s.cardChevron}>›</Text>
-                </View>
-                <View style={s.cardProgressBg}>
-                  <View style={[s.cardProgressFill, {
-                    width: totalCard > 0 ? `${Math.round((c.total / totalCard) * 100)}%` as any : '0%',
-                    backgroundColor: c.color,
-                  }]} />
-                </View>
-              </TouchableOpacity>
+              <CreditCardRow
+                key={c.cardId ?? 'none'}
+                card={c}
+                total={totalCard}
+                onPress={() => { setSelectedCard(c); setSelectedMonthYear(monthYear) }}
+              />
             ))}
+          </View>
+        )}
+
+        {history.length > 0 && (
+          <View style={{ marginTop: 20 }}>
+            <Text style={s.historyTitle}>📊 Meses anteriores com gastos</Text>
+            {history.map(month => {
+              const expanded = expandedMonths.has(month.cycleStart)
+              const monthTotal = month.total
+              return (
+                <View key={month.cycleStart} style={s.historyMonth}>
+                  <TouchableOpacity
+                    style={s.historyMonthHeader}
+                    onPress={() => toggleMonth(month.cycleStart)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.historyMonthLabel}>{month.cycleLabel}</Text>
+                    <Text style={s.historyMonthTotal}>{brl(month.total)}</Text>
+                    <Text style={s.historyChevron}>{expanded ? '▼' : '▶'}</Text>
+                  </TouchableOpacity>
+                  {expanded && (
+                    <View style={s.historyMonthBody}>
+                      {month.cards.map(c => (
+                        <CreditCardRow
+                          key={c.cardId ?? 'none'}
+                          card={c}
+                          total={monthTotal}
+                          onPress={() => { setSelectedCard(c); setSelectedMonthYear(month.cycleLabel) }}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )
+            })}
           </View>
         )}
       </ChartCard>
@@ -758,7 +830,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
       {selectedCard && (
         <CardPurchasesModal
           card={selectedCard}
-          monthYear={monthYear}
+          monthYear={selectedMonthYear}
           onClose={() => setSelectedCard(null)}
         />
       )}
@@ -1099,6 +1171,39 @@ const s = StyleSheet.create({
   cardChevron:     { fontSize: 18, color: Colors.textMuted },
   cardProgressBg:  { height: 4, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden' },
   cardProgressFill:{ height: 4, borderRadius: 2 },
+
+  // Credit empty state
+  creditEmptyBox: { alignItems: 'center', paddingVertical: 20 },
+  creditEmptyIcon: { fontSize: 28, marginBottom: 8 },
+  creditEmptyText: { fontSize: 12, color: Colors.textMuted, textAlign: 'center' as const },
+
+  // Credit history
+  historyTitle: {
+    fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 10,
+  },
+  historyMonth: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  historyMonthHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: Colors.white,
+  },
+  historyMonthLabel: {
+    flex: 1, fontSize: 13, fontWeight: '700', color: Colors.textDark,
+  },
+  historyMonthTotal: {
+    fontSize: 13, fontWeight: '700', color: Colors.primary, marginRight: 8,
+  },
+  historyChevron: { fontSize: 11, color: Colors.textMuted },
+  historyMonthBody: {
+    padding: 10, paddingTop: 4,
+    backgroundColor: Colors.background, gap: 8,
+  },
 
   // CardPurchasesModal
   modalOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
