@@ -115,6 +115,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    clearSecureStoreCache()
     await supabase.auth.signOut()
     set({ session: null, user: null, isAuthenticated: false, isPremium: false })
   },

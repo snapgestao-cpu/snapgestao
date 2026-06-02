@@ -70,12 +70,42 @@ Mensal (`/(tabs)/monthly`) é a tela inicial após login/onboarding. Tabs em ord
 - **Offline**: `expo-sqlite` (`snapgestao.db`) — sync não implementado.
 - **SecureStore**: `LargeSecureStoreAdapter` em `lib/supabase.ts` tem cache em memória (`memoryCache`) e deduplicação de leituras paralelas (`pendingReads`). Leituras simultâneas da mesma chave reutilizam a mesma Promise — evita contenção e reduz `getSession` de ~8s para <1s.
 
+## Testes
+
+```bash
+npm test                     # Jest (ts-jest)
+npm test -- billing-date     # rodar um arquivo específico
+```
+
+Suíte em `__tests__/`: `billing-date.test.ts`, `cycle.test.ts`, `debts.test.ts`, `finance.test.ts`, `ir.test.ts`, `plans.test.ts`. Supabase e APIs Expo são mockados via `jest.config.js` → `moduleNameMapper`.
+
+## Stores Zustand
+
+4 stores globais:
+- `useAuthStore` — sessão + perfil do usuário + `isPremium`
+- `useCycleStore` — `cycleOffset`, `viewMode`, `pendingScheduledCount`
+- `usePotsStore` — lista de potes + saldos
+- `useTransactionStore` — transações do ciclo ativo
+
+React Query faz o fetch; `onSuccess` atualiza o store. Componentes leem **apenas** do store — nunca fazem query direta ao Supabase (exceções documentadas na seção Arquitetura).
+
+## Gamification / Badges
+
+`lib/badges.ts` — verifica ~10 conquistas (`primeiro_pote`, `primeira_meta`, `saldo_positivo`, etc.) com frequências: mensal, bimestral, semestral ou única. Chamado no startup e no fechamento de ciclo. Usa `SecureStore` para evitar re-verificar a mesma badge na mesma sessão.
+
+## Plugins Expo customizados
+
+`plugins/withAsyncStorageFix.js` — adiciona repositório Maven do AsyncStorage e configura `local.properties` no Android.  
+`plugins/withNetworkSecurityConfig.js` — gera `network_security_config.xml` e injeta permissão de cleartext traffic (necessário para NFC-e em dev).  
+Ambos registrados em `app.json` → `plugins`.
+
 ## Constraints de plataforma
 
 - `expo-router` pinado em `~6.0.23` — não atualizar sem atualizar `expo` junto.
 - New Architecture habilitada (`newArchEnabled: true`) — evitar libs incompatíveis.
 - Nunca importar de `@react-navigation` diretamente — usar apenas APIs de `expo-router`.
 - `babel.config.js` não existe — não criar sem necessidade explícita.
+- Build Android requer SDK 34 + Java 17. APKs gerados em `android/app/build/outputs/apk/`.
 
 ## Arquivos mortos (podem ser deletados)
 
