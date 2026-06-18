@@ -142,7 +142,7 @@ export default function MonthlyScreen() {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
       const [epRes, goalsRes, closedRes, incomingRolloverRes, reserveRes] = await Promise.all([
         supabase.from('pots').select('*').eq('user_id', user.id).eq('is_emergency', true).maybeSingle(),
-        supabase.from('goals').select('*').eq('user_id', user.id),
+        supabase.from('goals').select('*').eq('user_id', user.id).eq('status', 'active'),
         supabase.from('cycle_rollovers').select('*')
           .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
         supabase.from('cycle_rollovers').select('total_debt, total_surplus')
@@ -221,6 +221,10 @@ export default function MonthlyScreen() {
 
   const handleCycleClose = async () => {
     if (!user || !summary) return
+    console.log('[Encerramento] surplusAction:', surplusAction)
+    console.log('[Encerramento] surplusGoalId:', surplusGoalId)
+    console.log('[Encerramento] totalSurplus:', summary.totalSurplus)
+    console.log('[Encerramento] podeEncerrar:', !!surplusAction && (surplusAction !== 'goal' || !!surplusGoalId))
     setClosing(true)
     try {
       const nextCycle = getCycle(user.cycle_start ?? 1, offset + 1)
@@ -725,6 +729,13 @@ export default function MonthlyScreen() {
                         ))}
                       </View>
                     )}
+                    {surplusAction === 'goal' && goals.length === 0 && (
+                      <View style={styles.noGoalsBox}>
+                        <Text style={styles.noGoalsText}>
+                          Nenhuma meta ativa. Crie uma meta na aba Metas ou selecione outra opção.
+                        </Text>
+                      </View>
+                    )}
                     <TouchableOpacity
                       style={[styles.closeBtn, (!surplusAction || (surplusAction === 'goal' && !surplusGoalId)) && { opacity: 0.4 }]}
                       onPress={handleCycleClose}
@@ -1032,6 +1043,13 @@ const styles = StyleSheet.create({
   },
   goalChipActive: { borderColor: Colors.primary, backgroundColor: Colors.lightBlue },
   goalChipText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  noGoalsBox: {
+    backgroundColor: Colors.lightRed,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  noGoalsText: { fontSize: 13, color: Colors.danger, lineHeight: 18 },
   closeBtn: {
     backgroundColor: Colors.success, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center', marginTop: 4,

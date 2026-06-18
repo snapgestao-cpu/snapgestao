@@ -12,6 +12,7 @@
 import { supabase } from './supabase'
 import { getCycle, CycleInfo } from './cycle'
 import { fetchPotsForCycleWithHistory } from './pot-history'
+import { depositExternal } from './emergency-reserve'
 import { Pot } from '../types'
 
 export type PotSummary = {
@@ -188,16 +189,9 @@ export async function processCycleClose(
   }
 
   if (surplusAction === 'emergency' && summary.totalSurplus > 0) {
-    const { data: ep } = await supabase.from('pots').select('id')
-      .eq('user_id', userId).eq('is_emergency', true).maybeSingle()
-    if (ep) {
-      await supabase.from('transactions').insert({
-        user_id: userId, pot_id: (ep as any).id, type: 'income',
-        amount: summary.totalSurplus, description: 'Sobra do ciclo → emergência',
-        date: nextStartStr, card_id: null, merchant: null,
-        billing_date: null, payment_method: 'transfer', is_need: null,
-      })
-    }
+    // Reserva de emergência é gerenciada pela tabela emergency_reserve (não mais por pote).
+    // depositExternal atualiza current_amount e registra em emergency_reserve_transactions.
+    await depositExternal(userId, summary.totalSurplus, 'Sobra do ciclo')
   }
 }
 
