@@ -71,10 +71,6 @@ export default function ForgotPasswordScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Voltar</Text>
-        </TouchableOpacity>
-
         <Text style={styles.title}>Esqueceu a senha?</Text>
         <Text style={styles.subtitle}>
           Digite seu e-mail e enviaremos um link para redefinir sua senha.
@@ -106,6 +102,14 @@ export default function ForgotPasswordScreen() {
             <Text style={styles.btnText}>Enviar link de redefinição</Text>
           )}
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.btnSecondary}
+          onPress={() => router.back()}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnSecondaryText}>Voltar para o login</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -126,9 +130,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 32,
   },
-
-  backBtn: { marginBottom: 32 },
-  backText: { fontSize: 16, color: Colors.primary },
 
   title: {
     fontSize: 28,
@@ -174,6 +175,16 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  btnSecondary: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    width: '100%',
+  },
+  btnSecondaryText: { color: Colors.primary, fontSize: 16, fontWeight: '700' },
 
   bigEmoji: { fontSize: 56, marginBottom: 16 },
   sentTitle: {
