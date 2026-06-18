@@ -236,9 +236,10 @@ type DebtCardProps = {
   debt: Debt
   onPay: () => void
   onOptions: () => void
+  onComplete: () => void
 }
 
-function DebtCard({ debt, onPay, onOptions }: DebtCardProps) {
+function DebtCard({ debt, onPay, onOptions, onComplete }: DebtCardProps) {
   const remaining = Math.max(0, debt.total_amount - debt.paid_amount)
   const progress = debt.total_amount > 0 ? Math.min(1, debt.paid_amount / debt.total_amount) : 0
   const percent = Math.round(progress * 100)
@@ -303,6 +304,15 @@ function DebtCard({ debt, onPay, onOptions }: DebtCardProps) {
           <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: '700' }}>•••</Text>
         </TouchableOpacity>
       </View>
+
+      {isQuitada && (
+        <TouchableOpacity
+          onPress={onComplete}
+          style={{ backgroundColor: '#D1FAE5', borderRadius: 12, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}
+        >
+          <Text style={{ color: Colors.success, fontSize: 13, fontWeight: '700' }}>✅ Concluir dívida</Text>
+        </TouchableOpacity>
+      )}
     </View>
   )
 }
@@ -697,6 +707,27 @@ export default function GoalsScreen() {
                   setShowDebtPayModal(true)
                 }}
                 onOptions={() => setDebtOptions(debt)}
+                onComplete={() => {
+                  Alert.alert(
+                    '✅ Concluir dívida',
+                    `A dívida "${debt.name}" está quitada!\n\nDeseja movê-la para o histórico de dívidas concluídas?`,
+                    [
+                      { text: 'Agora não', style: 'cancel' },
+                      {
+                        text: 'Concluir ✅',
+                        onPress: async () => {
+                          try {
+                            await completeDebt(debt.id, user!.id)
+                            await loadGoals()
+                            setToast({ message: '🎉 Dívida concluída!', color: Colors.success })
+                          } catch (err) {
+                            Alert.alert('Erro', String(err))
+                          }
+                        },
+                      },
+                    ]
+                  )
+                }}
               />
             ))}
           </>

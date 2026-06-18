@@ -63,7 +63,10 @@ export async function depositFromCycleToGoal(
 ): Promise<void> {
   const { start } = getCycle(cycleStart, cycleOffset)
   const referenceMonth = start.toISOString().split('T')[0]
-  const dateStr = new Date().toISOString().split('T')[0]
+  const today = new Date()
+  const dateStr = start <= today
+    ? today.toISOString().split('T')[0]
+    : start.toISOString().split('T')[0]
 
   await supabase
     .from('transactions')

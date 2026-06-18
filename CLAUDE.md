@@ -364,6 +364,35 @@ Todas as exportações de documento usam esta função:
 
 **Não substituir** `Sharing.shareAsync` em `app/ir.tsx` linha 442 — aquela chamada é para compartilhar imagem de recibo, não documento.
 
+## Dívidas
+
+Feature implementada em `lib/debts.ts` + `app/(tabs)/goals.tsx`.
+
+**Tabelas** (migration: `supabase/migrations/20240508_debts.sql`):
+- `debts` — `name`, `total_amount`, `paid_amount`, `monthly_payment`, `target_date`, `status` (`active` | `completed` | `cancelled`)
+- `debt_transactions` — `type` (`payment_external` | `payment_from_cycle`), `amount`, `description`, `cycle_year`, `cycle_month`
+
+**Funções** (`lib/debts.ts`):
+- `getDebts(userId)` → dívidas com `status='active'`, ordenadas por `target_date`
+- `getCompletedDebts(userId)` → dívidas com `status != 'active'`
+- `createDebt / updateDebt / deleteDebt` — CRUD básico
+- `completeDebt(debtId, userId)` → marca `status='completed'`
+- `payDebtExternal(debtId, userId, amount, desc?)` → registra pagamento sem afetar ciclo
+- `payDebtFromCycle(debtId, userId, amount, cycleStartDay, cycleOffset, debtName, desc?)` → cria `expense` no ciclo + incrementa `paid_amount`. **Data da transação**: hoje se ciclo atual/passado, primeiro dia do ciclo se futuro.
+- `getDebtTransactions(debtId)` → histórico de pagamentos
+- `calcDebtMonthsRemaining(debt)` → meses restantes com base no `monthly_payment`
+
+**UI** (`app/(tabs)/goals.tsx`):
+- `DebtCard` inline: barra de progresso, badge "✅ Quitada!", botão "💰 Pagar" (oculto quando quitada), botão "•••" (opções), botão "✅ Concluir dívida" (visível apenas quando `paid_amount >= total_amount`).
+- Modal de pagamento em 2 etapas: seleção de tipo (externo ou do ciclo) → formulário com valor, descrição e seletor de mês.
+- Modal de opções (•••): histórico de pagamentos, editar, excluir.
+- Dívidas concluídas aparecem na seção "💸 Dívidas quitadas" do modal "🏆 Concluídas".
+
+**Regras**:
+- Dívidas usam tabelas próprias (`debts`, `debt_transactions`) — independentes de `goals`/`goal_transactions`.
+- `depositFromCycleToGoal` em `lib/goal-transactions.ts` também usa a mesma lógica de data: hoje se ciclo atual/passado, primeiro dia se futuro (mesma correção aplicada ao BUG 4).
+- `completeDebt` apenas muda o status — não cria transações financeiras.
+
 ## Roadmap
 
 - [ ] Glossário financeiro

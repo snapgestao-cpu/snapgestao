@@ -146,7 +146,10 @@ export async function payDebtFromCycle(
   const newPaid = Number(debt.paid_amount) + amount
 
   const { start } = getCycle(cycleStartDay, cycleOffset)
-  const dateStr = start.toISOString().split('T')[0]
+  const hoje = new Date()
+  const dateStr = start <= hoje
+    ? hoje.toISOString().split('T')[0]
+    : start.toISOString().split('T')[0]
 
   const { error: txError } = await supabase.from('transactions').insert({
     user_id: userId,
