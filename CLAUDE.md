@@ -107,11 +107,6 @@ Ambos registrados em `app.json` → `plugins`.
 - `babel.config.js` não existe — não criar sem necessidade explícita.
 - Build Android requer SDK 34 + Java 17. APKs gerados em `android/app/build/outputs/apk/`.
 
-## Arquivos mortos (podem ser deletados)
-
-- `components/ProjectionEntryModal.tsx` — não importado em nenhum lugar
-- `components/charts/BarChart.tsx` — não importado em nenhum lugar
-
 ## Lançamentos a Confirmar (Scheduled Transactions)
 
 Feature implementada em `lib/scheduled-transactions.ts`.
@@ -350,6 +345,24 @@ Feature implementada em `app/(tabs)/charts.tsx` e `lib/charts-data.ts`.
 - Estados de loading: `Skeleton` retangular; estado vazio: `Empty` com ícone + texto contextual
 - Ciclo selecionado (offset) afeta apenas os tópicos que dependem de ciclo (Gastos, Crédito distribuição)
 - Score financeiro calculado localmente — não chama APIs de IA
+
+## Autenticação — telas e validações
+
+- **Cadastro** (`app/(auth)/register.tsx`): validação de senha exige 8+ chars, 1 maiúscula, 1 número; checklist de requisitos exibido inline abaixo do campo; após `signUp` bem-sucedido exibe modal "Confirme seu e-mail" em vez de redirecionar direto.
+- **Login** (`app/(auth)/login.tsx`): link "Esqueceu a senha?" leva para `/(auth)/forgot-password`.
+- **Redefinição de senha** (`app/(auth)/forgot-password.tsx`): chama `supabase.auth.resetPasswordForEmail` com `redirectTo: 'https://snapgestao-cpu.github.io/snapgestao/email-confirmado.html'`; exibe tela de confirmação após envio.
+
+## Salvar arquivos no dispositivo
+
+`lib/save-file.ts` — `saveToDownloads(sourceUri, fileName, mimeType)`:
+- **Android**: usa `StorageAccessFramework` (SAF) de `expo-file-system/legacy` → abre seletor de pasta → salva diretamente; fallback para `Sharing.shareAsync` se o usuário cancelar.
+- **iOS**: usa `Sharing.shareAsync` (share sheet nativo).
+
+Todas as exportações de documento usam esta função:
+- `lib/gerar-pdf.ts` — `salvarPDFnoDownloads` e `compartilharPDF` chamam `saveToDownloads`
+- `lib/export-excel.ts` — `exportTransactionsToExcel` chama `saveToDownloads`
+
+**Não substituir** `Sharing.shareAsync` em `app/ir.tsx` linha 442 — aquela chamada é para compartilhar imagem de recibo, não documento.
 
 ## Roadmap
 

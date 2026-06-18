@@ -11,7 +11,7 @@
 
 import * as XLSX from 'xlsx'
 import * as FileSystem from 'expo-file-system/legacy'
-import * as Sharing from 'expo-sharing'
+import { saveToDownloads } from './save-file'
 import { supabase } from './supabase'
 
 const MONTH_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -177,13 +177,11 @@ export async function exportTransactionsToExcel(
     encoding: FileSystem.EncodingType.Base64,
   })
 
-  const canShare = await Sharing.isAvailableAsync()
-  if (!canShare) throw new Error('Compartilhamento não disponível neste dispositivo')
-  await Sharing.shareAsync(path, {
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dialogTitle: `Exportar ${filenameLabel}`,
-    UTI: 'com.microsoft.excel.xlsx',
-  })
+  await saveToDownloads(
+    path,
+    filename,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
 }
 
 // ── Period helpers (used by modal) ──

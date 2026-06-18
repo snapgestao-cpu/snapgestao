@@ -130,6 +130,14 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Esqueceu a senha */}
+        <TouchableOpacity
+          onPress={() => router.push('/(auth)/forgot-password')}
+          style={styles.forgotBtn}
+        >
+          <Text style={styles.forgotText}>Esqueceu a senha?</Text>
+        </TouchableOpacity>
+
         {/* Rodapé */}
         <Link href="/(auth)/register" asChild>
           <TouchableOpacity style={styles.footer}>
@@ -229,6 +237,9 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+
+  forgotBtn: { alignItems: 'center', marginBottom: 16 },
+  forgotText: { fontSize: 14, color: Colors.primary },
 
   // Footer
   footer: { alignItems: 'center' },

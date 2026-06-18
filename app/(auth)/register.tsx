@@ -19,6 +19,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Modal,
 } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Colors } from '../../constants/colors'
@@ -47,15 +48,24 @@ export default function RegisterScreen() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showEmailSent, setShowEmailSent] = useState(false)
 
   const clearError = () => setError(null)
+
+  const passwordReqs = [
+    { ok: password.length >= 8, text: 'Mínimo 8 caracteres' },
+    { ok: /[A-Z]/.test(password), text: 'Uma letra maiúscula' },
+    { ok: /[0-9]/.test(password), text: 'Um número' },
+  ]
 
   const validate = (): string | null => {
     if (!name.trim()) return 'Informe seu nome completo.'
     if (!email.trim()) return 'Informe seu e-mail.'
     if (!email.includes('@')) return 'Formato de e-mail inválido.'
     if (!password) return 'Informe uma senha.'
-    if (password.length < 6) return 'A senha deve ter no mínimo 6 caracteres.'
+    if (password.length < 8) return 'A senha deve ter pelo menos 8 caracteres.'
+    if (!/[A-Z]/.test(password)) return 'A senha deve ter pelo menos uma letra maiúscula.'
+    if (!/[0-9]/.test(password)) return 'A senha deve ter pelo menos um número.'
     if (password !== confirmPassword) return 'As senhas não coincidem.'
     return null
   }
@@ -70,14 +80,43 @@ export default function RegisterScreen() {
     setLoading(false)
 
     if (err) {
-      setError(err)
+      if (err.includes('já está cadastrado')) {
+        setError('Este e-mail já está cadastrado. Faça login ou use "Esqueceu a senha".')
+      } else {
+        setError(err)
+      }
       return
     }
 
-    router.replace('/onboarding/step1')
+    setShowEmailSent(true)
   }
 
   return (
+    <>
+    <Modal visible={showEmailSent} animationType="fade" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalEmoji}>📧</Text>
+          <Text style={styles.modalTitle}>Confirme seu e-mail</Text>
+          <Text style={styles.modalBody}>
+            Enviamos um link de confirmação para{' '}
+            <Text style={styles.modalEmail}>{email.trim()}</Text>
+            {'\n\n'}
+            Acesse seu e-mail e clique no link para ativar sua conta.
+          </Text>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={() => {
+              setShowEmailSent(false)
+              router.replace('/(auth)/login')
+            }}
+          >
+            <Text style={styles.btnText}>Ir para o login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -125,7 +164,7 @@ export default function RegisterScreen() {
           <View style={styles.passwordWrap}>
             <TextInput
               style={styles.passwordInput}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               placeholderTextColor={Colors.textMuted}
               value={password}
               onChangeText={(v) => { setPassword(v); clearError() }}
@@ -141,6 +180,15 @@ export default function RegisterScreen() {
               <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
             </TouchableOpacity>
           </View>
+          {password.length > 0 && (
+            <View style={styles.reqList}>
+              {passwordReqs.map((req, i) => (
+                <Text key={i} style={[styles.reqItem, req.ok && styles.reqOk]}>
+                  {req.ok ? '✓' : '○'} {req.text}
+                </Text>
+              ))}
+            </View>
+          )}
 
           <Text style={styles.label}>Confirmar senha</Text>
           <View style={[
@@ -200,6 +248,7 @@ export default function RegisterScreen() {
         </Link>
       </ScrollView>
     </KeyboardAvoidingView>
+    </>
   )
 }
 
@@ -297,6 +346,43 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+
+  // Password requirements checklist
+  reqList: { marginTop: -10, marginBottom: 12, gap: 4 },
+  reqItem: { fontSize: 12, color: Colors.textMuted },
+  reqOk: { color: Colors.success },
+
+  // Email sent modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    width: '100%',
+  },
+  modalEmoji: { fontSize: 48, marginBottom: 16 },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.textDark,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalBody: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  modalEmail: { fontWeight: '700', color: Colors.primary },
 
   // Footer
   footer: { alignItems: 'center' },
