@@ -31,6 +31,37 @@ function isoToBR(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+function ReceiptThumb({ imagePath, onPress }: { imagePath: string; onPress: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    getIRReceiptImageUrl(imagePath)
+      .then(setUrl)
+      .catch(() => {})
+  }, [imagePath])
+
+  if (!url) {
+    return (
+      <TouchableOpacity onPress={onPress} style={styles.receiptBtn}>
+        <Text style={styles.receiptBtnIcon}>🧾</Text>
+      </TouchableOpacity>
+    )
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.receiptThumb}
+      activeOpacity={0.85}
+    >
+      <Image source={{ uri: url }} style={styles.receiptThumbImg} resizeMode="cover" />
+      <View style={styles.receiptThumbOverlay}>
+        <Text style={styles.receiptThumbOverlayText}>🔍 Ver foto</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 export default function IRScreen() {
   const { user, isPremium } = useAuthStore()
   const currentYear = new Date().getFullYear()
@@ -171,7 +202,7 @@ export default function IRScreen() {
               </View>
             ))}
           </View>
-          <TouchableOpacity style={styles.paywallBtn} onPress={() => Alert.alert('Em breve', 'O plano Premium estará disponível em breve!')}>
+          <TouchableOpacity style={styles.paywallBtn} onPress={() => router.push('/premium')}>
             <Text style={styles.paywallBtnText}>Conhecer plano Premium</Text>
           </TouchableOpacity>
         </View>
@@ -267,20 +298,13 @@ export default function IRScreen() {
                         {group.category === 'saude' && reimbursement.amount > 0 && idx === group.items.length - 1 ? (
                           <Text style={styles.txReimb}>Reembolso: −{brl(reimbursement.amount)}</Text>
                         ) : null}
+                        {item.ir_receipt_image_path ? (
+                          <ReceiptThumb
+                            imagePath={item.ir_receipt_image_path}
+                            onPress={() => handleOpenReceipt(item)}
+                          />
+                        ) : null}
                       </View>
-                      {item.ir_receipt_image_path ? (
-                        <TouchableOpacity
-                          onPress={() => handleOpenReceipt(item)}
-                          style={styles.receiptBtn}
-                          disabled={loadingImage}
-                        >
-                          {loadingImage ? (
-                            <ActivityIndicator size="small" color={Colors.primary} />
-                          ) : (
-                            <Text style={styles.receiptBtnIcon}>🧾</Text>
-                          )}
-                        </TouchableOpacity>
-                      ) : null}
                     </View>
                   ))}
 
@@ -499,8 +523,18 @@ const styles = StyleSheet.create({
   txDoc: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
   txDetail: { fontSize: 12, color: Colors.textMuted, marginTop: 3 },
   txReimb: { fontSize: 12, color: '#C0392B', marginTop: 2, fontWeight: '600' },
-  receiptBtn: { padding: 8 },
+  receiptBtn: { alignSelf: 'flex-start', padding: 4, marginTop: 6 },
   receiptBtnIcon: { fontSize: 22 },
+  receiptThumb: {
+    marginTop: 8, borderRadius: 10, overflow: 'hidden',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  receiptThumbImg: { width: '100%', height: 120 },
+  receiptThumbOverlay: {
+    position: 'absolute', bottom: 6, right: 6,
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: 4,
+  },
+  receiptThumbOverlayText: { color: '#fff', fontSize: 11 },
   totalBox: {
     backgroundColor: Colors.primary, borderRadius: 16, padding: 20,
   },

@@ -95,5 +95,7 @@ export async function deleteCardWithCascade(
   currentCycleEnd: string
 ): Promise<void> {
   await deleteFutureInstallments(cardId, currentCycleEnd)
-  await supabase.from('credit_cards').delete().eq('id', cardId).eq('user_id', userId)
+  await supabase.from('transactions').update({ card_id: null }).eq('card_id', cardId)
+  const { error } = await supabase.from('credit_cards').delete().eq('id', cardId).eq('user_id', userId)
+  if (error) throw new Error(error.message)
 }

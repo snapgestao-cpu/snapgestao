@@ -363,7 +363,23 @@ Todas as exportações de documento usam esta função:
 - `lib/export-excel.ts` — `exportTransactionsToExcel` chama `saveToDownloads`
 - `lib/import-template.ts` — `downloadImportTemplate` chama `saveToDownloads` para o modelo de importação
 
-**Não substituir** `Sharing.shareAsync` em `app/ir.tsx` linha 442 — aquela chamada é para compartilhar imagem de recibo, não documento.
+**Não substituir** `Sharing.shareAsync` em `app/ir.tsx` — aquela chamada é para compartilhar imagem de recibo, não documento.
+
+## Módulo IR (Deduções IR)
+
+Feature em `app/ir.tsx` + `lib/ir.ts` + `lib/ir-reimbursement.ts`.
+
+**Acesso**: Bloqueado por `isPremium` — usuários Free veem paywall que redireciona para `router.push('/premium')`.
+
+**Foto do recibo**:
+- Upload via `lib/ir.ts → uploadIRReceiptImage` — comprime para 1200px/60% JPEG, salva no bucket `receipts` do Supabase Storage no caminho `{userId}/ir/{transactionId}.jpg`.
+- URL via `getIRReceiptImageUrl(path)` — cria signed URL de 1 hora (bucket privado, nunca usar `getPublicUrl`).
+- No card de dedução: componente `ReceiptThumb` (definido em `ir.tsx` antes de `IRScreen`) carrega a signed URL ao montar e exibe thumbnail (120px) com overlay "🔍 Ver foto". Antes de carregar a URL, exibe ícone 🧾.
+- Ao tocar no thumbnail: `handleOpenReceipt(item)` busca nova signed URL e abre modal de visualização full-screen com botão de compartilhamento.
+
+**Reembolso de saúde**: `lib/ir-reimbursement.ts` — valor deduzido do total da categoria Saúde. Editável via modal na tela IR.
+
+**Categorias**: `saude | educacao | previdencia_pgbl | previdencia_social | doacao | pensao | outros` — com limites anuais automáticos para as primeiras.
 
 ## Importação de Planilha
 
