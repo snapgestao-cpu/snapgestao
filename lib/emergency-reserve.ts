@@ -93,6 +93,10 @@ export async function depositFromCycle(
 ): Promise<void> {
   const { start } = getCycle(cycleStart, cycleOffset)
   const referenceMonth = start.toISOString().split('T')[0]
+  const hoje = new Date()
+  const dateStr = start <= hoje
+    ? hoje.toISOString().split('T')[0]
+    : start.toISOString().split('T')[0]
 
   await supabase
     .from('transactions')
@@ -101,7 +105,7 @@ export async function depositFromCycle(
       type: 'expense',
       amount,
       description: description || 'Transferência para Reserva de Emergência',
-      date: new Date().toISOString().split('T')[0],
+      date: dateStr,
       payment_method: 'transfer',
       pot_id: null,
     })
