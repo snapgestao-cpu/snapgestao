@@ -212,7 +212,8 @@ export default function IRScreen() {
           ) : (
             <>
               {groups.map(group => (
-                <View key={group.category} style={styles.groupCard}>
+                <View key={group.category} style={styles.groupSection}>
+                  {/* Cabeçalho da categoria */}
                   <View style={styles.groupHeader}>
                     <Text style={styles.groupName}>{group.label}</Text>
                     <Text style={styles.groupTotal}>{brl(group.total)}</Text>
@@ -221,13 +222,11 @@ export default function IRScreen() {
                   {/* Limite e progresso */}
                   {group.limit != null ? (
                     <>
-                      <View style={styles.limitRow}>
-                        <Text style={styles.limitText}>
-                          {group.total <= group.limit
-                            ? `⚠️ Limite: ${brl(group.limit)}/ano  ·  Ainda pode deduzir: ${brl(group.limit - group.total)}`
-                            : `🔴 Excedido em ${brl(group.total - group.limit)} (limite: ${brl(group.limit)})`}
-                        </Text>
-                      </View>
+                      <Text style={styles.limitText}>
+                        {group.total <= group.limit
+                          ? `⚠️ Limite: ${brl(group.limit)}/ano  ·  Ainda pode deduzir: ${brl(group.limit - group.total)}`
+                          : `🔴 Excedido em ${brl(group.total - group.limit)} (limite: ${brl(group.limit)})`}
+                      </Text>
                       <View style={styles.progressBg}>
                         <View style={[
                           styles.progressFill,
@@ -242,11 +241,11 @@ export default function IRScreen() {
                     <Text style={styles.noLimitText}>✅ Sem limite — 100% dedutível</Text>
                   )}
 
-                  {/* Itens */}
-                  {group.items.map((item, idx) => {
+                  {/* Card individual por lançamento */}
+                  {group.items.map(item => {
                     const reimb = item.ir_reimbursement_amount ?? 0
                     return (
-                      <View key={item.id} style={[styles.txRow, idx < group.items.length - 1 && styles.txBorder]}>
+                      <View key={item.id} style={styles.itemCard}>
                         <Text style={styles.txProvider}>{item.ir_provider_name ?? item.description ?? '—'}</Text>
                         {item.ir_provider_document ? (
                           <Text style={styles.txDoc}>{item.ir_provider_document}</Text>
@@ -270,12 +269,9 @@ export default function IRScreen() {
                           </>
                         ) : null}
 
-                        {/* Botões do card */}
+                        {/* Linha de ações */}
                         <View style={styles.txActionsRow}>
-                          <TouchableOpacity
-                            onPress={() => openReimbEdit(item)}
-                            style={styles.txActionBtn}
-                          >
+                          <TouchableOpacity onPress={() => openReimbEdit(item)}>
                             <Text style={styles.txActionBtnText}>
                               {reimb > 0 ? '✏️ Editar reembolso' : '+ Adicionar reembolso'}
                             </Text>
@@ -283,7 +279,7 @@ export default function IRScreen() {
                           {item.ir_receipt_image_path ? (
                             <TouchableOpacity
                               onPress={() => handleOpenReceipt(item)}
-                              style={[styles.txActionBtn, styles.txReceiptBtn]}
+                              style={styles.txReceiptBtn}
                               disabled={loadingImage}
                             >
                               {loadingImage ? (
@@ -297,6 +293,8 @@ export default function IRScreen() {
                       </View>
                     )
                   })}
+
+                  <View style={{ height: 8 }} />
                 </View>
               ))}
 
@@ -463,44 +461,46 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 40, marginBottom: 12 },
   emptyText: { fontSize: 16, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },
   emptySub: { fontSize: 13, color: Colors.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 20 },
-  groupCard: {
-    backgroundColor: Colors.white, borderRadius: 16, marginBottom: 16, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-  },
+  groupSection: { marginBottom: 16 },
   groupHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: Colors.primary, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
   },
-  groupName: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  groupTotal: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  limitRow: { paddingHorizontal: 16, paddingTop: 8 },
-  limitText: { fontSize: 12, color: Colors.warning },
-  noLimitText: { fontSize: 12, color: Colors.success, paddingHorizontal: 16, paddingVertical: 8 },
-  progressBg: { height: 6, backgroundColor: Colors.border, marginHorizontal: 16, marginVertical: 8, borderRadius: 3 },
+  groupName: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  groupTotal: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  limitText: { fontSize: 12, color: Colors.warning, marginBottom: 6 },
+  noLimitText: { fontSize: 12, color: Colors.success, marginBottom: 8 },
+  progressBg: { height: 6, backgroundColor: Colors.border, marginBottom: 8, borderRadius: 3 },
   progressFill: { height: 6, borderRadius: 3 },
-  txRow: { paddingHorizontal: 16, paddingVertical: 12 },
-  txBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  txProvider: { fontSize: 13, fontWeight: '700', color: Colors.textDark },
-  txDoc: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
-  txDetail: { fontSize: 12, color: Colors.textMuted, marginTop: 3 },
+  itemCard: {
+    backgroundColor: Colors.white, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  txProvider: { fontSize: 15, fontWeight: '700', color: Colors.textDark, marginBottom: 2 },
+  txDoc: { fontSize: 12, color: Colors.textMuted, marginBottom: 2 },
+  txDetail: { fontSize: 12, color: Colors.textMuted, marginBottom: 8 },
   txReimbRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
+    paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border, marginBottom: 4,
   },
   txReimbLabel: { fontSize: 12, color: Colors.danger, fontWeight: '600' },
   txReimbValue: { fontSize: 12, color: Colors.danger, fontWeight: '700' },
   txNettoRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
   },
   txNettoLabel: { fontSize: 12, color: Colors.textMuted },
   txNettoValue: { fontSize: 13, color: Colors.success, fontWeight: '700' },
-  txActionsRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-  txActionBtn: {
-    borderWidth: 1, borderColor: Colors.border, borderRadius: 8,
-    paddingVertical: 4, paddingHorizontal: 10, backgroundColor: Colors.background,
+  txActionsRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4,
   },
-  txActionBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
-  txReceiptBtn: { borderColor: Colors.border },
+  txActionBtnText: { fontSize: 12, color: Colors.primary },
+  txReceiptBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.background, borderRadius: 8,
+    paddingVertical: 4, paddingHorizontal: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
   txReceiptBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
   totalBox: {
     backgroundColor: Colors.primary, borderRadius: 16, padding: 20,
