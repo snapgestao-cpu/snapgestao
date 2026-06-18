@@ -563,10 +563,17 @@ export default function OCRScreen() {
       if (rows.length > 0) {
         const { error: txErr } = await supabase.from('transactions').insert(rows)
         if (txErr) throw txErr
-      }
 
-      if (receiptId) {
-        await supabase.from('receipts').update({ processed: true }).eq('id', receiptId)
+        // Registra cupom na tabela receipts para os badges "Leitor de Cupons" e "Detetive de Gastos".
+        // O fluxo Gemini não chama a Edge Function, então precisamos inserir manualmente.
+        await supabase.from('receipts').insert({
+          user_id: userId,
+          processed: true,
+          merchant: merchant.trim() || null,
+          total: totalAmount > 0 ? totalAmount : null,
+          receipt_date: today,
+          merchant_cnpj: nfceMeta?.cnpj ?? null,
+        })
       }
 
       checkAndGrantBadges(userId, user.cycle_start ?? 1).then(b => { if (b.length > 0) setPendingBadges(b) })
