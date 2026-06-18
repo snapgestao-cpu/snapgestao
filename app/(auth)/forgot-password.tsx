@@ -28,7 +28,8 @@ export default function ForgotPasswordScreen() {
     setLoading(true)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: 'snapgestao://reset-password',
+        redirectTo:
+          'https://snapgestao-cpu.github.io/snapgestao/reset-password.html',
       })
       if (error) throw error
       setSent(true)

@@ -16,7 +16,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
 import { useAuthStore } from '../stores/useAuthStore'
-import { supabase } from '../lib/supabase'
 import { getDatabase } from '../lib/database'
 import { Colors } from '../constants/colors'
 import {
@@ -55,25 +54,15 @@ export default function RootLayout() {
     }
   }, [])
 
-  // Deep link handler — captura links de redefinição de senha
+  // Deep link handler — navega para reset-password; a troca de tokens é feita pela própria tela
   useEffect(() => {
-    const handleDeepLink = async (url: string) => {
+    const handleDeepLink = (url: string) => {
       if (!url.includes('reset-password')) return
       console.log('[DeepLink] reset-password detectado')
-      // Navegar primeiro para a tela montar e se inscrever em onAuthStateChange
       router.push('/(auth)/reset-password')
-      try {
-        // PKCE: trocar o code pelo token de sessão de recovery
-        await supabase.auth.exchangeCodeForSession(url)
-      } catch (err) {
-        console.warn('[DeepLink] exchangeCodeForSession:', String(err))
-      }
     }
 
-    // App fechado — link que abriu o app
     Linking.getInitialURL().then(url => { if (url) handleDeepLink(url) })
-
-    // App aberto — link recebido em foreground
     const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url))
     return () => sub.remove()
   }, [])

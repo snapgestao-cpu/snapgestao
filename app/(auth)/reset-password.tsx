@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native'
 import { router } from 'expo-router'
+import * as Linking from 'expo-linking'
 import { supabase } from '../../lib/supabase'
 import { Colors } from '../../constants/colors'
 
@@ -28,14 +29,70 @@ export default function ResetPasswordScreen() {
   ]
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setReady(true)
+    async function processUrl(url: string) {
+      if (!url.includes('reset-password')) return
+      console.log('[ResetPassword] URL recebida:', url)
+
+      // Extrair parâmetros — Supabase pode enviar via hash (#) ou query (?)
+      const hashPart   = url.split('#')[1] ?? ''
+      const queryPart  = (url.split('?')[1] ?? '').split('#')[0]
+      const params     = new URLSearchParams(hashPart || queryPart)
+
+      const accessToken  = params.get('access_token')
+      const refreshToken = params.get('refresh_token') ?? ''
+      const type         = params.get('type')
+      const code         = params.get('code')
+
+      console.log('[ResetPassword] type:', type, '| hasToken:', !!accessToken, '| hasCode:', !!code)
+
+      if (accessToken && type === 'recovery') {
+        // Implicit flow — tokens presentes na URL
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (error) {
+          console.error('[ResetPassword] setSession erro:', error.message)
+          Alert.alert('Link inválido', 'O link expirou ou já foi usado. Solicite um novo.')
+          router.replace('/(auth)/login')
+          return
         }
+        setReady(true)
+        return
       }
-    )
-    return () => subscription.unsubscribe()
+
+      if (code) {
+        // PKCE flow — trocar o code pelo token de recovery
+        const { error } = await supabase.auth.exchangeCodeForSession(url)
+        if (error) {
+          console.error('[ResetPassword] exchangeCode erro:', error.message)
+          Alert.alert('Link inválido', 'O link expirou ou já foi usado. Solicite um novo.')
+          router.replace('/(auth)/login')
+          return
+        }
+        // PASSWORD_RECOVERY disparado pelo exchange — caught pelo listener abaixo
+        return
+      }
+    }
+
+    // Capturar URL inicial (app aberto pelo deep link)
+    Linking.getInitialURL().then(url => { if (url) processUrl(url) })
+
+    // Capturar URL em foreground
+    const linkSub = Linking.addEventListener('url', ({ url }) => processUrl(url))
+
+    // Fallback: Supabase já processou o token antes desta tela montar
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('[ResetPassword] PASSWORD_RECOVERY recebido')
+        setReady(true)
+      }
+    })
+
+    return () => {
+      linkSub.remove()
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function handleReset() {
