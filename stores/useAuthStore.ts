@@ -148,6 +148,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       async (event, session) => {
         console.log('[AuthStore] onAuthStateChange:', event)
 
+        if (event === 'PASSWORD_RECOVERY' || event === 'USER_UPDATED') {
+          // Fluxo de redefinição de senha — não carregar perfil nem alterar isAuthenticated.
+          // A tela reset-password gerencia o estado via seu próprio listener.
+          console.log('[AuthStore] Ignorando evento de recovery:', event)
+          return
+        }
+
         if (event === 'TOKEN_REFRESHED' && session) {
           // Token renovado em background — atualizar sessão sem recarregar perfil
           console.log('[AuthStore] Token renovado em background')

@@ -23,7 +23,7 @@ import {
 } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import { useAuthStore } from '../../stores/useAuthStore'
+import { supabase } from '../../lib/supabase'
 
 function LogoBars() {
   return (
@@ -38,8 +38,6 @@ function LogoBars() {
 }
 
 export default function RegisterScreen() {
-  const { signUp } = useAuthStore()
-
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -76,15 +74,23 @@ export default function RegisterScreen() {
 
     setError(null)
     setLoading(true)
-    const err = await signUp(name.trim(), email.trim(), password)
+
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { name: name.trim() } },
+    })
+
     setLoading(false)
 
-    if (err) {
-      if (err.includes('já está cadastrado')) {
-        setError('Este e-mail já está cadastrado. Faça login ou use "Esqueceu a senha".')
-      } else {
-        setError(err)
-      }
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    // Supabase retorna identities vazio quando o email já existe
+    if ((data.user?.identities?.length ?? 0) === 0) {
+      setError('Este e-mail já está cadastrado. Faça login ou use "Esqueceu a senha?".')
       return
     }
 
