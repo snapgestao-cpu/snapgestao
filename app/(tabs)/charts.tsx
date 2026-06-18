@@ -964,19 +964,21 @@ export default function ChartsScreen() {
         <Text style={s.headerTitle}>Gráficos</Text>
       </View>
 
-      <View style={s.cycleRow}>
-        <TouchableOpacity onPress={() => setCycleOffset(o => o - 1)} style={s.cycleArrow}>
-          <Text style={s.cycleArrowText}>‹</Text>
-        </TouchableOpacity>
-        <Text style={s.cycleLabel}>{cycle.monthYear}</Text>
-        <TouchableOpacity
-          onPress={() => setCycleOffset(o => Math.min(o + 1, 0))}
-          disabled={cycleOffset >= 0}
-          style={[s.cycleArrow, cycleOffset >= 0 && { opacity: 0.3 }]}
-        >
-          <Text style={s.cycleArrowText}>›</Text>
-        </TouchableOpacity>
-      </View>
+      {activeIdx === 0 && (
+        <View style={s.cycleRow}>
+          <TouchableOpacity onPress={() => setCycleOffset(o => o - 1)} style={s.cycleArrow}>
+            <Text style={s.cycleArrowText}>‹</Text>
+          </TouchableOpacity>
+          <Text style={s.cycleLabel}>{cycle.monthYear}</Text>
+          <TouchableOpacity
+            onPress={() => setCycleOffset(o => Math.min(o + 1, 0))}
+            disabled={cycleOffset >= 0}
+            style={[s.cycleArrow, cycleOffset >= 0 && { opacity: 0.3 }]}
+          >
+            <Text style={s.cycleArrowText}>›</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {hasCreditTx && (
         <View style={s.creditBanner}>

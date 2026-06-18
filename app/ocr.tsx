@@ -992,11 +992,23 @@ export default function OCRScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.toggleRow} onPress={() => setSimplified(v => !v)}>
-          <Text style={styles.toggleLabel}>
-            {simplified ? '✅' : '⬜'} Modo simplificado (total + pote único)
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.simplifiedSwitchCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.simplifiedSwitchTitle}>Modo simplificado</Text>
+            <Text style={styles.simplifiedSwitchSub}>
+              {simplified ? 'Todos os itens vão para um pote' : 'Selecionar pote por item'}
+            </Text>
+          </View>
+          <Switch
+            value={simplified}
+            onValueChange={val => {
+              setSimplified(val)
+              if (!val) setSinglePotId(defaultPotId ?? null)
+            }}
+            trackColor={{ false: Colors.border, true: Colors.primary }}
+            thumbColor={simplified ? '#fff' : '#f4f3f4'}
+          />
+        </View>
 
         {simplified ? (
           <View style={styles.card}>
@@ -1273,7 +1285,14 @@ const styles = StyleSheet.create({
   payChipText: { fontSize: 13, fontWeight: '500', color: Colors.textMuted },
   payChipTextActive: { color: Colors.primary, fontWeight: '700' },
   payHint: { fontSize: 11, color: Colors.textMuted, marginTop: 10 },
-  // Mode toggle
+  simplifiedSwitchCard: {
+    backgroundColor: Colors.white, borderRadius: 14, padding: 14, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  simplifiedSwitchTitle: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  simplifiedSwitchSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  // Mode toggle (kept for reference)
   toggleRow: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 14,
     marginBottom: 12, flexDirection: 'row', alignItems: 'center',
