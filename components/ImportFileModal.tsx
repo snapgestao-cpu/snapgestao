@@ -112,6 +112,78 @@ function normalize(s: string): string {
   return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+// Like parseDateISO but returns null instead of falling back to today
+function parseDateISOStrict(raw: any): string | null {
+  if (!raw) return null
+  if (typeof raw === 'number') {
+    try {
+      const d = XLSX.SSF.parse_date_code(raw)
+      if (d && d.y > 1900) {
+        return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+      }
+    } catch {}
+    const dt = new Date(Math.round((raw - 25569) * 86400 * 1000))
+    if (!isNaN(dt.getTime())) return formatDateISO(dt)
+    return null
+  }
+  const s = String(raw).trim()
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+  const dmy2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (dmy2) return `20${dmy2[3]}-${dmy2[2].padStart(2, '0')}-${dmy2[1].padStart(2, '0')}`
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+  return null
+}
+
+function validateImportRows(data: any[][]): string[] {
+  if (data.length < 2) return []
+  const header = data[0].map((h: any) => String(h ?? '').toLowerCase().trim())
+  const colIdx = (names: string[]) =>
+    names.reduce<number>((found, n) => found >= 0 ? found : header.findIndex(h => h.includes(n)), -1)
+
+  const dateCol = colIdx(['data', 'date'])
+  const descCol = colIdx(['descri', 'desc', 'hist', 'memo'])
+  const typeCol = colIdx(['tipo', 'type'])
+  const payCol  = colIdx(['pagamento', 'payment', 'forma'])
+  const amtCol  = colIdx(['valor', 'amount', 'value', 'total'])
+
+  const errors: string[] = []
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i]
+    if (amtCol < 0 || row[amtCol] == null) continue
+    if (parseAmount(row[amtCol]) <= 0) continue
+
+    const lineNum = i + 1
+
+    if (dateCol >= 0 && parseDateISOStrict(row[dateCol]) === null) {
+      errors.push(`Linha ${lineNum}: data inválida "${row[dateCol]}" — use DD/MM/AAAA`)
+    }
+
+    if (descCol >= 0 && !String(row[descCol] ?? '').trim()) {
+      errors.push(`Linha ${lineNum}: Descrição é obrigatória`)
+    }
+
+    if (typeCol >= 0) {
+      const t = normalize(String(row[typeCol] ?? ''))
+      if (!t.includes('recei') && !t.includes('gasto') && !t.includes('income') && !t.includes('expense') && !t.includes('despesa')) {
+        errors.push(`Linha ${lineNum}: Tipo inválido "${row[typeCol]}" — use "gasto" ou "receita"`)
+      }
+    }
+
+    const isExpense = typeCol < 0 || (() => {
+      const t = normalize(String(row[typeCol] ?? ''))
+      return !t.includes('recei') && !t.includes('income')
+    })()
+    if (isExpense && payCol >= 0 && !String(row[payCol] ?? '').trim()) {
+      errors.push(`Linha ${lineNum}: Forma de Pagamento é obrigatória para gastos`)
+    }
+  }
+
+  return errors
+}
+
 function parsePaymentMethod(raw: any): string {
   const s = normalize(String(raw ?? ''))
   if (s.includes('cred')) return 'credit'
@@ -248,10 +320,11 @@ function ExcelPreview() {
       </ScrollView>
       <View style={exStyles.legend}>
         <Text style={exStyles.legendText}>
-          <Text style={{ fontWeight: '700' }}>Obrigatória:</Text> valor{'\n'}
-          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> estabelecimento, parcelas, pote{'\n'}
+          <Text style={{ fontWeight: '700' }}>Obrigatórios:</Text> tipo, descrição, data, valor{'\n'}
+          <Text style={{ fontWeight: '700' }}>Gastos:</Text> pagamento e pote recomendados{'\n'}
+          <Text style={{ fontWeight: '700' }}>Opcionais:</Text> estabelecimento, parcelas{'\n'}
           <Text style={{ color: Colors.primary, fontWeight: '600' }}>💡 Dica:</Text>
-          <Text>{' '}O nome do pote deve ser igual ao cadastrado no app. Ex: "Alimentação". Se não encontrado, será marcado como "Nenhum". Formas de pagamento aceitas: dinheiro, débito, crédito, pix, transferência, vale alimentação, vale refeição.</Text>
+          <Text>{' '}O nome do pote deve ser igual ao cadastrado no app. Formas de pagamento: dinheiro, débito, crédito, pix, transferência, vale alimentação, vale refeição.</Text>
         </Text>
       </View>
     </View>
@@ -330,6 +403,17 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       const wb = XLSX.read(b64, { type: 'base64' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+
+      const erros = validateImportRows(data)
+      if (erros.length > 0) {
+        Alert.alert(
+          '⚠️ Erros encontrados',
+          `Corrija os problemas abaixo antes de importar:\n\n${erros.slice(0, 10).join('\n')}${erros.length > 10 ? `\n...e mais ${erros.length - 10} erros` : ''}`,
+          [{ text: 'OK' }]
+        )
+        return
+      }
+
       const parsed = parseSheet(data)
       if (parsed.length === 0) {
         Alert.alert('Arquivo vazio', 'Não encontramos transações válidas. Verifique o formato do arquivo.')

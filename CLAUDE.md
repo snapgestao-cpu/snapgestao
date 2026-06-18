@@ -361,8 +361,27 @@ Feature implementada em `app/(tabs)/charts.tsx` e `lib/charts-data.ts`.
 Todas as exportações de documento usam esta função:
 - `lib/gerar-pdf.ts` — `salvarPDFnoDownloads` e `compartilharPDF` chamam `saveToDownloads`
 - `lib/export-excel.ts` — `exportTransactionsToExcel` chama `saveToDownloads`
+- `lib/import-template.ts` — `downloadImportTemplate` chama `saveToDownloads` para o modelo de importação
 
 **Não substituir** `Sharing.shareAsync` em `app/ir.tsx` linha 442 — aquela chamada é para compartilhar imagem de recibo, não documento.
+
+## Importação de Planilha
+
+Feature em `components/ImportFileModal.tsx` + `lib/import-template.ts`.
+
+**Fluxo**: pick → preview → card_select (se crédito) → assign (potes) → saving → done.
+
+**Parsing** (`parseSheet`): aceita colunas em qualquer ordem; detecta por substring do cabeçalho. Mapeia tipo, data, valor, pagamento, parcelas e pote.
+
+**Validação** (`validateImportRows`): executada em `pickFile` antes de processar. Bloqueia importação se encontrar:
+- Data inválida (não reconhece o formato) — função `parseDateISOStrict` retorna `null` para formatos inválidos
+- Descrição vazia
+- Tipo inválido (não é "gasto"/"receita"/"expense"/"income"/"despesa")
+- Forma de Pagamento ausente em gastos
+
+Erros exibidos em Alert antes de prosseguir (máx. 10 visíveis + contador do restante).
+
+**Modelo**: `lib/import-template.ts` gera `.xlsx` com aba "Lançamentos" (exemplos) + aba "Instruções"; salvo via `saveToDownloads`.
 
 ## Dívidas
 

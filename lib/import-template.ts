@@ -9,7 +9,7 @@
 
 import * as XLSX from 'xlsx'
 import * as FileSystem from 'expo-file-system/legacy'
-import * as Sharing from 'expo-sharing'
+import { saveToDownloads } from './save-file'
 
 const TEMPLATE_FILENAME = 'modelo-importacao.xlsx'
 
@@ -90,13 +90,11 @@ export async function downloadImportTemplate(): Promise<void> {
     encoding: FileSystem.EncodingType.Base64,
   })
 
-  // ── Compartilhar via seletor nativo ────────────────────────────────────────
+  // ── Salvar no dispositivo via SAF (Android) ou share sheet (iOS) ──────────
 
-  const canShare = await Sharing.isAvailableAsync()
-  if (!canShare) throw new Error('Compartilhamento não disponível neste dispositivo.')
-  await Sharing.shareAsync(filePath, {
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dialogTitle: 'Salvar modelo de importação',
-    UTI: 'com.microsoft.excel.xlsx',
-  })
+  await saveToDownloads(
+    filePath,
+    TEMPLATE_FILENAME,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
 }
