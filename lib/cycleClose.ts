@@ -171,6 +171,7 @@ export async function processCycleClose(
     cycle_start_date: nextStartStr,
     total_debt: summary.totalDebt,
     total_surplus: surplusAction === 'income' ? summary.totalSurplus : 0,
+    surplus_amount: summary.totalSurplus,
     surplus_action: surplusAction,
     surplus_goal_id: surplusGoalId,
     processed: true,

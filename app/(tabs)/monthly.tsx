@@ -251,6 +251,53 @@ export default function MonthlyScreen() {
     setReopening(true)
     try {
       const nextCycleStart = getCycle(user.cycle_start ?? 1, offset + 1).startISO
+
+      const { data: rollover } = await supabase
+        .from('cycle_rollovers')
+        .select('surplus_action, surplus_goal_id, surplus_amount')
+        .eq('user_id', user.id)
+        .eq('cycle_start_date', nextCycleStart)
+        .maybeSingle()
+
+      const surplusAction = (rollover as any)?.surplus_action
+      const surplusGoalId = (rollover as any)?.surplus_goal_id
+      const surplusAmount = Number((rollover as any)?.surplus_amount ?? 0)
+
+      if (surplusAction === 'goal' && surplusGoalId && surplusAmount > 0) {
+        await supabase.from('transactions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('type', 'goal_deposit')
+          .eq('description', 'Sobra do ciclo → meta')
+          .eq('date', nextCycleStart)
+        const { data: goal } = await supabase.from('goals')
+          .select('current_amount')
+          .eq('id', surplusGoalId)
+          .single()
+        const newAmount = Math.max(0, Number((goal as any)?.current_amount ?? 0) - surplusAmount)
+        await supabase.from('goals').update({ current_amount: newAmount }).eq('id', surplusGoalId)
+      }
+
+      if (surplusAction === 'emergency' && surplusAmount > 0) {
+        const { data: ert } = await supabase
+          .from('emergency_reserve_transactions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('type', 'deposit_external')
+          .eq('description', 'Sobra do ciclo')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if ((ert as any)?.id) {
+          await supabase.from('emergency_reserve_transactions').delete().eq('id', (ert as any).id)
+        }
+        const reserve = await getOrCreateReserve(user.id)
+        const newReserve = Math.max(0, reserve.current_amount - surplusAmount)
+        await supabase.from('emergency_reserve')
+          .update({ current_amount: newReserve, updated_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+      }
+
       await supabase.from('cycle_rollovers')
         .update({ processed: false })
         .eq('user_id', user.id)
@@ -825,7 +872,11 @@ export default function MonthlyScreen() {
         )
       })}
 
-      <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={[styles.fab, cycleClosed && { opacity: 0.4 }]}
+        onPress={cycleClosed ? undefined : toggleFab}
+        activeOpacity={0.85}
+      >
         <Animated.Text style={[styles.fabIcon, { transform: [{ rotate: fabRotate }] }]}>+</Animated.Text>
       </TouchableOpacity>
 

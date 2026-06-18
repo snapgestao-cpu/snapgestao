@@ -78,13 +78,15 @@ export default function PotDetailScreen() {
   const [scheduledItems, setScheduledItems] = useState<any[]>([])
   const [showScheduledModal, setShowScheduledModal] = useState(false)
   const [editingScheduled, setEditingScheduled] = useState<any | null>(null)
+  const [cycleClosed, setCycleClosed] = useState(false)
 
   const loadData = useCallback(async () => {
     if (!user || !id) return
     try {
       const c = getCycle(user.cycle_start ?? 1, cycleOffset)
+      const nextCycleStart = getCycle(user.cycle_start ?? 1, cycleOffset + 1).startISO
 
-      const [potRes, historyData, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes] = await Promise.all([
+      const [potRes, historyData, sourcesRes, txNonCreditRes, txCreditRes, creditExpRes, otherExpRes, closedRes] = await Promise.all([
         supabase.from('pots').select('*').eq('id', id).single(),
         getPotAtMonth(id, user.cycle_start ?? 1, cycleOffset),
         supabase.from('income_sources').select('amount').eq('user_id', user.id),
@@ -103,6 +105,8 @@ export default function PotDetailScreen() {
         supabase.from('transactions').select('amount')
           .eq('pot_id', id).in('type', ['expense', 'goal_deposit']).neq('payment_method', 'credit')
           .gte('date', c.startISO).lte('date', c.endISO),
+        supabase.from('cycle_rollovers').select('processed')
+          .eq('user_id', user.id).eq('cycle_start_date', nextCycleStart).maybeSingle(),
       ])
 
       const base = potRes.data as Pot | null
@@ -133,6 +137,7 @@ export default function PotDetailScreen() {
         potName: p?.name,
         potColor: p?.color,
       })))
+      setCycleClosed((closedRes.data as any)?.processed === true)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -291,12 +296,21 @@ export default function PotDetailScreen() {
 
         {/* Action buttons */}
         <View style={styles.actionsRow}>
-          {ACTION_BTNS.map(btn => (
-            <TouchableOpacity key={btn.label} style={styles.actionBtn} onPress={btn.onPress} activeOpacity={0.7}>
-              <Text style={styles.actionBtnIcon}>{btn.icon}</Text>
-              <Text style={styles.actionBtnLabel}>{btn.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {ACTION_BTNS.map((btn, i) => {
+            const txBtn = i < 4
+            const disabled = txBtn && cycleClosed
+            return (
+              <TouchableOpacity
+                key={btn.label}
+                style={[styles.actionBtn, disabled && { opacity: 0.4 }]}
+                onPress={disabled ? undefined : btn.onPress}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.actionBtnIcon}>{btn.icon}</Text>
+                <Text style={styles.actionBtnLabel}>{btn.label}</Text>
+              </TouchableOpacity>
+            )
+          })}
         </View>
 
         {/* Lançamentos a confirmar */}
