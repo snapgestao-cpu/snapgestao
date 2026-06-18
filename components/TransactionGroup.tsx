@@ -40,6 +40,7 @@ type Props = {
   onDeleteGroup?: (transactions: TxItem[]) => void
   onEditMerchant?: (transactions: TxItem[], newMerchant: string) => Promise<void> | void
   onEditPaymentMethod?: (transactions: TxItem[], newMethod: string, card?: CreditCard | null, installments?: number) => Promise<void> | void
+  readOnly?: boolean
 }
 
 function formatDate(dateStr: string): string {
@@ -47,7 +48,7 @@ function formatDate(dateStr: string): string {
 }
 
 // ── Row única (sem agrupamento) ─────────────────────────────────────────────
-function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
+function SingleRow({ t, onEdit, readOnly }: { t: TxItem; onEdit?: (t: TxItem) => void; readOnly?: boolean }) {
   const isIncome = t.type === 'income'
   const dotColor = t.potColor ?? (isIncome ? Colors.success : Colors.border)
 
@@ -114,7 +115,11 @@ function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
       </Text>
 
       {onEdit && (
-        <TouchableOpacity onPress={() => onEdit(t)} style={{ padding: 4 }}>
+        <TouchableOpacity
+          onPress={readOnly ? undefined : () => onEdit(t)}
+          disabled={readOnly}
+          style={{ padding: 4, opacity: readOnly ? 0.3 : 1 }}
+        >
           <Text style={{ fontSize: 16 }}>✏️</Text>
         </TouchableOpacity>
       )}
@@ -126,7 +131,7 @@ function SingleRow({ t, onEdit }: { t: TxItem; onEdit?: (t: TxItem) => void }) {
 const EXPENSE_METHODS = ['cash', 'debit', 'credit', 'pix', 'voucher_alimentacao', 'voucher_refeicao']
 const INCOME_METHODS = ['pix', 'transfer', 'cash', 'voucher_alimentacao', 'voucher_refeicao']
 
-export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, onEditMerchant, onEditPaymentMethod }: Props) {
+export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, onEditMerchant, onEditPaymentMethod, readOnly }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [editingMerchant, setEditingMerchant] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState('')
@@ -145,7 +150,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
 
   // Grupo único ou sem merchant → linha simples
   if (!hasMerchant || !isMultiple) {
-    return <SingleRow t={transactions[0]} onEdit={onEdit} />
+    return <SingleRow t={transactions[0]} onEdit={onEdit} readOnly={readOnly} />
   }
 
   // Grupo com merchant + múltiplos itens
@@ -269,7 +274,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
         <Text style={{ fontSize: 14, fontWeight: '700', color: total >= 0 ? Colors.success : Colors.danger }}>
           {total >= 0 ? '+' : ''}{brl(Math.abs(total))}
         </Text>
-        {onEditMerchant && !editingMerchant && (
+        {onEditMerchant && !editingMerchant && !readOnly && (
           <TouchableOpacity
             onPress={(e) => {
               e.stopPropagation?.()
@@ -301,7 +306,7 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
                 {transactions.length}{' '}{transactions.length === 1 ? 'item' : 'itens'}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {onEditPaymentMethod && (
+                {onEditPaymentMethod && !readOnly && (
                   savingPayment ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
@@ -323,12 +328,14 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
                 )}
                 {onDeleteGroup && (
                   <TouchableOpacity
-                    onPress={() => onDeleteGroup(transactions)}
+                    onPress={readOnly ? undefined : () => onDeleteGroup(transactions)}
+                    disabled={readOnly}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 4,
                       backgroundColor: '#FEF2F2', borderRadius: 8,
                       paddingHorizontal: 10, paddingVertical: 5,
                       borderWidth: 1, borderColor: '#FCA5A5',
+                      opacity: readOnly ? 0.3 : 1,
                     }}
                   >
                     <Text style={{ fontSize: 12 }}>🗑️</Text>
@@ -538,7 +545,11 @@ export default function TransactionGroup({ transactions, onEdit, onDeleteGroup, 
                   </Text>
 
                   {onEdit && (
-                    <TouchableOpacity onPress={() => onEdit(t)} style={{ padding: 4 }}>
+                    <TouchableOpacity
+                      onPress={readOnly ? undefined : () => onEdit(t)}
+                      disabled={readOnly}
+                      style={{ padding: 4, opacity: readOnly ? 0.3 : 1 }}
+                    >
                       <Text style={{ fontSize: 14 }}>✏️</Text>
                     </TouchableOpacity>
                   )}

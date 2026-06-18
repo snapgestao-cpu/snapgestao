@@ -634,6 +634,7 @@ export default function MonthlyScreen() {
                         <TransactionGroup
                           key={group.key}
                           transactions={group.transactions}
+                          readOnly={cycleClosed}
                           onEdit={t => setEditingTx(t as any)}
                           onEditMerchant={async (txs, newMerchant) => {
                             const ids = txs.map(t => t.id)

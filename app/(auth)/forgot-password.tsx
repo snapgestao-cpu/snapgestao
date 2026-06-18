@@ -52,10 +52,10 @@ export default function ForgotPasswordScreen() {
           Clique no link do e-mail para redefinir sua senha.
         </Text>
         <TouchableOpacity
-          style={styles.btn}
+          style={[styles.btn, { width: '100%', marginTop: 8 }]}
           onPress={() => router.replace('/(auth)/login')}
         >
-          <Text style={styles.btnText}>Voltar para o login</Text>
+          <Text style={[styles.btnText, { fontSize: 16, textAlign: 'center' }]}>Voltar para o login</Text>
         </TouchableOpacity>
       </View>
     )
