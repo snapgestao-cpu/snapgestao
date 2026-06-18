@@ -125,3 +125,14 @@ export async function getIRReceiptImageUrl(path: string): Promise<string> {
 export async function deleteIRReceiptImage(path: string): Promise<void> {
   await supabase.storage.from('receipts').remove([path])
 }
+
+export async function updateIRReimbursement(
+  transactionId: string,
+  amount: number | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('transactions')
+    .update({ ir_reimbursement_amount: amount })
+    .eq('id', transactionId)
+  if (error) throw new Error(error.message)
+}

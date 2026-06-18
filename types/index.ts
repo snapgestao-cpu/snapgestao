@@ -65,6 +65,7 @@ export type Transaction = {
   ir_provider_document: string | null
   ir_receipt_number: string | null
   ir_receipt_image_path: string | null
+  ir_reimbursement_amount: number | null
 }
 
 export type Goal = {

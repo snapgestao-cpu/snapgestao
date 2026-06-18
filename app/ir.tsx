@@ -4,13 +4,13 @@
  *
  * Tela de Deduções IR — lista lançamentos dedutíveis agrupados por
  * categoria com progresso vs. limite anual e exportação em PDF.
- * Bloqueada por ir_module_enabled (paywall simples se false).
+ * Bloqueada por isPremium (paywall para usuários Free).
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, ActivityIndicator, RefreshControl, Alert, Share,
+  Modal, ActivityIndicator, RefreshControl, Alert,
   TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Image } from 'react-native'
@@ -20,46 +20,14 @@ import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
-import { getIRDeductibles, groupByCategory, getIRReceiptImageUrl, IRCategoryGroup, IRDeductible } from '../lib/ir'
+import { getIRDeductibles, groupByCategory, getIRReceiptImageUrl, updateIRReimbursement, IRCategoryGroup, IRDeductible } from '../lib/ir'
 import { gerarRelatorioIR, salvarPDFnoDownloads } from '../lib/gerar-pdf'
-import { getHealthReimbursement, upsertHealthReimbursement, HealthReimbursement } from '../lib/ir-reimbursement'
 import { brl } from '../lib/finance'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 
 function isoToBR(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
-}
-
-function ReceiptThumb({ imagePath, onPress }: { imagePath: string; onPress: () => void }) {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    getIRReceiptImageUrl(imagePath)
-      .then(setUrl)
-      .catch(() => {})
-  }, [imagePath])
-
-  if (!url) {
-    return (
-      <TouchableOpacity onPress={onPress} style={styles.receiptBtn}>
-        <Text style={styles.receiptBtnIcon}>🧾</Text>
-      </TouchableOpacity>
-    )
-  }
-
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={styles.receiptThumb}
-      activeOpacity={0.85}
-    >
-      <Image source={{ uri: url }} style={styles.receiptThumbImg} resizeMode="cover" />
-      <View style={styles.receiptThumbOverlay}>
-        <Text style={styles.receiptThumbOverlayText}>🔍 Ver foto</Text>
-      </View>
-    </TouchableOpacity>
-  )
 }
 
 export default function IRScreen() {
@@ -71,24 +39,18 @@ export default function IRScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
-  const [receiptImage, setReceiptImage] = useState<{ uri: string; item: IRDeductible } | null>(null)
+  const [receiptUri, setReceiptUri] = useState<string | null>(null)
   const [loadingImage, setLoadingImage] = useState(false)
-  const [reimbursement, setReimbursement] = useState<HealthReimbursement>({ amount: 0, description: null })
-  const [showReimbModal, setShowReimbModal] = useState(false)
-  const [reimbModalDigits, setReimbModalDigits] = useState('')
-  const [reimbModalDesc, setReimbModalDesc] = useState('')
+  const [editingReimb, setEditingReimb] = useState<IRDeductible | null>(null)
+  const [reimbEditDigits, setReimbEditDigits] = useState('')
   const [savingReimb, setSavingReimb] = useState(false)
   const reimbAmountRef = useRef<TextInput>(null)
 
   const load = useCallback(async () => {
     if (!user) return
     try {
-      const [items, reimb] = await Promise.all([
-        getIRDeductibles(user.id, year),
-        getHealthReimbursement(user.id, year),
-      ])
+      const items = await getIRDeductibles(user.id, year)
       setGroups(groupByCategory(items))
-      setReimbursement(reimb)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -97,58 +59,9 @@ export default function IRScreen() {
 
   useEffect(() => { setLoading(true); load() }, [load])
 
-  const saudeTotal = groups.find(g => g.category === 'saude')?.total ?? 0
-  const saudeLiquido = Math.max(0, saudeTotal - reimbursement.amount)
-  const totalGeral = groups.reduce((s, g) =>
-    s + (g.category === 'saude' ? saudeLiquido : g.total), 0
-  )
-
-  const openReimbModal = () => {
-    const cents = Math.round(reimbursement.amount * 100)
-    setReimbModalDigits(cents > 0 ? String(cents) : '')
-    setReimbModalDesc(reimbursement.description ?? '')
-    setShowReimbModal(true)
-  }
-
-  const saveReimbursement = async () => {
-    if (!user || savingReimb) return
-    setSavingReimb(true)
-    try {
-      const parsed = centsToFloat(reimbModalDigits)
-      await upsertHealthReimbursement(user.id, year, parsed, reimbModalDesc.trim() || undefined)
-      setReimbursement({ amount: parsed, description: reimbModalDesc.trim() || null })
-      setShowReimbModal(false)
-    } catch {
-      Alert.alert('Erro', 'Não foi possível salvar o reembolso.')
-    } finally {
-      setSavingReimb(false)
-    }
-  }
-
-  const deleteReimbursement = () => {
-    Alert.alert(
-      'Remover reembolso',
-      'Deseja remover o valor de reembolso cadastrado?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover', style: 'destructive', onPress: async () => {
-            if (!user) return
-            setSavingReimb(true)
-            try {
-              await upsertHealthReimbursement(user.id, year, 0, undefined)
-              setReimbursement({ amount: 0, description: null })
-              setShowReimbModal(false)
-            } catch {
-              Alert.alert('Erro', 'Não foi possível remover o reembolso.')
-            } finally {
-              setSavingReimb(false)
-            }
-          },
-        },
-      ]
-    )
-  }
+  const totalReimbs = groups.reduce((s, g) =>
+    s + g.items.reduce((ss, item) => ss + (item.ir_reimbursement_amount ?? 0), 0), 0)
+  const totalGeral = groups.reduce((s, g) => s + g.total, 0) - totalReimbs
 
   const handleExportPDF = async () => {
     if (!user) return
@@ -168,12 +81,58 @@ export default function IRScreen() {
     setLoadingImage(true)
     try {
       const uri = await getIRReceiptImageUrl(item.ir_receipt_image_path)
-      setReceiptImage({ uri, item })
+      setReceiptUri(uri)
     } catch {
       Alert.alert('Erro', 'Não foi possível carregar a imagem do recibo.')
     } finally {
       setLoadingImage(false)
     }
+  }
+
+  const openReimbEdit = (item: IRDeductible) => {
+    const cents = Math.round((item.ir_reimbursement_amount ?? 0) * 100)
+    setReimbEditDigits(cents > 0 ? String(cents) : '')
+    setEditingReimb(item)
+  }
+
+  const saveItemReimb = async () => {
+    if (!editingReimb || savingReimb) return
+    setSavingReimb(true)
+    try {
+      const amount = centsToFloat(reimbEditDigits)
+      await updateIRReimbursement(editingReimb.id, amount > 0 ? amount : null)
+      setEditingReimb(null)
+      load()
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar o reembolso.')
+    } finally {
+      setSavingReimb(false)
+    }
+  }
+
+  const deleteItemReimb = () => {
+    Alert.alert(
+      'Remover reembolso',
+      'Deseja remover o valor de reembolso deste lançamento?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover', style: 'destructive', onPress: async () => {
+            if (!editingReimb) return
+            setSavingReimb(true)
+            try {
+              await updateIRReimbursement(editingReimb.id, null)
+              setEditingReimb(null)
+              load()
+            } catch {
+              Alert.alert('Erro', 'Não foi possível remover o reembolso.')
+            } finally {
+              setSavingReimb(false)
+            }
+          },
+        },
+      ]
+    )
   }
 
   // Paywall
@@ -284,9 +243,10 @@ export default function IRScreen() {
                   )}
 
                   {/* Itens */}
-                  {group.items.map((item, idx) => (
-                    <View key={item.id} style={[styles.txRow, idx < group.items.length - 1 && styles.txBorder]}>
-                      <View style={{ flex: 1 }}>
+                  {group.items.map((item, idx) => {
+                    const reimb = item.ir_reimbursement_amount ?? 0
+                    return (
+                      <View key={item.id} style={[styles.txRow, idx < group.items.length - 1 && styles.txBorder]}>
                         <Text style={styles.txProvider}>{item.ir_provider_name ?? item.description ?? '—'}</Text>
                         {item.ir_provider_document ? (
                           <Text style={styles.txDoc}>{item.ir_provider_document}</Text>
@@ -295,37 +255,48 @@ export default function IRScreen() {
                           {item.description ? `${item.description} · ` : ''}{brl(item.amount)} · {isoToBR(item.date)}
                           {item.ir_receipt_number ? ` · Recibo: ${item.ir_receipt_number}` : ''}
                         </Text>
-                        {group.category === 'saude' && reimbursement.amount > 0 && idx === group.items.length - 1 ? (
-                          <Text style={styles.txReimb}>Reembolso: −{brl(reimbursement.amount)}</Text>
-                        ) : null}
-                        {item.ir_receipt_image_path ? (
-                          <ReceiptThumb
-                            imagePath={item.ir_receipt_image_path}
-                            onPress={() => handleOpenReceipt(item)}
-                          />
-                        ) : null}
-                      </View>
-                    </View>
-                  ))}
 
-                  {/* Reembolso footer — apenas Saúde */}
-                  {group.category === 'saude' && (
-                    <View style={styles.reimbFooter}>
-                      <TouchableOpacity style={styles.reimbBtn} onPress={openReimbModal} activeOpacity={0.75}>
-                        <Text style={styles.reimbBtnText}>
-                          {reimbursement.amount > 0 ? '✏️ Editar reembolso' : '💰 Adicionar reembolso'}
-                        </Text>
-                      </TouchableOpacity>
-                      {reimbursement.amount > 0 && (
-                        reimbursement.amount > saudeTotal
-                          ? <Text style={styles.reimbWarning}>⚠️ Reembolso maior que os gastos registrados</Text>
-                          : <View style={styles.nettoRow}>
-                              <Text style={styles.nettoLabel}>Gasto dedutível líquido:</Text>
-                              <Text style={styles.nettoValue}>{brl(saudeLiquido)}</Text>
+                        {/* Reembolso individual */}
+                        {reimb > 0 ? (
+                          <>
+                            <View style={styles.txReimbRow}>
+                              <Text style={styles.txReimbLabel}>Reembolso recebido:</Text>
+                              <Text style={styles.txReimbValue}>−{brl(reimb)}</Text>
                             </View>
-                      )}
-                    </View>
-                  )}
+                            <View style={styles.txNettoRow}>
+                              <Text style={styles.txNettoLabel}>Valor dedutível líquido:</Text>
+                              <Text style={styles.txNettoValue}>{brl(item.amount - reimb)}</Text>
+                            </View>
+                          </>
+                        ) : null}
+
+                        {/* Botões do card */}
+                        <View style={styles.txActionsRow}>
+                          <TouchableOpacity
+                            onPress={() => openReimbEdit(item)}
+                            style={styles.txActionBtn}
+                          >
+                            <Text style={styles.txActionBtnText}>
+                              {reimb > 0 ? '✏️ Editar reembolso' : '+ Adicionar reembolso'}
+                            </Text>
+                          </TouchableOpacity>
+                          {item.ir_receipt_image_path ? (
+                            <TouchableOpacity
+                              onPress={() => handleOpenReceipt(item)}
+                              style={[styles.txActionBtn, styles.txReceiptBtn]}
+                              disabled={loadingImage}
+                            >
+                              {loadingImage ? (
+                                <ActivityIndicator size="small" color={Colors.primary} />
+                              ) : (
+                                <Text style={styles.txReceiptBtnText}>🧾 Ver recibo</Text>
+                              )}
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </View>
+                    )
+                  })}
                 </View>
               ))}
 
@@ -335,9 +306,9 @@ export default function IRScreen() {
                   <Text style={styles.totalLabel}>TOTAL DE DEDUÇÕES {year}</Text>
                   <Text style={styles.totalValue}>{brl(totalGeral)}</Text>
                 </View>
-                {reimbursement.amount > 0 && (
+                {totalReimbs > 0 && (
                   <Text style={styles.totalNote}>
-                    * Saúde: valor líquido após reembolso de {brl(reimbursement.amount)}
+                    * Valor líquido após reembolsos de {brl(totalReimbs)}
                   </Text>
                 )}
               </View>
@@ -364,20 +335,23 @@ export default function IRScreen() {
         </View>
       )}
 
-      {/* Modal reembolso */}
+      {/* Modal reembolso por lançamento */}
       <Modal
-        visible={showReimbModal}
+        visible={!!editingReimb}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowReimbModal(false)}
+        onRequestClose={() => setEditingReimb(null)}
       >
         <KeyboardAvoidingView
           style={{ flex: 1, justifyContent: 'flex-end' }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity style={StyleSheet.absoluteFillObject as any} onPress={() => setShowReimbModal(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject as any} onPress={() => setEditingReimb(null)} />
           <View style={styles.reimbModalCard}>
-            <Text style={styles.reimbModalTitle}>💰 Reembolso do plano de saúde</Text>
+            <Text style={styles.reimbModalTitle}>💰 Reembolso recebido</Text>
+            <Text style={styles.reimbModalSub} numberOfLines={1}>
+              {editingReimb?.ir_provider_name ?? editingReimb?.description ?? '—'}
+            </Text>
             <Text style={styles.reimbModalLabel}>Valor recebido de volta</Text>
             <TouchableOpacity
               style={styles.reimbAmountDisplay}
@@ -385,40 +359,32 @@ export default function IRScreen() {
               activeOpacity={0.8}
             >
               <Text style={styles.reimbAmountText}>
-                {reimbModalDigits ? formatCents(reimbModalDigits) : 'R$ 0,00'}
+                {reimbEditDigits ? formatCents(reimbEditDigits) : 'R$ 0,00'}
               </Text>
               <TextInput
                 ref={reimbAmountRef}
                 style={styles.reimbHiddenInput}
-                value={reimbModalDigits}
-                onChangeText={v => setReimbModalDigits(digitsOnly(v))}
+                value={reimbEditDigits}
+                onChangeText={v => setReimbEditDigits(digitsOnly(v))}
                 keyboardType="numeric"
                 caretHidden
               />
             </TouchableOpacity>
-            <Text style={styles.reimbModalLabel}>Plano/Operadora (opcional)</Text>
-            <TextInput
-              style={styles.reimbModalInput}
-              value={reimbModalDesc}
-              onChangeText={setReimbModalDesc}
-              placeholder="Ex: Bradesco, Unimed..."
-              placeholderTextColor={Colors.textMuted}
-            />
-            {reimbursement.amount > 0 && (
-              <TouchableOpacity style={styles.reimbDeleteBtn} onPress={deleteReimbursement} disabled={savingReimb}>
+            {(editingReimb?.ir_reimbursement_amount ?? 0) > 0 && (
+              <TouchableOpacity style={styles.reimbDeleteBtn} onPress={deleteItemReimb} disabled={savingReimb}>
                 <Text style={styles.reimbDeleteBtnText}>🗑️ Remover reembolso</Text>
               </TouchableOpacity>
             )}
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
               <TouchableOpacity
                 style={[styles.reimbModalBtn, { backgroundColor: Colors.border, flex: 1 }]}
-                onPress={() => setShowReimbModal(false)}
+                onPress={() => setEditingReimb(null)}
               >
                 <Text style={[styles.reimbModalBtnText, { color: Colors.textDark }]}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.reimbModalBtn, { backgroundColor: Colors.primary, flex: 1 }]}
-                onPress={saveReimbursement}
+                onPress={saveItemReimb}
                 disabled={savingReimb}
               >
                 {savingReimb
@@ -431,47 +397,42 @@ export default function IRScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Modal imagem recibo */}
+      {/* Modal imagem recibo — tela cheia escura */}
       <Modal
-        visible={!!receiptImage}
+        visible={!!receiptUri}
         transparent
         animationType="fade"
-        onRequestClose={() => setReceiptImage(null)}
+        onRequestClose={() => setReceiptUri(null)}
       >
         <View style={styles.imageModalBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject as any} onPress={() => setReceiptImage(null)} />
-          <View style={styles.imageModalCard}>
-            <View style={styles.imageModalHeader}>
-              <Text style={styles.imageModalTitle} numberOfLines={1}>
-                {receiptImage?.item.ir_provider_name ?? 'Recibo'}
-              </Text>
-              <TouchableOpacity onPress={() => setReceiptImage(null)}>
-                <Text style={styles.imageModalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            {receiptImage && (
-              <Image
-                source={{ uri: receiptImage.uri }}
-                style={styles.receiptImage}
-                resizeMode="contain"
-              />
-            )}
-            <TouchableOpacity
-              style={styles.shareImageBtn}
-              onPress={async () => {
-                if (!receiptImage) return
-                try {
-                  const localUri = (FileSystem.cacheDirectory ?? '') + 'recibo_ir.jpg'
-                  await FileSystem.downloadAsync(receiptImage.uri, localUri)
-                  await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', dialogTitle: 'Compartilhar recibo' })
-                } catch {
-                  Alert.alert('Erro', 'Não foi possível compartilhar a imagem.')
-                }
-              }}
-            >
-              <Text style={styles.shareImageBtnText}>Compartilhar imagem</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => setReceiptUri(null)}
+            style={styles.imageModalCloseBtn}
+          >
+            <Text style={styles.imageModalCloseText}>✕</Text>
+          </TouchableOpacity>
+          {receiptUri && (
+            <Image
+              source={{ uri: receiptUri }}
+              style={styles.receiptImage}
+              resizeMode="contain"
+            />
+          )}
+          <TouchableOpacity
+            style={styles.shareImageBtn}
+            onPress={async () => {
+              if (!receiptUri) return
+              try {
+                const localUri = (FileSystem.cacheDirectory ?? '') + 'recibo_ir.jpg'
+                await FileSystem.downloadAsync(receiptUri, localUri)
+                await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', dialogTitle: 'Compartilhar recibo' })
+              } catch {
+                Alert.alert('Erro', 'Não foi possível compartilhar a imagem.')
+              }
+            }}
+          >
+            <Text style={styles.shareImageBtnText}>📤 Compartilhar recibo</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </SafeAreaView>
@@ -517,24 +478,30 @@ const styles = StyleSheet.create({
   noLimitText: { fontSize: 12, color: Colors.success, paddingHorizontal: 16, paddingVertical: 8 },
   progressBg: { height: 6, backgroundColor: Colors.border, marginHorizontal: 16, marginVertical: 8, borderRadius: 3 },
   progressFill: { height: 6, borderRadius: 3 },
-  txRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  txRow: { paddingHorizontal: 16, paddingVertical: 12 },
   txBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
   txProvider: { fontSize: 13, fontWeight: '700', color: Colors.textDark },
   txDoc: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
   txDetail: { fontSize: 12, color: Colors.textMuted, marginTop: 3 },
-  txReimb: { fontSize: 12, color: '#C0392B', marginTop: 2, fontWeight: '600' },
-  receiptBtn: { alignSelf: 'flex-start', padding: 4, marginTop: 6 },
-  receiptBtnIcon: { fontSize: 22 },
-  receiptThumb: {
-    marginTop: 8, borderRadius: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: Colors.border,
+  txReimbRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
   },
-  receiptThumbImg: { width: '100%', height: 120 },
-  receiptThumbOverlay: {
-    position: 'absolute', bottom: 6, right: 6,
-    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: 4,
+  txReimbLabel: { fontSize: 12, color: Colors.danger, fontWeight: '600' },
+  txReimbValue: { fontSize: 12, color: Colors.danger, fontWeight: '700' },
+  txNettoRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4,
   },
-  receiptThumbOverlayText: { color: '#fff', fontSize: 11 },
+  txNettoLabel: { fontSize: 12, color: Colors.textMuted },
+  txNettoValue: { fontSize: 13, color: Colors.success, fontWeight: '700' },
+  txActionsRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  txActionBtn: {
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 8,
+    paddingVertical: 4, paddingHorizontal: 10, backgroundColor: Colors.background,
+  },
+  txActionBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  txReceiptBtn: { borderColor: Colors.border },
+  txReceiptBtnText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
   totalBox: {
     backgroundColor: Colors.primary, borderRadius: 16, padding: 20,
   },
@@ -571,53 +538,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32, alignItems: 'center',
   },
   paywallBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  // Modal imagem
+  // Modal imagem — tela cheia escura
   imageModalBackdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center', alignItems: 'center', padding: 16,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  imageModalCard: {
-    backgroundColor: Colors.white, borderRadius: 20, width: '100%', maxHeight: '85%', overflow: 'hidden',
+  imageModalCloseBtn: {
+    position: 'absolute', top: 48, right: 20,
+    padding: 12, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20,
   },
-  imageModalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  imageModalTitle: { fontSize: 15, fontWeight: '700', color: Colors.textDark, flex: 1 },
-  imageModalClose: { fontSize: 18, color: Colors.textMuted, paddingLeft: 12 },
-  receiptImage: { width: '100%', height: 400 },
+  imageModalCloseText: { color: '#fff', fontSize: 20 },
+  receiptImage: { width: '92%', height: '72%', borderRadius: 8 },
   shareImageBtn: {
-    margin: 16, backgroundColor: Colors.primary, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center',
+    marginTop: 20, backgroundColor: Colors.primary, borderRadius: 12,
+    padding: 14, paddingHorizontal: 32, flexDirection: 'row', gap: 8, alignItems: 'center',
   },
   shareImageBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  // Reembolso
-  reimbFooter: {
-    paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4,
-  },
-  reimbBtn: {
-    alignSelf: 'flex-start', borderWidth: 1, borderColor: Colors.primary,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-  },
-  reimbBtnText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
-  reimbWarning: { fontSize: 12, color: Colors.warning, marginTop: 8 },
-  nettoRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  nettoLabel: { fontSize: 13, fontWeight: '600', color: Colors.textDark },
-  nettoValue: { fontSize: 15, fontWeight: '800', color: Colors.success },
   // Modal reembolso
   reimbModalCard: {
     backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: 36,
   },
-  reimbModalTitle: { fontSize: 16, fontWeight: '800', color: Colors.textDark, marginBottom: 4 },
+  reimbModalTitle: { fontSize: 16, fontWeight: '800', color: Colors.textDark, marginBottom: 2 },
+  reimbModalSub: { fontSize: 13, color: Colors.textMuted, marginBottom: 4 },
   reimbModalLabel: { fontSize: 13, color: Colors.textMuted, marginBottom: 6, marginTop: 14 },
-  reimbModalInput: {
-    backgroundColor: Colors.background, borderRadius: 10, padding: 12,
-    fontSize: 15, color: Colors.textDark, borderWidth: 1, borderColor: Colors.border,
-  },
   reimbAmountDisplay: {
     backgroundColor: Colors.background, borderRadius: 10, padding: 14,
     borderWidth: 1, borderColor: Colors.border, marginBottom: 4, alignItems: 'center',
