@@ -11,9 +11,10 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, TouchableOpacity, Dimensions,
+  View, Text, StyleSheet, ActivityIndicator,
+  RefreshControl, TouchableOpacity, Dimensions, TextInput, Alert,
 } from 'react-native'
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../../constants/colors'
@@ -51,6 +52,8 @@ export default function PotsScreen() {
   const { cycleOffset, setCycleOffset, setPendingScheduledCount } = useCycleStore()
 
   const [potsData, setPotsData] = useState<PotRow[]>([])
+  const [potsOrdenados, setPotsOrdenados] = useState<PotRow[]>([])
+  const [searchText, setSearchText] = useState('')
   const [emergencyPot, setEmergencyPot] = useState<Pot | null>(null)
   const [emergencyBalance, setEmergencyBalance] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -150,39 +153,70 @@ export default function PotsScreen() {
 
   const onRefresh = () => { setRefreshing(true); loadPots() }
 
+  useEffect(() => {
+    const sorted = [...potsData].sort(
+      (a, b) => (a.pot.display_order ?? 9999) - (b.pot.display_order ?? 9999)
+    )
+    setPotsOrdenados(sorted)
+  }, [potsData])
+
+  const potsFiltrados = searchText.trim().length >= 3
+    ? potsOrdenados.filter(p =>
+        p.pot.name.toLowerCase().includes(searchText.trim().toLowerCase())
+      )
+    : potsOrdenados
+
+  async function salvarNovaOrdem(ordered: PotRow[]) {
+    try {
+      for (let i = 0; i < ordered.length; i++) {
+        await supabase
+          .from('pots')
+          .update({ display_order: i })
+          .eq('id', ordered[i].pot.id)
+          .eq('user_id', user!.id)
+      }
+    } catch (err) {
+      console.error('[Potes] Erro ao salvar ordem:', String(err))
+      Alert.alert('Erro', 'Não foi possível salvar a nova ordem.')
+    }
+  }
+
   const handleSuccess = (msg: string) => {
     loadPots()
     setToast({ message: msg, color: Colors.primary })
   }
 
-  const renderItem = ({ item }: { item: PotRow }) => (
-    <TouchableOpacity
-      style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8 }}
-      onPress={() => router.push({
-        pathname: `/pot/${item.pot.id}`,
-        params: { cycleOffset: String(cycleOffset) },
-      })}
-      activeOpacity={0.75}
-    >
-      <View style={{ position: 'relative' }}>
-        <JarPot
-          name={item.pot.name}
-          color={item.pot.color}
-          percent={item.percent}
-          spent={item.spent}
-          limit={item.pot.limit_amount}
-          size={120}
-        />
-        {potsPendentes.has(item.pot.id) && (
-          <View style={styles.pendenteBadge}>
-            <Text style={styles.pendenteBadgeText}>!</Text>
-          </View>
-        )}
-      </View>
-      <Text style={styles.potName}>{item.pot.name}</Text>
-      <Text style={styles.potSpent}>{brl(item.spent)}</Text>
-      <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
-    </TouchableOpacity>
+  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<PotRow>) => (
+    <ScaleDecorator>
+      <TouchableOpacity
+        style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8, opacity: isActive ? 0.7 : 1 }}
+        onLongPress={drag}
+        onPress={() => router.push({
+          pathname: `/pot/${item.pot.id}`,
+          params: { cycleOffset: String(cycleOffset) },
+        })}
+        activeOpacity={0.75}
+      >
+        <View style={{ position: 'relative' }}>
+          <JarPot
+            name={item.pot.name}
+            color={item.pot.color}
+            percent={item.percent}
+            spent={item.spent}
+            limit={item.pot.limit_amount}
+            size={120}
+          />
+          {potsPendentes.has(item.pot.id) && (
+            <View style={styles.pendenteBadge}>
+              <Text style={styles.pendenteBadgeText}>!</Text>
+            </View>
+          )}
+        </View>
+        <Text style={styles.potName}>{item.pot.name}</Text>
+        <Text style={styles.potSpent}>{brl(item.spent)}</Text>
+        <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
+      </TouchableOpacity>
+    </ScaleDecorator>
   )
 
   return (
@@ -227,22 +261,53 @@ export default function PotsScreen() {
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
       ) : (
-        <FlatList
-          data={potsData}
+        <DraggableFlatList
+          data={potsFiltrados}
           keyExtractor={item => item.pot.id}
           numColumns={2}
-          renderItem={renderItem}
+          renderItem={renderDraggableItem}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}
+          onDragEnd={({ data }) => {
+            if (searchText.trim().length >= 3) return
+            setPotsOrdenados(data)
+            salvarNovaOrdem(data)
+          }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-          ListEmptyComponent={
-            <View style={styles.emptyWrapper}>
-              <Text style={styles.emptyText}>Nenhum pote criado ainda.</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewPot(true)}>
-                <Text style={styles.emptyBtnText}>Criar meu primeiro pote</Text>
-              </TouchableOpacity>
+          ListHeaderComponent={
+            <View style={styles.searchBar}>
+              <Text style={{ fontSize: 16 }}>🔍</Text>
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Buscar pote..."
+                placeholderTextColor={Colors.textMuted}
+                style={styles.searchInput}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText('')}>
+                  <Text style={{ fontSize: 16, color: Colors.textMuted }}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
+          }
+          ListEmptyComponent={
+            searchText.trim().length >= 3 ? (
+              <View style={styles.emptyWrapper}>
+                <Text style={{ fontSize: 40 }}>🔍</Text>
+                <Text style={[styles.emptyText, { marginTop: 12 }]}>
+                  Nenhum pote encontrado para "{searchText}"
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.emptyWrapper}>
+                <Text style={styles.emptyText}>Nenhum pote criado ainda.</Text>
+                <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewPot(true)}>
+                  <Text style={styles.emptyBtnText}>Criar meu primeiro pote</Text>
+                </TouchableOpacity>
+              </View>
+            )
           }
           ListFooterComponent={
             emergencyPot ? (
@@ -324,6 +389,24 @@ const styles = StyleSheet.create({
   newPotBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
   grid: { paddingHorizontal: 8, paddingBottom: 16 },
   row: { justifyContent: 'space-around', paddingHorizontal: 8 },
+  searchBar: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 8,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.textDark,
+  },
   potName: {
     fontSize: 13, fontWeight: '700', color: Colors.textDark,
     textAlign: 'center', marginTop: 6,

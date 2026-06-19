@@ -511,7 +511,7 @@ export default function MonthlyScreen() {
                           <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: Colors.danger, textAlign: 'right' }}>Gasto</Text>
                           <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: Colors.success, textAlign: 'right' }}>Saldo</Text>
                         </View>
-                        {summary.potSummaries.map((pot, index) => (
+                        {[...summary.potSummaries].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((pot, index) => (
                           <TouchableOpacity
                             key={pot.id}
                             onPress={() => router.push({
@@ -543,7 +543,7 @@ export default function MonthlyScreen() {
                 ) : (
                   /* ── CARDS ── */
                   <>
-                    {summary.potSummaries.map(pot => {
+                    {[...summary.potSummaries].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(pot => {
                       const pct = pot.limit_amount && pot.limit_amount > 0
                         ? Math.min((pot.spent / pot.limit_amount) * 100, 100)
                         : 0

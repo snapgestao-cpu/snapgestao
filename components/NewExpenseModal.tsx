@@ -284,7 +284,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {pots.map(pot => (
+                {[...pots].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(pot => (
                   <TouchableOpacity
                     key={pot.id}
                     style={[styles.potChip, { borderColor: pot.color }, selectedPotId === pot.id && { backgroundColor: pot.color + '20' }]}
