@@ -57,6 +57,19 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
 
+## Tela de Potes (index.tsx)
+
+- **Drag and drop**: `react-native-draggable-flatlist` com `ScaleDecorator`. Long-press no pote ativa o drag. `GestureHandlerRootView` envolvido em `app/_layout.tsx`.
+- **Ordenação**: potes ordenados por `pots.display_order` (coluna `NUMERIC`, já populada via migration). Drag salva nova ordem via updates individuais no Supabase (`display_order = index`).
+- **Busca**: campo no topo filtra por nome com mínimo 3 caracteres. Drag desabilitado durante busca (`onDragEnd` retorna sem salvar).
+- **`display_order`**: campo `number | null` no tipo `Pot` em `types/index.ts`. Ausente = `9999` (vai para o final).
+- **Rebuild obrigatório**: `react-native-draggable-flatlist` usa código nativo. Qualquer mudança nesta lib requer novo APK (prebuild + build).
+
+## Ordenação em outras telas
+
+- **Tela Mensal** (`monthly.tsx`): `potSummaries` ordenados por `localeCompare('pt-BR')` nas duas views (tabela e cards). Intencional — não usar `display_order` aqui.
+- **Seletor de pote em lançamentos** (`NewExpenseModal.tsx`): chips de pote ordenados por `localeCompare('pt-BR')` antes de renderizar.
+
 ## Tela inicial
 
 Mensal (`/(tabs)/monthly`) é a tela inicial após login/onboarding. Tabs em ordem: Mensal · Potes · Projeção · Metas · Perfil. Todos os `router.replace('/(tabs)')` devem apontar para `/(tabs)/monthly`.
