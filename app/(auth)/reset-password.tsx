@@ -29,43 +29,65 @@ export default function ResetPasswordScreen() {
   ]
 
   useEffect(() => {
-    async function processUrl(url: string) {
-      if (!url.includes('reset-password')) return
-      console.log('[ResetPassword] URL recebida:', url)
+    console.log('[Reset] Tela montada')
 
-      // Extrair parâmetros — Supabase pode enviar via hash (#) ou query (?)
-      const hashPart   = url.split('#')[1] ?? ''
-      const queryPart  = (url.split('?')[1] ?? '').split('#')[0]
-      const params     = new URLSearchParams(hashPart || queryPart)
+    async function handleDeepLink(url: string) {
+      console.log('[Reset] handleDeepLink:', url)
+
+      if (
+        !url.includes('reset-password') &&
+        !url.includes('recovery') &&
+        !url.includes('access_token')
+      ) {
+        console.log('[Reset] URL não relevante, ignorando')
+        return
+      }
+
+      let params: URLSearchParams
+      const hashIndex  = url.indexOf('#')
+      const queryIndex = url.indexOf('?')
+
+      if (hashIndex !== -1) {
+        const hashPart = url.substring(hashIndex + 1)
+        console.log('[Reset] Hash part:', hashPart)
+        params = new URLSearchParams(hashPart)
+      } else if (queryIndex !== -1) {
+        const queryPart = url.substring(queryIndex + 1)
+        console.log('[Reset] Query part:', queryPart)
+        params = new URLSearchParams(queryPart)
+      } else {
+        console.warn('[Reset] Sem params na URL')
+        return
+      }
 
       const accessToken  = params.get('access_token')
       const refreshToken = params.get('refresh_token') ?? ''
       const type         = params.get('type')
       const code         = params.get('code')
 
-      console.log('[ResetPassword] type:', type, '| hasToken:', !!accessToken, '| hasCode:', !!code)
+      console.log('[Reset] access_token:', accessToken ? 'presente' : 'ausente')
+      console.log('[Reset] type:', type)
 
-      if (accessToken && type === 'recovery') {
-        // Implicit flow — tokens presentes na URL
+      if (accessToken && (type === 'recovery' || url.includes('recovery'))) {
         const { error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         })
         if (error) {
-          console.error('[ResetPassword] setSession erro:', error.message)
+          console.error('[Reset] setSession erro:', error.message)
           Alert.alert('Link inválido', 'O link expirou ou já foi usado. Solicite um novo.')
           router.replace('/(auth)/login')
           return
         }
+        console.log('[Reset] Sessão criada OK')
         setReady(true)
         return
       }
 
       if (code) {
-        // PKCE flow — trocar o code pelo token de recovery
         const { error } = await supabase.auth.exchangeCodeForSession(url)
         if (error) {
-          console.error('[ResetPassword] exchangeCode erro:', error.message)
+          console.error('[Reset] exchangeCode erro:', error.message)
           Alert.alert('Link inválido', 'O link expirou ou já foi usado. Solicite um novo.')
           router.replace('/(auth)/login')
           return
@@ -73,18 +95,23 @@ export default function ResetPasswordScreen() {
         // PASSWORD_RECOVERY disparado pelo exchange — caught pelo listener abaixo
         return
       }
+
+      console.warn('[Reset] Tokens ausentes ou tipo incorreto:', type)
     }
 
-    // Capturar URL inicial (app aberto pelo deep link)
-    Linking.getInitialURL().then(url => { if (url) processUrl(url) })
+    Linking.getInitialURL().then(url => {
+      console.log('[Reset] Initial URL:', url)
+      if (url) handleDeepLink(url)
+    })
 
-    // Capturar URL em foreground
-    const linkSub = Linking.addEventListener('url', ({ url }) => processUrl(url))
+    const linkSub = Linking.addEventListener('url', ({ url }) => {
+      console.log('[Reset] Deep link:', url)
+      handleDeepLink(url)
+    })
 
-    // Fallback: Supabase já processou o token antes desta tela montar
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Reset] Auth event:', event, !!session)
       if (event === 'PASSWORD_RECOVERY') {
-        console.log('[ResetPassword] PASSWORD_RECOVERY recebido')
         setReady(true)
       }
     })
@@ -94,6 +121,24 @@ export default function ResetPasswordScreen() {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!ready) {
+        console.warn('[Reset] Timeout — nenhum token recebido')
+        Alert.alert(
+          'Link expirado',
+          'O link de redefinição expirou ou é inválido.\n\nSolicite um novo link.',
+          [{
+            text: 'Solicitar novo link',
+            onPress: () => router.replace('/(auth)/forgot-password'),
+          }]
+        )
+      }
+    }, 10000)
+
+    return () => clearTimeout(timeout)
+  }, [ready])
 
   async function handleReset() {
     const reqFailed = passwordReqs.find(r => !r.ok)

@@ -44,18 +44,35 @@ export default function ForgotPasswordScreen() {
     return (
       <View style={styles.centeredFlex}>
         <Text style={styles.bigEmoji}>📧</Text>
-        <Text style={styles.sentTitle}>E-mail enviado!</Text>
+        <Text style={styles.sentTitle}>Solicitação enviada!</Text>
         <Text style={styles.sentBody}>
-          Enviamos um link para{' '}
+          Se o email{' '}
           <Text style={styles.emailHighlight}>{email.trim()}</Text>
-          {'\n\n'}
-          Clique no link do e-mail para redefinir sua senha.
+          {' '}estiver cadastrado no SnapGestão, você receberá um link de redefinição de senha em breve.
         </Text>
+
+        <View style={styles.tipsCard}>
+          <Text style={styles.tipsTitle}>⏱️ Não recebeu o email?</Text>
+          <Text style={styles.tipItem}>• Aguarde até 10 minutos</Text>
+          <Text style={styles.tipItem}>• Verifique a pasta de Spam ou Lixo Eletrônico</Text>
+          <Text style={styles.tipItem}>• Certifique-se que o email digitado está correto</Text>
+          <Text style={styles.tipItem}>• Se não chegar, tente novamente</Text>
+        </View>
+
         <TouchableOpacity
-          style={[styles.btn, { width: '100%', marginTop: 8 }]}
-          onPress={() => router.replace('/(auth)/login')}
+          style={styles.btnRetry}
+          onPress={() => setSent(false)}
+          activeOpacity={0.85}
         >
-          <Text style={[styles.btnText, { fontSize: 16, textAlign: 'center' }]}>Voltar para o login</Text>
+          <Text style={styles.btnRetryText}>Tentar novamente</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.btnSecondary}
+          onPress={() => router.replace('/(auth)/login')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnSecondaryText}>Voltar para o login</Text>
         </TouchableOpacity>
       </View>
     )
@@ -188,7 +205,7 @@ const styles = StyleSheet.create({
 
   bigEmoji: { fontSize: 56, marginBottom: 16 },
   sentTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: Colors.textDark,
     marginBottom: 12,
@@ -199,7 +216,39 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   emailHighlight: { fontWeight: '700', color: Colors.primary },
+
+  tipsCard: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 24,
+    gap: 8,
+    width: '100%',
+  },
+  tipsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  tipItem: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 20,
+  },
+
+  btnRetry: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    paddingVertical: 16,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  btnRetryText: { color: Colors.primary, fontSize: 15, fontWeight: '700' },
 })
