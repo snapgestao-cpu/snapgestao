@@ -1,0 +1,484 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office'
+      xmlns:w='urn:schemas-microsoft-com:office:word'
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset="utf-8"/>
+<title>SnapGestão — Resumo Completo do Projeto</title>
+<!--[if gte mso 9]>
+<xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml>
+<![endif]-->
+<style>
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 11pt;
+    color: #1A2030;
+    margin: 2cm 2.5cm;
+    line-height: 1.5;
+  }
+  h1 { font-size: 22pt; color: #0F5EA8; border-bottom: 3px solid #0F5EA8; padding-bottom: 6pt; margin-top: 0; }
+  h2 { font-size: 15pt; color: #0F5EA8; border-bottom: 1px solid #BDD5EF; padding-bottom: 3pt; margin-top: 24pt; }
+  h3 { font-size: 12pt; color: #0A3D6B; margin-top: 14pt; margin-bottom: 4pt; }
+  h4 { font-size: 11pt; color: #1EB87A; margin-top: 10pt; margin-bottom: 2pt; }
+  table { border-collapse: collapse; width: 100%; margin: 10pt 0; font-size: 10pt; }
+  th { background-color: #0F5EA8; color: white; padding: 6pt 8pt; text-align: left; }
+  td { border: 1px solid #CBD5E0; padding: 5pt 8pt; vertical-align: top; }
+  tr:nth-child(even) td { background-color: #F4F6F9; }
+  code, .code { font-family: Consolas, monospace; background: #F0F4F8; padding: 1pt 4pt; font-size: 9.5pt; border-radius: 3pt; }
+  .codeblock { font-family: Consolas, monospace; background: #F0F4F8; padding: 8pt 12pt; font-size: 9pt; border-left: 3px solid #0F5EA8; margin: 8pt 0; display: block; white-space: pre-wrap; }
+  .warn { background: #FEF2F2; border-left: 4px solid #E24B4A; padding: 6pt 10pt; margin: 8pt 0; }
+  .tip { background: #F0FDF4; border-left: 4px solid #1EB87A; padding: 6pt 10pt; margin: 8pt 0; }
+  .info { background: #EFF6FF; border-left: 4px solid #0F5EA8; padding: 6pt 10pt; margin: 8pt 0; }
+  ul { margin: 4pt 0 8pt 20pt; }
+  li { margin-bottom: 3pt; }
+  .tag { display: inline-block; background: #0F5EA8; color: white; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-right: 3pt; }
+  .tag-green { background: #1EB87A; }
+  .tag-red { background: #E24B4A; }
+  .tag-grey { background: #7A8499; }
+  .meta { color: #7A8499; font-size: 9.5pt; margin-bottom: 16pt; }
+  hr { border: none; border-top: 1px solid #CBD5E0; margin: 20pt 0; }
+</style>
+</head>
+<body>
+
+<h1>SnapGestão — Resumo Completo do Projeto</h1>
+<p class="meta">Gerado em: 08/05/2026 &nbsp;|&nbsp; Versão do app: 1.0.8 (build 9) &nbsp;|&nbsp; Branch: master → main &nbsp;|&nbsp; Autor: Diego Manhães</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>1. Visão Geral</h2>
+
+<p><strong>SnapGestão</strong> é um aplicativo mobile de controle financeiro pessoal desenvolvido com React Native + Expo 54. O foco é em <em>potes de orçamento</em> mensais por ciclo customizável, com funcionalidades avançadas de IA, metas, reserva de emergência, OCR de cupons fiscais e análise de preços colaborativa.</p>
+
+<table>
+  <tr><th>Item</th><th>Valor</th></tr>
+  <tr><td>Plataforma</td><td>Android (foco), iOS planejado</td></tr>
+  <tr><td>Framework</td><td>React Native · Expo SDK 54 · Expo Router ~6.0.23</td></tr>
+  <tr><td>Linguagem</td><td>TypeScript (strict)</td></tr>
+  <tr><td>Backend</td><td>Supabase (Postgres + RLS + Edge Functions + Storage)</td></tr>
+  <tr><td>Estado</td><td>Zustand (working set) + React Query (fetch/cache)</td></tr>
+  <tr><td>Offline</td><td>expo-sqlite — estrutura pronta, sync não implementado</td></tr>
+  <tr><td>Supabase URL</td><td>https://cvyissbkfwphtmvvcvop.supabase.co</td></tr>
+  <tr><td>GitHub Pages</td><td>https://snapgestao-cpu.github.io/snapgestao/</td></tr>
+  <tr><td>Repositório</td><td>github.com/snapgestao-cpu/snapgestao</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>2. Stack e Dependências Críticas</h2>
+
+<table>
+  <tr><th>Lib</th><th>Versão</th><th>Observação</th></tr>
+  <tr><td>expo</td><td>~54</td><td>Nunca atualizar sem atualizar expo-router junto</td></tr>
+  <tr><td>expo-router</td><td>~6.0.23</td><td>PINADO — incompatível com versões maiores no SDK 54</td></tr>
+  <tr><td>@supabase/supabase-js</td><td>^2</td><td>Auth + DB + Storage</td></tr>
+  <tr><td>zustand</td><td>^4</td><td>stores/: useAuthStore, useCycleStore, usePotStore</td></tr>
+  <tr><td>@tanstack/react-query</td><td>^5</td><td>hooks/: usePots, useTransactions, useIncomeSources</td></tr>
+  <tr><td>expo-sqlite/legacy</td><td>—</td><td>Offline local DB (snapgestao.db)</td></tr>
+  <tr><td>expo-secure-store</td><td>—</td><td>LargeSecureStoreAdapter com memoryCache em lib/supabase.ts</td></tr>
+  <tr><td>expo-print + expo-sharing</td><td>—</td><td>Geração e compartilhamento de PDF</td></tr>
+  <tr><td>expo-media-library</td><td>—</td><td>Salvar PDF em Downloads (nunca documentDirectory)</td></tr>
+  <tr><td>@react-native-community/datetimepicker</td><td>—</td><td>Seleção de datas nativa Android</td></tr>
+  <tr><td>New Architecture</td><td>habilitada</td><td>newArchEnabled: true — evitar libs incompatíveis</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Regra de instalação:</strong> sempre usar <code>npm install &lt;pkg&gt; --legacy-peer-deps</code>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>3. Estrutura de Arquivos</h2>
+
+<table>
+  <tr><th>Pasta / Arquivo</th><th>Responsabilidade</th></tr>
+  <tr><td><code>app/(auth)/</code></td><td>Login, register</td></tr>
+  <tr><td><code>app/(tabs)/</code></td><td>Tabs: monthly, index (potes), projection, goals, profile</td></tr>
+  <tr><td><code>app/(tabs)/_layout.tsx</code></td><td>Tab bar com badge de lançamentos pendentes</td></tr>
+  <tr><td><code>app/_layout.tsx</code></td><td>Route guard principal — auth → termos → onboarding → tabs</td></tr>
+  <tr><td><code>app/onboarding/</code></td><td>Wizard 3 steps: saldo → ciclo/fontes → primeiro pote</td></tr>
+  <tr><td><code>app/pot/[id].tsx</code></td><td>Detalhe do pote, lançamentos, agendados</td></tr>
+  <tr><td><code>app/ocr.tsx</code></td><td>Leitura de cupom fiscal: QR→SEFAZ + OCR fallback</td></tr>
+  <tr><td><code>app/mentor.tsx</code></td><td>Mentor Financeiro IA (quiz + análise + PDF)</td></tr>
+  <tr><td><code>app/analisador-precos.tsx</code></td><td>Analisador de Preços IA (quiz + comparativo)</td></tr>
+  <tr><td><code>app/achievements.tsx</code></td><td>Grid de badges/conquistas</td></tr>
+  <tr><td><code>app/terms.tsx</code></td><td>Aceite LGPD — bloqueante até aceite</td></tr>
+  <tr><td><code>lib/</code></td><td>Toda lógica de negócio (sem UI)</td></tr>
+  <tr><td><code>stores/</code></td><td>Zustand: useAuthStore, useCycleStore, usePotStore</td></tr>
+  <tr><td><code>hooks/</code></td><td>React Query hooks</td></tr>
+  <tr><td><code>components/</code></td><td>Componentes reutilizáveis</td></tr>
+  <tr><td><code>constants/colors.ts</code></td><td>Tokens de cor — sempre usar daqui, nunca hardcoded</td></tr>
+  <tr><td><code>types/index.ts</code></td><td>User, Pot, Transaction, Goal, CreditCard, IncomeSource</td></tr>
+  <tr><td><code>supabase/migrations/</code></td><td>SQL migrations para rodar manualmente no Supabase</td></tr>
+  <tr><td><code>supabase/functions/</code></td><td>Edge Functions Deno deployadas</td></tr>
+  <tr><td><code>docs/</code></td><td>GitHub Pages: index, termos, privacidade, email-confirmado</td></tr>
+  <tr><td><code>assets/</code></td><td>Imagens: carteira png.png (logo), potes/, icon_v1.png</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>4. Arquitetura e Fluxo de Dados</h2>
+
+<h3>4.1 Route Guard (app/_layout.tsx)</h3>
+<p>Ordem de verificação a cada mudança de estado de auth:</p>
+<ol>
+  <li>Loading → <code>ActivityIndicator</code></li>
+  <li>Não autenticado → <code>/(auth)/login</code></li>
+  <li>Autenticado + <code>terms_accepted_at IS NULL</code> ou versão desatualizada → <code>/terms</code> (gestureEnabled: false)</li>
+  <li>Autenticado + sem onboarding → <code>/onboarding/step1</code></li>
+  <li>OK → <code>/(tabs)/monthly</code> (tela inicial)</li>
+</ol>
+<div class="warn">
+  <strong>Regra crítica:</strong> quando <code>isAuthenticated=true</code> mas <code>user=null</code> (perfil ainda carregando), o guard aguarda — nunca redireciona prematuramente. Nunca adicionar <code>getSession()</code> extra em <code>_layout.tsx</code>.
+</div>
+
+<h3>4.2 Fluxo de Dados</h3>
+<span class="codeblock">React Query (fetch/cache) → supabase.* → onSuccess → Zustand store
+Componentes leem do Zustand (síncrono, sem suspense)</span>
+<p>Nunca chamar <code>supabase</code> diretamente de componentes. Exceções documentadas: <code>useAuthStore</code>, <code>onboarding/step3.tsx</code>, <code>app/(tabs)/index.tsx</code>.</p>
+
+<h3>4.3 Ciclos</h3>
+<ul>
+  <li><strong>Crédito</strong>: filtra por <code>billing_date</code></li>
+  <li><strong>Tudo mais</strong>: filtra por <code>date</code></li>
+  <li>Sincronização entre Potes e Mensal via <code>useCycleStore.cycleOffset</code> (range −24 a +12)</li>
+  <li><code>monthly.tsx</code> usa <code>computeCycleSummaryFromData</code> (síncrono) — nunca <code>calculateCycleSummary</code></li>
+</ul>
+
+<h3>4.4 SecureStore / Auth Performance</h3>
+<p><code>LargeSecureStoreAdapter</code> em <code>lib/supabase.ts</code> tem:</p>
+<ul>
+  <li><code>memoryCache</code> — evita re-leituras de disco</li>
+  <li><code>pendingReads</code> — deduplicação de leituras paralelas da mesma chave</li>
+  <li>Reduz <code>getSession</code> de ~8s para &lt;1s</li>
+  <li><code>clearSecureStoreCache()</code> exportado para uso no logout/delete-account</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>5. Banco de Dados</h2>
+
+<h3>5.1 Tabelas Principais</h3>
+<table>
+  <tr><th>Tabela</th><th>Descrição</th></tr>
+  <tr><td>users</td><td>Perfil + cycle_start + initial_balance + onboarding_completed + terms_accepted_at + terms_version</td></tr>
+  <tr><td>income_sources</td><td>Fontes de receita fixas por usuário</td></tr>
+  <tr><td>income_source_history</td><td>Histórico de valores por fonte × mês (valid_from)</td></tr>
+  <tr><td>pots</td><td>Potes de orçamento — soft delete via deleted_at</td></tr>
+  <tr><td>pot_history</td><td>Histórico de nome/limite por pote × mês (valid_from)</td></tr>
+  <tr><td>pot_limit_history</td><td>Histórico de mudanças de limite com valid_from por ciclo</td></tr>
+  <tr><td>transactions</td><td>Lançamentos financeiros — installment_group_id para parcelamento</td></tr>
+  <tr><td>credit_cards</td><td>Cartões de crédito do usuário</td></tr>
+  <tr><td>cycle_rollovers</td><td>Saldo de encerramento de ciclo (surplus_action, surplus_goal_id)</td></tr>
+  <tr><td>goals</td><td>Metas financeiras — status: active/completed/cancelled</td></tr>
+  <tr><td>goal_transactions</td><td>Movimentações por meta (deposit_external, deposit_from_cycle, withdrawal_to_cycle)</td></tr>
+  <tr><td>emergency_reserve</td><td>Reserva de emergência (1 row por usuário)</td></tr>
+  <tr><td>emergency_reserve_transactions</td><td>Histórico de movimentações da reserva</td></tr>
+  <tr><td>scheduled_transactions</td><td>Lançamentos agendados (orçados) — start_date, total_months</td></tr>
+  <tr><td>scheduled_transaction_months</td><td>1 row por mês de cada agendado — status: pending/confirmed/cancelled</td></tr>
+  <tr><td>price_database</td><td>Base colaborativa de preços de cupons NFC-e (30 dias de retenção)</td></tr>
+  <tr><td>user_preferences</td><td>share_price_data BOOLEAN NULL</td></tr>
+  <tr><td>user_badges</td><td>Badges/conquistas ganhos por usuário</td></tr>
+  <tr><td>smart_merchants</td><td>Estabelecimentos reconhecidos automaticamente</td></tr>
+  <tr><td>receipts</td><td>Cupons fiscais processados via OCR</td></tr>
+</table>
+
+<div class="warn">
+  <strong>projection_entries — REMOVIDA.</strong> Dropar se existir: <code>DROP TABLE IF EXISTS public.projection_entries;</code>
+</div>
+
+<h3>5.2 Regras Críticas de Potes</h3>
+<div class="warn">
+  Nunca usar <code>.is('deleted_at', null)</code> sozinho — perde potes soft-deleted para mês futuro.<br/>
+  Nunca ler <code>name</code>/<code>limit_amount</code> direto de <code>pots</code> para views passadas — usar <code>lib/pot-history.ts</code>.<br/>
+  Nunca incluir <code>icon</code> ou <code>mesada_active</code> em INSERT/UPDATE de potes — colunas não existem.
+</div>
+
+<h3>5.3 payment_method válidos</h3>
+<p><code>cash</code> · <code>debit</code> · <code>credit</code> · <code>pix</code> · <code>transfer</code> · <code>voucher_alimentacao</code> · <code>voucher_refeicao</code></p>
+<div class="warn">Nunca usar <code>'other'</code> — não é válido no DB. Fallback: <code>'cash'</code>.</div>
+
+<h3>5.4 Migrations (rodar em ordem no Supabase SQL Editor)</h3>
+<ol>
+  <li><code>20240418_cycle_rollovers.sql</code></li>
+  <li><code>20240419_pot_soft_delete_and_history.sql</code></li>
+  <li><code>20240420_pots_physical_delete.sql</code> — FK transactions.pot_id → ON DELETE SET NULL</li>
+  <li><code>20240422_onboarding_completed.sql</code></li>
+  <li><code>20240501_scheduled_transactions.sql</code></li>
+  <li><code>20240503_income_source_history.sql</code></li>
+  <li><code>20240504_emergency_reserve.sql</code></li>
+  <li><code>20240505_goal_transactions.sql</code></li>
+  <li><code>20240506_terms.sql</code></li>
+</ol>
+<div class="warn"><code>20240421_pots_display_order.sql</code> — NÃO aplicar (feature revertida).</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>6. Features Implementadas</h2>
+
+<h3>6.1 Auth e Onboarding</h3>
+<ul>
+  <li>Login/register via Supabase Auth</li>
+  <li>Wizard 3 steps: saldo inicial (opcional, pode ser zero) → ciclo + fontes de renda → primeiro pote</li>
+  <li>Nunca usar <code>initial_balance === 0</code> como guard — saldo zero é válido</li>
+  <li>Trigger <code>on_auth_user_created</code> ativo no Supabase</li>
+</ul>
+
+<h3>6.2 Termos de Uso / LGPD</h3>
+<ul>
+  <li>Tela <code>/terms</code> bloqueante (gestureEnabled: false) — mostra antes do onboarding</li>
+  <li>Dois checkboxes independentes (Termos + Política de Privacidade)</li>
+  <li>Links para GitHub Pages: termos.html e privacidade.html</li>
+  <li>Versão atual dos termos: <code>'1.0'</code> em <code>TERMS_VERSION</code></li>
+  <li>Perfil mostra data do aceite e versão</li>
+</ul>
+
+<h3>6.3 Potes (Dashboard)</h3>
+<ul>
+  <li>Grid de potes com JarPot (visualização PNG por percentual de uso)</li>
+  <li>Histórico de estado por mês via <code>lib/pot-history.ts</code></li>
+  <li>Soft delete — pote permanece visível em ciclos passados</li>
+  <li>Lançamentos agendados (badge no tab Potes) via <code>lib/scheduled-transactions.ts</code></li>
+  <li>NewPotModal: create, edit, reativar, duplicate prevention</li>
+</ul>
+
+<h3>6.4 Mensal</h3>
+<ul>
+  <li>Navegação por ciclo com offset (−24 a +12)</li>
+  <li>Summary: receita base + extra + rollover anterior − despesas = saldo</li>
+  <li>Dois alerts: vermelho (déficit) e âmbar (pote excedeu limite)</li>
+  <li>"Encerrar ciclo" — cascateia recalculateRollover</li>
+  <li>Importação de arquivo Excel/CSV</li>
+  <li>Tela inicial após login</li>
+</ul>
+
+<h3>6.5 Projeção</h3>
+<ul>
+  <li>13 rows (meses passados + atual + futuros)</li>
+  <li>Meses passados: até 3 consecutivos com dados reais</li>
+  <li>Futuros: totalBudgeted (limites de potes) + excedente de parcelas + lançamentos reais</li>
+  <li>Otimizado com <code>getPotsHistoryBatch</code> (2 queries para todos os offsets)</li>
+</ul>
+
+<h3>6.6 Metas</h3>
+<ul>
+  <li>Metas de longo prazo com simulação de juros compostos</li>
+  <li>Depósito externo, depósito do ciclo, saque para ciclo</li>
+  <li>Histórico de movimentações por meta</li>
+  <li>Status: active / completed / cancelled</li>
+  <li>Metas concluídas em modal separado</li>
+</ul>
+
+<h3>6.7 Reserva de Emergência</h3>
+<ul>
+  <li>1 row por usuário (<code>emergency_reserve</code>)</li>
+  <li>Depósito externo, do ciclo e saque para ciclo</li>
+  <li>Meta de valor opcional</li>
+  <li>Card no topo da tela de Metas</li>
+</ul>
+
+<h3>6.8 Histórico de Fontes de Receita</h3>
+<ul>
+  <li>Alterações valem do mês escolhido em diante (não retroativas)</li>
+  <li><code>getIncomeSourcesForMonth</code> e <code>getIncomeSourcesBatch</code> para projeção otimizada</li>
+</ul>
+
+<h3>6.9 Lançamentos Agendados</h3>
+<ul>
+  <li>Orçamento mensal recorrente por pote</li>
+  <li>Confirmar → cria transaction real + marca status: confirmed</li>
+  <li>Badge no tab Potes via <code>useCycleStore.pendingScheduledCount</code></li>
+</ul>
+
+<h3>6.10 OCR / NFC-e</h3>
+<ul>
+  <li>Path 1 (recomendado): QR Code → SEFAZ (RJ, SP, MG suportados)</li>
+  <li>Path 2 (fallback): foto → Edge Function <code>process-receipt</code> → Google Vision</li>
+  <li><code>sanitizeNFCeUrl()</code> chamado uma vez no <code>ocr.tsx</code>, nunca dentro de <code>NFCeWebView</code></li>
+  <li>NFCeWebView: polling interno (15×1s) para SEFAZ-RJ com jQuery Mobile</li>
+</ul>
+
+<h3>6.11 IA (Mentor + Analisador)</h3>
+<ul>
+  <li>Provider: Claude Haiku (<code>claude-haiku-4-5-20251001</code>), Gemini 2.5 Flash, Llama 3.3 70B (Groq)</li>
+  <li>Provider padrão: <code>'claude'</code> — persiste em <code>useCycleStore.aiProvider</code></li>
+  <li>Groq — descrição: "Groq — Leve e eficiente" (sem badge "GRÁTIS")</li>
+  <li>Mentor: quiz 5 perguntas + análise + PDF salvo em Downloads</li>
+  <li>Analisador: quiz 3 perguntas + comparativo de preços por estabelecimento</li>
+  <li>Limite de tokens por usuário — ver <code>supabase/scripts/grant_ai_tokens.sql</code></li>
+</ul>
+
+<h3>6.12 Base de Preços Colaborativa</h3>
+<ul>
+  <li>Coleta anônima de itens de cupons NFC-e (opt-in por usuário)</li>
+  <li>Sem user_id — nunca inclui dados pessoais</li>
+  <li>Limpeza automática após 30 dias via Edge Function <code>cleanup-price-database</code></li>
+  <li>Toggle "Compartilhar preços anônimos" no Perfil</li>
+</ul>
+
+<h3>6.13 Gamification</h3>
+<ul>
+  <li>10 badges definidos em <code>lib/badges.ts</code></li>
+  <li>BadgeToast com fila de animação (slide-in + fadeOut 3s)</li>
+  <li>Cooldown de 1h no startup para não reprocessar a cada abertura</li>
+  <li>Tela <code>app/achievements.tsx</code> com grid de badges</li>
+</ul>
+
+<h3>6.14 Exportação</h3>
+<ul>
+  <li>Excel: 1 aba por mês + aba Resumo; 5 presets de período</li>
+  <li>IR CSV: lançamentos do ano anterior</li>
+  <li>PDF: Mentor e Analisador via <code>lib/gerar-pdf.ts</code> — salvo em Downloads (MediaLibrary)</li>
+</ul>
+
+<h3>6.15 Exclusão de Conta</h3>
+<ul>
+  <li>Edge Function <code>delete-account</code> deployada em <code>cvyissbkfwphtmvvcvop</code></li>
+  <li>Deleta dados de 13 tabelas + remove <code>auth.users</code> via service role</li>
+  <li>Botão "⚠️ Zona de Perigo" no Perfil com dupla confirmação</li>
+  <li>Após exclusão: limpa SecureStore cache → signOut → redirect para login</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>7. Edge Functions (Supabase Deno)</h2>
+
+<table>
+  <tr><th>Função</th><th>Status</th><th>Descrição</th></tr>
+  <tr><td>process-receipt</td><td>✅ Ativa</td><td>OCR via Google Cloud Vision — extrai merchant, total, data, CNPJ, itens. Salva em bucket receipts.</td></tr>
+  <tr><td>delete-account</td><td>✅ Ativa</td><td>Deleta todos os dados do usuário + auth.users. Exige JWT válido.</td></tr>
+  <tr><td>cleanup-price-database</td><td>✅ Ativa</td><td>Remove registros de price_database com mais de 30 dias.</td></tr>
+  <tr><td>fetch-nfce</td><td>🪦 Tombstoned (HTTP 410)</td><td>SEFAZ-RJ bloqueia IPs de datacenter. Parsing agora é client-side.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>8. Regras e Decisões Críticas</h2>
+
+<h3>8.1 Regras que nunca devem ser violadas</h3>
+<table>
+  <tr><th>Regra</th><th>Motivo</th></tr>
+  <tr><td>Potes sempre via <code>lib/pot-history.ts</code></td><td>Sem histórico = estado incorreto em meses passados</td></tr>
+  <tr><td>Crédito filtra por billing_date, outros por date</td><td>Ciclo financeiro correto</td></tr>
+  <tr><td>monthly.tsx usa computeCycleSummaryFromData</td><td>Síncrono, zero queries extras</td></tr>
+  <tr><td>_layout.tsx nunca adiciona getSession() extra</td><td>init() já cuida — duplicar causa race condition</td></tr>
+  <tr><td>Onboarding guard: nunca initial_balance === 0</td><td>Saldo zero é válido — causaria loop infinito</td></tr>
+  <tr><td>payment_method nunca 'other'</td><td>Não é válido no DB — usa constraint CHECK</td></tr>
+  <tr><td>PDF salvo via MediaLibrary + Downloads</td><td>documentDirectory não aparece para o usuário</td></tr>
+  <tr><td>sanitizeNFCeUrl() só em ocr.tsx</td><td>NFCeWebView recebe URL já sanitizada</td></tr>
+  <tr><td>Sem imports de expo-notifications</td><td>Notificações completamente desabilitadas</td></tr>
+  <tr><td>Groq sem badge GRÁTIS</td><td>Decisão de produto — descrição: "Groq — Leve e eficiente"</td></tr>
+</table>
+
+<h3>8.2 Performance — não regredir</h3>
+<ul>
+  <li>Sem N+1 em queries de pote — usar <code>enrichWithHistory</code> com <code>.in()</code></li>
+  <li>Emergency pot balance sempre dentro de <code>Promise.all</code></li>
+  <li>Projeção usa <code>getPotsHistoryBatch</code> (2 queries para todos os offsets)</li>
+  <li>monthly.tsx transaction queries com <code>.limit(200)</code></li>
+  <li>ImportFileModal montado condicionalmente em monthly.tsx</li>
+  <li>Single NewPotModal com <code>key={editingPot?.id ?? 'new'}</code></li>
+</ul>
+
+<h3>8.3 Bugs Android — não reintroduzir</h3>
+<ul>
+  <li><strong>Button bounce:</strong> nunca KeyboardAvoidingView no nível da tela — só dentro de Modal</li>
+  <li><strong>Modal layout corruption:</strong> bottom sheet e overlay como siblings, não parent-child</li>
+  <li><strong>storage.removeItem is not a function:</strong> já corrigido via ExpoSecureStoreAdapter em lib/supabase.ts</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>9. GitHub Pages (docs/)</h2>
+
+<table>
+  <tr><th>Arquivo</th><th>URL</th></tr>
+  <tr><td>docs/index.html</td><td>https://snapgestao-cpu.github.io/snapgestao/</td></tr>
+  <tr><td>docs/termos.html</td><td>https://snapgestao-cpu.github.io/snapgestao/termos.html</td></tr>
+  <tr><td>docs/privacidade.html</td><td>https://snapgestao-cpu.github.io/snapgestao/privacidade.html</td></tr>
+  <tr><td>docs/email-confirmado.html</td><td>https://snapgestao-cpu.github.io/snapgestao/email-confirmado.html</td></tr>
+</table>
+
+<p>Logo <code>carteira.png</code> copiada para <code>docs/</code> e usada por caminho relativo em todos os HTMLs. Header com gradiente azul (<code>#0F5EA8</code> → <code>#1a7fd4</code>), logo 96×96px, "Controle Financeiro Pessoal" em branco (<code>color: white</code> explícito em <code>header p</code>).</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>10. Variáveis de Ambiente (.env — nunca commitar)</h2>
+
+<span class="codeblock">EXPO_PUBLIC_SUPABASE_URL=https://cvyissbkfwphtmvvcvop.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=...
+EXPO_PUBLIC_GEMINI_API_KEY=...
+EXPO_PUBLIC_ANTHROPIC_API_KEY=...
+EXPO_PUBLIC_GROQ_API_KEY=...</span>
+
+<p><code>EXPO_PUBLIC_*</code> são inlined pelo Metro em build time. Secrets de backend nunca devem usar este prefixo.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>11. Comandos Principais</h2>
+
+<table>
+  <tr><th>Comando</th><th>Uso</th></tr>
+  <tr><td><code>npm start</code></td><td>Metro Bundler (dev)</td></tr>
+  <tr><td><code>npm run android</code></td><td>Rodar no Android (emulador ou dispositivo)</td></tr>
+  <tr><td><code>npx tsc --noEmit</code></td><td>Type-check — rodar antes de qualquer commit importante</td></tr>
+  <tr><td><code>npm install &lt;pkg&gt; --legacy-peer-deps</code></td><td>Instalar dependências</td></tr>
+  <tr><td><code>npm run build:android</code></td><td>APK release (via build.ps1)</td></tr>
+  <tr><td><code>npm run build:android:debug</code></td><td>APK debug</td></tr>
+  <tr><td><code>npm run prebuild</code></td><td>Regenerar android/ ios/ — DESTRUTIVO</td></tr>
+  <tr><td><code>npx supabase functions deploy &lt;nome&gt; --project-ref cvyissbkfwphtmvvcvop</code></td><td>Deploy de Edge Function</td></tr>
+  <tr><td><code>git push origin master:main</code></td><td>Push padrão (branch local: master → remoto: main)</td></tr>
+</table>
+
+<h3>Build de Release (build.ps1)</h3>
+<ol>
+  <li>Commit assets + app.json e push</li>
+  <li>Para processos Gradle</li>
+  <li>Deleta pasta <code>android/</code></li>
+  <li><code>npx expo prebuild --clean --no-install</code></li>
+  <li><code>.\gradlew assembleRelease</code></li>
+  <li>Copia APK como <code>SnapGestao-v{version}-build{versionCode}.apk</code></li>
+</ol>
+<p>Versão atual: <strong>1.0.8 (build 9)</strong> — incrementar em <code>app.json</code> antes do próximo build.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>12. Arquivos Mortos (podem ser deletados)</h2>
+
+<ul>
+  <li><code>components/ProjectionEntryModal.tsx</code> — não importado em nenhum lugar</li>
+  <li><code>components/charts/BarChart.tsx</code> — não importado em nenhum lugar</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>13. Próximos Passos (Roadmap)</h2>
+
+<table>
+  <tr><th>Prioridade</th><th>Tarefa</th><th>Observações</th></tr>
+  <tr><td>🔴 Alta</td><td>Build de produção (EAS)</td><td>Incrementar versão para 1.0.9 / build 10 em app.json antes de rodar build.ps1</td></tr>
+  <tr><td>🔴 Alta</td><td>Testes e validações finais</td><td>Testar fluxo completo: onboarding → termos → potes → metas → exclusão de conta</td></tr>
+  <tr><td>🟡 Média</td><td>Push notifications</td><td>Requer build de produção (expo-notifications desabilitado em dev)</td></tr>
+  <tr><td>🟡 Média</td><td>Glossário financeiro</td><td>Modal educativo com termos usados no app</td></tr>
+  <tr><td>🟢 Baixa</td><td>Sync offline</td><td>expo-sqlite pronto, falta implementar sync bidirecional com Supabase</td></tr>
+  <tr><td>🟢 Baixa</td><td>Suporte iOS</td><td>Testar e ajustar layouts para iOS</td></tr>
+  <tr><td>🟢 Baixa</td><td>Deletar arquivos mortos</td><td>ProjectionEntryModal.tsx e charts/BarChart.tsx</td></tr>
+</table>
+
+<h3>Para o próximo build de release:</h3>
+<ol>
+  <li>Atualizar <code>app.json</code>: <code>version</code> → <code>"1.0.9"</code> e <code>versionCode</code> → <code>10</code></li>
+  <li>Rodar <code>.\build.ps1</code> no PowerShell (demora ~15 min)</li>
+  <li>APK gerado em <code>C:\snapgestao\snapgestao\SnapGestao-v1.0.9-build10.apk</code></li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>14. Histórico de Commits Recentes</h2>
+
+<table>
+  <tr><th>Hash</th><th>Mensagem</th></tr>
+  <tr><td><code>d53c4a7</code></td><td>feat: exclusão total de conta via Edge Function delete-account</td></tr>
+  <tr><td><code>3382360</code></td><td>fix: logo maior e texto branco nos headers dos documentos legais</td></tr>
+  <tr><td><code>8fa5c9d</code></td><td>fix: logo carteira.png na tela de aceite de termos LGPD</td></tr>
+  <tr><td><code>6d05171</code></td><td>fix: logo carteira.png nos documentos legais do GitHub Pages</td></tr>
+  <tr><td><code>c3600b7</code></td><td>fix: URLs dos documentos legais apontando para GitHub Pages</td></tr>
+  <tr><td><code>3a2dcfd</code></td><td>feat: páginas legais em HTML para GitHub Pages, página de email confirmado</td></tr>
+  <tr><td><code>f2fce83</code></td><td>feat: tela de aceite LGPD, Termos de Uso e Política de Privacidade</td></tr>
+  <tr><td><code>76e27cb</code></td><td>docs: cabeçalhos e comentários em todos os arquivos</td></tr>
+  <tr><td><code>0b3a929</code></td><td>build: atualizar icones e versao</td></tr>
+  <tr><td><code>7d67c18</code></td><td>feat: mostrar anos e meses no badge da meta, botão excluir meta</td></tr>
+</table>
+
+<hr/>
+<p class="meta" style="text-align:center;">
+  SnapGestão · Diego Manhães · diegomanhaes@hotmail.com · 2026
+</p>
+
+</body>
+</html>
