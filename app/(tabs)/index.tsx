@@ -32,6 +32,7 @@ import { fetchPotsForCycleWithHistory } from '../../lib/pot-history'
 import { Pot } from '../../types'
 import { brl } from '../../lib/finance'
 import MonthPickerModal from '../../components/MonthPickerModal'
+import ErrorBoundary from '../../components/ErrorBoundary'
 
 const CELL_WIDTH = (Dimensions.get('window').width - 32) / 2
 
@@ -47,7 +48,7 @@ type PotRow = {
   percent: number
 }
 
-export default function PotsScreen() {
+function PotsScreenInner() {
   const { user } = useAuthStore()
   const { cycleOffset, setCycleOffset, setPendingScheduledCount } = useCycleStore()
 
@@ -160,11 +161,12 @@ export default function PotsScreen() {
     setPotsOrdenados(sorted)
   }, [potsData])
 
-  const potsFiltrados = searchText.trim().length >= 3
+  const potsFiltrados = (searchText.trim().length >= 3
     ? potsOrdenados.filter(p =>
-        p.pot.name.toLowerCase().includes(searchText.trim().toLowerCase())
+        p?.pot?.name?.toLowerCase().includes(searchText.trim().toLowerCase())
       )
     : potsOrdenados
+  ).filter(Boolean) as PotRow[]
 
   async function salvarNovaOrdem(ordered: PotRow[]) {
     try {
@@ -186,38 +188,44 @@ export default function PotsScreen() {
     setToast({ message: msg, color: Colors.primary })
   }
 
-  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<PotRow>) => (
-    <ScaleDecorator>
-      <TouchableOpacity
-        style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8, opacity: isActive ? 0.7 : 1 }}
-        onLongPress={drag}
-        onPress={() => router.push({
-          pathname: `/pot/${item.pot.id}`,
-          params: { cycleOffset: String(cycleOffset) },
-        })}
-        activeOpacity={0.75}
-      >
-        <View style={{ position: 'relative' }}>
-          <JarPot
-            name={item.pot.name}
-            color={item.pot.color}
-            percent={item.percent}
-            spent={item.spent}
-            limit={item.pot.limit_amount}
-            size={120}
-          />
-          {potsPendentes.has(item.pot.id) && (
-            <View style={styles.pendenteBadge}>
-              <Text style={styles.pendenteBadgeText}>!</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.potName}>{item.pot.name}</Text>
-        <Text style={styles.potSpent}>{brl(item.spent)}</Text>
-        <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
-      </TouchableOpacity>
-    </ScaleDecorator>
-  )
+  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<PotRow>) => {
+    // Célula de padding gerada pelo numColumns quando o total é ímpar
+    if (!item?.pot) {
+      return <View style={{ width: CELL_WIDTH, paddingHorizontal: 8 }} />
+    }
+    return (
+      <ScaleDecorator>
+        <TouchableOpacity
+          style={{ width: CELL_WIDTH, alignItems: 'center', paddingBottom: 20, paddingHorizontal: 8, opacity: isActive ? 0.7 : 1 }}
+          onLongPress={drag}
+          onPress={() => router.push({
+            pathname: `/pot/${item.pot.id}`,
+            params: { cycleOffset: String(cycleOffset) },
+          })}
+          activeOpacity={0.75}
+        >
+          <View style={{ position: 'relative' }}>
+            <JarPot
+              name={item.pot.name}
+              color={item.pot.color}
+              percent={item.percent}
+              spent={item.spent}
+              limit={item.pot.limit_amount}
+              size={120}
+            />
+            {potsPendentes.has(item.pot.id) && (
+              <View style={styles.pendenteBadge}>
+                <Text style={styles.pendenteBadgeText}>!</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.potName}>{item.pot.name}</Text>
+          <Text style={styles.potSpent}>{brl(item.spent)}</Text>
+          <Text style={styles.potLimit}>de {brl(item.pot.limit_amount ?? 0)}</Text>
+        </TouchableOpacity>
+      </ScaleDecorator>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -263,7 +271,7 @@ export default function PotsScreen() {
       ) : (
         <DraggableFlatList
           data={potsFiltrados}
-          keyExtractor={item => item.pot.id}
+          keyExtractor={(item, index) => item?.pot?.id ?? `empty-${index}`}
           numColumns={2}
           renderItem={renderDraggableItem}
           contentContainerStyle={styles.grid}
@@ -355,6 +363,14 @@ export default function PotsScreen() {
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
       )}
     </SafeAreaView>
+  )
+}
+
+export default function PotsScreen() {
+  return (
+    <ErrorBoundary>
+      <PotsScreenInner />
+    </ErrorBoundary>
   )
 }
 
