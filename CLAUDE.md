@@ -59,11 +59,11 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 
 ## Tela de Potes (index.tsx)
 
-- **Drag and drop**: `react-native-draggable-flatlist` com `ScaleDecorator`. Long-press no pote ativa o drag. `GestureHandlerRootView` envolvido em `app/_layout.tsx`.
-- **Ordenação**: potes ordenados por `pots.display_order` (coluna `NUMERIC`, já populada via migration). Drag salva nova ordem via updates individuais no Supabase (`display_order = index`).
-- **Busca**: campo no topo filtra por nome com mínimo 3 caracteres. Drag desabilitado durante busca (`onDragEnd` retorna sem salvar).
-- **`display_order`**: campo `number | null` no tipo `Pot` em `types/index.ts`. Ausente = `9999` (vai para o final).
-- **Rebuild obrigatório**: `react-native-draggable-flatlist` usa código nativo. Qualquer mudança nesta lib requer novo APK (prebuild + build).
+- **Lista**: `FlatList` simples com `numColumns={2}`. Sem drag and drop (removido no build30 por instabilidade com contagem ímpar de potes).
+- **Ordenação**: potes ordenados por `pots.display_order` (coluna `NUMERIC`, valor fixo da criação). Ausente = `9999` (vai para o final). Não há reordenação via UI.
+- **Busca**: campo no topo (`ListHeaderComponent`) filtra por nome com mínimo 3 caracteres.
+- **`display_order`**: campo `number | null` no tipo `Pot` em `types/index.ts`.
+- **ErrorBoundary**: `PotsScreen` envolve `PotsScreenInner` em `components/ErrorBoundary.tsx`.
 
 ## Ordenação em outras telas
 
@@ -117,7 +117,7 @@ Ambos registrados em `app.json` → `plugins`.
 - `expo-router` pinado em `~6.0.23` — não atualizar sem atualizar `expo` junto.
 - New Architecture habilitada (`newArchEnabled: true`) — evitar libs incompatíveis.
 - Nunca importar de `@react-navigation` diretamente — usar apenas APIs de `expo-router`.
-- `babel.config.js` não existe — não criar sem necessidade explícita.
+- `babel.config.js` usa `babel-preset-expo` + `transform-remove-console` apenas no env `production` (remove `console.*` do APK release).
 - Build Android requer SDK 34 + Java 17. APKs gerados em `android/app/build/outputs/apk/`.
 
 ## Lançamentos a Confirmar (Scheduled Transactions)

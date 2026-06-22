@@ -47,7 +47,7 @@ serve(async (req) => {
 
     console.log('[delete-account] Deletando:', user.id)
 
-    const tables = [
+    const tablesWithUserId = [
       'goal_transactions',
       'goals',
       'emergency_reserve_transactions',
@@ -60,10 +60,12 @@ serve(async (req) => {
       'pots',
       'income_source_history',
       'income_sources',
-      'users',
+      'user_preferences',
+      'user_badges',
+      'receipts',
     ]
 
-    for (const table of tables) {
+    for (const table of tablesWithUserId) {
       const { error } = await supabaseAdmin
         .from(table)
         .delete()
@@ -72,6 +74,18 @@ serve(async (req) => {
       if (error) {
         console.error(`[delete-account] Erro em ${table}:`, error.message)
       }
+    }
+
+    // public.users usa 'id' (PK) como referência ao usuário, não 'user_id'
+    const { error: errUsers } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', user.id)
+
+    if (errUsers) {
+      console.error('[delete-account] Erro em users:', errUsers.message)
+    } else {
+      console.log('[delete-account] public.users deletado com sucesso:', user.id)
     }
 
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id)

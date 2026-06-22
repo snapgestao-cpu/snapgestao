@@ -59,7 +59,7 @@ export default function RegisterScreen() {
   const validate = (): string | null => {
     if (!name.trim()) return 'Informe seu nome completo.'
     if (!email.trim()) return 'Informe seu e-mail.'
-    if (!email.includes('@')) return 'Formato de e-mail inválido.'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Digite um email válido (ex: nome@exemplo.com)'
     if (!password) return 'Informe uma senha.'
     if (password.length < 8) return 'A senha deve ter pelo menos 8 caracteres.'
     if (!/[A-Z]/.test(password)) return 'A senha deve ter pelo menos uma letra maiúscula.'

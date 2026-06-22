@@ -26,6 +26,11 @@ import { Colors } from '../../constants/colors'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 
+function validarEmail(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return regex.test(email.trim())
+}
+
 export default function LoginScreen() {
   const { signIn } = useAuthStore()
 
@@ -39,6 +44,7 @@ export default function LoginScreen() {
     setError(null)
 
     if (!email.trim()) { setError('Informe seu e-mail.'); return }
+    if (!validarEmail(email)) { setError('Digite um email válido (ex: nome@exemplo.com)'); return }
     if (!password) { setError('Informe sua senha.'); return }
 
     setLoading(true)
