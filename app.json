@@ -69,6 +69,13 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O SnapGestão precisa acessar suas fotos para anexar imagens de cupons e recibos.",
+          "microphonePermission": false
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "extra": {
