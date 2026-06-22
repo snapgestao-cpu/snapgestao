@@ -57,7 +57,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "O SnapGestão precisa da câmera para escanear cupons fiscais."
+          "cameraPermission": "O SnapGestão precisa da câmera para escanear cupons fiscais.",
+          "recordAudioAndroid": false
         }
       ],
       [
