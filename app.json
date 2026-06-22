@@ -3,7 +3,7 @@
     "name": "SnapGestão",
     "slug": "snapgestao",
     "scheme": "snapgestao",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -26,7 +26,7 @@
         "backgroundColor": "#65a7c1"
       },
       "package": "com.snapgestao.app",
-      "versionCode": 30,
+      "versionCode": 31,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
