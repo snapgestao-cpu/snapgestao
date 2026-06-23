@@ -26,7 +26,7 @@
         "backgroundColor": "#65a7c1"
       },
       "package": "com.snapgestao.app",
-      "versionCode": 31,
+      "versionCode": 32,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -50,6 +50,7 @@
     "plugins": [
       "./plugins/withAsyncStorageFix",
       "./plugins/withNetworkSecurityConfig",
+      "./plugins/withBlockedPermissions",
       "expo-router",
       "expo-secure-store",
       "expo-sqlite",
