@@ -24,6 +24,7 @@ import { getPotIcon } from '../lib/potIcons'
 import { CreditCard } from '../types'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage, getIRReceiptImageUrl } from '../lib/ir'
 import { calcBillingDate, calcBillingDateNoCard } from '../lib/billing-date'
+import IsNeedSelector from './IsNeedSelector'
 
 function genUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -442,21 +443,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
                   placeholder="Ex: Mercado, iFood…"
                   placeholderTextColor={Colors.textMuted}
                 />
-                <Text style={styles.label}>Eu precisava disso?</Text>
-                <View style={styles.needRow}>
-                  <TouchableOpacity
-                    style={[styles.needBtn, isNeed === true && styles.needBtnYes]}
-                    onPress={() => setIsNeed(isNeed === true ? null : true)}
-                  >
-                    <Text style={[styles.needBtnText, isNeed === true && { color: Colors.success }]}>Sim ✓</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.needBtn, isNeed === false && styles.needBtnNo]}
-                    onPress={() => setIsNeed(isNeed === false ? null : false)}
-                  >
-                    <Text style={[styles.needBtnText, isNeed === false && { color: Colors.danger }]}>Não ✗</Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.label}>É uma necessidade?</Text>
+                <IsNeedSelector value={isNeed} onChange={setIsNeed} />
               </>
             )}
 

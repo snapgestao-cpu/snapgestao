@@ -29,6 +29,7 @@ import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 import { calcBillingDate } from '../lib/billing-date'
 import { getCardImage } from '../constants/cardBrands'
 import { CreditCardModal } from './CreditCardModal'
+import IsNeedSelector from './IsNeedSelector'
 
 type PayMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'voucher_alimentacao' | 'voucher_refeicao'
 
@@ -76,7 +77,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [cards, setCards] = useState<CreditCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
-  const [isNeed, setIsNeed] = useState<boolean | null>(null)
+  const [isNeed, setIsNeed] = useState<boolean | null>(true)
   const [isInstallment, setIsInstallment] = useState(false)
   const [installments, setInstallments] = useState(2)
   const [loading, setLoading] = useState(false)
@@ -104,7 +105,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setCards([])
     setSelectedCardId(null)
     setMerchant('')
-    setIsNeed(null)
+    setIsNeed(true)
     setIsInstallment(false)
     setInstallments(2)
     setError(null)
@@ -409,21 +410,8 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
             />
 
             {/* Eu precisava disso? */}
-            <Text style={styles.label}>Eu precisava disso?</Text>
-            <View style={styles.needRow}>
-              <TouchableOpacity
-                style={[styles.needBtn, isNeed === true && styles.needBtnYes]}
-                onPress={() => setIsNeed(isNeed === true ? null : true)}
-              >
-                <Text style={[styles.needBtnText, isNeed === true && { color: Colors.success }]}>Sim ✓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.needBtn, isNeed === false && styles.needBtnNo]}
-                onPress={() => setIsNeed(isNeed === false ? null : false)}
-              >
-                <Text style={[styles.needBtnText, isNeed === false && { color: Colors.danger }]}>Não ✗</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.label}>É uma necessidade?</Text>
+            <IsNeedSelector value={isNeed} onChange={setIsNeed} />
 
             {/* Seção IR */}
             {irModuleEnabled && (

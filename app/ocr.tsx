@@ -46,6 +46,7 @@ import {
 } from '../lib/price-database'
 import PriceShareOptInModal from '../components/PriceShareOptInModal'
 import { CreditCardModal } from '../components/CreditCardModal'
+import IsNeedSelector from '../components/IsNeedSelector'
 
 function extractChaveAcesso(url: string): string | null {
   try {
@@ -130,6 +131,12 @@ function digitsOnly(str: string): string {
   return str.replace(/\D/g, '')
 }
 
+function sortReviewItemsByName(items: ReviewItem[]): ReviewItem[] {
+  return [...items].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' })
+  )
+}
+
 export default function OCRScreen() {
   const { user } = useAuthStore()
   const { cycleDate, defaultPotId, defaultPotName } = useLocalSearchParams<{
@@ -158,6 +165,7 @@ export default function OCRScreen() {
   const [nfceChave, setNfceChave] = useState<string | null>(null)
   const [nfceStateCode, setNfceStateCode] = useState<string>('33')
   const [paymentMethod, setPaymentMethod] = useState<string>('debit')
+  const [isNeed, setIsNeed] = useState<boolean | null>(true)
   const [cards, setCards] = useState<CreditCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [isInstallment, setIsInstallment] = useState(false)
@@ -325,14 +333,14 @@ export default function OCRScreen() {
     const forceSimplified = ['comprovante_pix', 'comprovante_ted', 'nota_servico', 'fatura', 'comprovante_cartao'].includes(result.document_type)
     setSimplified(forceSimplified || result.items.length === 0)
 
-    setReviewItems(result.items.map((item, i) => ({
+    setReviewItems(sortReviewItemsByName(result.items.map((item, i) => ({
       id: String(i),
       name: item.name,
       valueCents: Math.round((item.total ?? 0) * 100),
       quantity: item.qty ?? 1,
       unit: 'UN',
       potId: defaultPotId ?? null,
-    })))
+    }))))
 
     if (result.confidence < 0.5) {
       Alert.alert(
@@ -436,14 +444,14 @@ export default function OCRScreen() {
     setTotal(result.total != null ? String(result.total) : '')
     setReceiptDate(normalizeDate(result.emission_date) ?? initialDisplayDate)
     setPaymentMethod(result.payment_method ?? 'debit')
-    setReviewItems((result.items ?? []).map((item, i) => ({
+    setReviewItems(sortReviewItemsByName((result.items ?? []).map((item, i) => ({
       id: String(i),
       name: item.name,
       valueCents: Math.round(item.totalValue * 100),
       quantity: item.quantity,
       unit: item.unit,
       potId: defaultPotId ?? null,
-    })))
+    }))))
     setImageUri(null)
     setReceiptId(null)
     setStep('review')
@@ -504,7 +512,7 @@ export default function OCRScreen() {
                 amount: installAmt,
                 description: `${merchant || 'Cupom fiscal'} (${i + 1}/${installments})`,
                 merchant: merchant || null, date: today,
-                payment_method: paymentMethod, is_need: true,
+                payment_method: paymentMethod, is_need: isNeed,
                 card_id: selectedCardId ?? null,
                 billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
                 installment_total: installments, installment_number: i + 1,
@@ -517,7 +525,7 @@ export default function OCRScreen() {
               user_id: userId, pot_id: singlePotId, type: 'expense',
               amount: totalAmount, description: merchant || 'Cupom fiscal',
               merchant: merchant || null, date: today,
-              payment_method: paymentMethod, is_need: true,
+              payment_method: paymentMethod, is_need: isNeed,
               card_id: isCredit ? (selectedCardId ?? null) : null,
               billing_date: billingDate,
               ...irFields,
@@ -536,7 +544,7 @@ export default function OCRScreen() {
                 amount: installAmt,
                 description: `${item.name} (${i + 1}/${installments})`,
                 merchant: merchant || null, date: today,
-                payment_method: paymentMethod, is_need: true,
+                payment_method: paymentMethod, is_need: isNeed,
                 card_id: selectedCardId ?? null,
                 billing_date: card ? calcBillingDate(today, card, i) : calcBillingDateNoCard(today, i),
                 installment_total: installments, installment_number: i + 1,
@@ -549,7 +557,7 @@ export default function OCRScreen() {
               user_id: userId, pot_id: item.potId, type: 'expense',
               amount: item.valueCents / 100, description: item.name,
               merchant: merchant || null, date: today,
-              payment_method: paymentMethod, is_need: true,
+              payment_method: paymentMethod, is_need: isNeed,
               card_id: isCredit ? (selectedCardId ?? null) : null,
               billing_date: isCredit
                 ? (card ? calcBillingDate(today, card, 0) : calcBillingDateNoCard(today, 0))
@@ -991,6 +999,11 @@ export default function OCRScreen() {
             )}
           </View>
         )}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>É uma necessidade?</Text>
+          <IsNeedSelector value={isNeed} onChange={setIsNeed} />
+        </View>
 
         <View style={styles.simplifiedSwitchCard}>
           <View style={{ flex: 1 }}>

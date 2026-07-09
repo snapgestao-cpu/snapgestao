@@ -668,8 +668,8 @@ export async function getFinancialScore(
   // Equilíbrio: % de necessidade vs desejo (ideal ~70% necessidade)
   let equilibrio = 50
   const txsCurr0 = txsInCycle(cycle0).filter(t => t.type === 'expense')
-  const necessityAmt = txsCurr0.filter(t => t.is_need).reduce((s, t) => s + Number(t.amount), 0)
-  const desireAmt = txsCurr0.filter(t => !t.is_need).reduce((s, t) => s + Number(t.amount), 0)
+  const necessityAmt = txsCurr0.filter(t => t.is_need === true).reduce((s, t) => s + Number(t.amount), 0)
+  const desireAmt = txsCurr0.filter(t => t.is_need === false).reduce((s, t) => s + Number(t.amount), 0)
   const totalExp = necessityAmt + desireAmt
   if (totalExp > 0) {
     const pctNecessity = necessityAmt / totalExp

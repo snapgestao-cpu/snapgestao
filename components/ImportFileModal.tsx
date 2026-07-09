@@ -34,6 +34,7 @@ type ImportRow = {
   installmentTotal: number
   potId: string | null
   poteName: string  // nome do pote da planilha (para exibição e resolução)
+  isNeed: boolean | null
 }
 
 type Step = 'pick' | 'preview' | 'card_select' | 'assign' | 'saving' | 'done'
@@ -202,6 +203,14 @@ function parseType(raw: any): 'expense' | 'income' {
   return 'expense'  // despesa, gasto, expense → expense
 }
 
+function parseNeed(raw: any): boolean | null {
+  const s = normalize(String(raw ?? '')).trim()
+  if (s === '') return true  // célula vazia = SIM
+  if (s === 'nao' || s === 'desejo') return false
+  if (s === 'nao_informado' || s === 'nao informado') return null
+  return true  // default SIM
+}
+
 // Same logic as NewExpenseModal
 function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
   const [y, m, d] = txISO.split('-').map(Number)
@@ -248,6 +257,7 @@ function parseSheet(data: any[][]): ImportRow[] {
   const merchantCol = colIdx(['estabelecimento', 'merchant', 'loja', 'fornecedor'])
   const installCol  = colIdx(['parcela', 'parcel', 'installment'])
   const poteCol     = colIdx(['pote', 'categoria', 'category'])
+  const needCol     = colIdx(['necessidade', 'necessário', 'necessario'])
 
   if (amtCol < 0) return []
 
@@ -271,6 +281,9 @@ function parseSheet(data: any[][]): ImportRow[] {
       installmentTotal: type === 'expense' ? installmentTotal : 1,
       potId: null,
       poteName: poteCol >= 0 ? String(row[poteCol] ?? '').trim() : '',
+      isNeed: type === 'expense'
+        ? (needCol >= 0 ? parseNeed(row[needCol]) : true)  // default SIM
+        : null,
     }
   }).filter(r => r.amount > 0)
 }
@@ -497,7 +510,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               date: r.date,
               billing_date: billingDate,
               payment_method: 'credit',
-              is_need: null,
+              is_need: r.isNeed,
               installment_total: installmentCount > 1 ? installmentCount : null,
               installment_number: installmentCount > 1 ? i + 1 : null,
               installment_group_id: groupId,
@@ -516,7 +529,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             date: r.date,
             billing_date: null,
             payment_method: r.paymentMethod,
-            is_need: null,
+            is_need: r.isNeed,
             installment_total: null,
             installment_number: null,
             installment_group_id: null,
