@@ -68,7 +68,7 @@ As funções em `supabase/functions/` **não** são deployadas automaticamente �
 - **AIProviderSelector**: sem badge "GRÁTIS" no Groq — descrição é `'Groq — Leve e eficiente'`
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
-- **Import de extrato bancário (PDF)**: feito via IA (`lib/bank-statement-ai.ts` → Gemini, client-side) e é **Premium**. Não recriar parser determinístico por banco (regex/Edge Function) — foi abandonado por custo de manutenção e fragilidade de extração (ver `docs/FEATURES.md`).
+- **Import de extrato bancário (PDF)**: feito via IA (`lib/bank-statement-ai.ts` → Gemini, client-side) e é **Premium**. PDFs > 3 páginas são divididos em blocos de 3 páginas (`pdf-lib`) e processados em paralelo (evita timeout/perda de linhas em extratos grandes). Não recriar parser determinístico por banco (regex/Edge Function) — foi abandonado por custo de manutenção e fragilidade de extração (ver `docs/FEATURES.md`). `pdf-lib` é pure JS — não exige rebuild/prebuild.
 
 ## Tela de Potes (index.tsx)
 

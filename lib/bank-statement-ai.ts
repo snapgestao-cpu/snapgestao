@@ -5,11 +5,15 @@
  * unpdf). Manda o PDF direto pro Gemini via inline_data (mesmo padrão de
  * lib/ocr-gemini.ts → analyzeReceiptWithGemini), chamada client-side com
  * EXPO_PUBLIC_GEMINI_API_KEY — sem biblioteca de extração de texto nem
- * Edge Function.
+ * Edge Function. Vantagem: não precisa de manutenção por banco.
  *
- * Vantagem: não precisa de manutenção por banco. O modelo lê qualquer layout.
+ * Chunking por página: documentos grandes (extrato de vários meses, 18+
+ * páginas) numa chamada única davam timeout e perdiam lançamentos. Aqui o PDF
+ * é dividido em blocos de poucas páginas (pdf-lib), uma chamada Gemini por
+ * bloco EM PARALELO, e os resultados são mesclados. Continua 100% IA.
  */
 
+import { PDFDocument } from 'pdf-lib'
 import { GEMINI_OCR_MODEL, normalizeDate } from './ocr-gemini'
 
 export type StatementType = 'debito' | 'credito'
@@ -31,7 +35,18 @@ export type BankStatementResult = {
   transactions: BankStatementTxn[]
 }
 
+// Nº de páginas por bloco. Documentos com até esse tamanho vão numa chamada só.
+// Validado nos PDFs reais do Bradesco: 3 páginas ≈ 50 lançamentos/bloco,
+// ~56-69s por bloco (dentro dos 90s). Com 6 páginas os blocos chegavam a
+// 56-82s+ e estouravam o timeout em páginas densas. Extrato de 18 páginas →
+// 6 blocos em paralelo, ~69s no total (antes dava timeout numa chamada só).
+const CHUNK_SIZE_PAGES = 3
+const CHUNK_TIMEOUT_MS = 90_000    // timeout por bloco
+const SINGLE_TIMEOUT_MS = 180_000  // timeout do documento inteiro (sem chunking)
+
 const VALID_PAYMENT = new Set(['pix', 'debit', 'credit', 'transfer', 'cash'])
+
+type ChunkInfo = { index: number; total: number; startPage: number; endPage: number }
 
 function toNumber(raw: any): number {
   if (typeof raw === 'number') return raw
@@ -43,15 +58,19 @@ function toNumber(raw: any): number {
   return isNaN(n) ? 0 : n
 }
 
-function buildPrompt(statementType: StatementType): string {
+function buildPrompt(statementType: StatementType, chunk: ChunkInfo | null): string {
   const isCredito = statementType === 'credito'
   const contexto = isCredito
     ? 'Este documento é uma FATURA DE CARTÃO DE CRÉDITO. Cada lançamento é uma compra (type "expense") ou um estorno/crédito na fatura (type "income", ex: valor seguido de sinal negativo). paymentMethod das compras é sempre "credit".'
     : 'Este documento é um EXTRATO DE CONTA CORRENTE (débito). Cada linha é uma entrada (type "income": PIX recebido, depósito, TED recebida, estorno) ou uma saída (type "expense": PIX enviado, compra no débito, pagamento, tarifa).'
 
+  const chunkNote = chunk
+    ? `\n⚠️ ATENÇÃO: Este é um TRECHO de um documento maior (parte ${chunk.index} de ${chunk.total}). Extraia APENAS os lançamentos presentes NESTE trecho, sem inventar continuação. Se o total/saldo final do documento não aparecer neste trecho, retorne "declaredTotal": null.\n`
+    : ''
+
   return `
 Você é um especialista em documentos bancários brasileiros. ${contexto}
-
+${chunkNote}
 ⚠️ REGRAS CRÍTICAS (dado financeiro — precisão absoluta):
 1. Extraia TODOS os lançamentos, SEM PULAR NENHUM. Percorra o documento inteiro, todas as páginas. Não resuma, não agrupe, não omita linhas por parecerem repetidas.
 2. Datas SEMPRE no formato DD/MM/AAAA. NUNCA use AAAA-MM-DD nem MM/DD/AAAA.
@@ -101,30 +120,30 @@ Formato de saída EXATO:
 `
 }
 
-export async function extractBankStatementWithGemini(
+// Extrai um bloco (ou o documento inteiro, quando chunk === null) via Gemini.
+// Reaproveitado tanto no fluxo single quanto no chunked.
+async function extractChunk(
+  apiKey: string,
   base64Pdf: string,
   statementType: StatementType,
+  timeoutMs: number,
+  chunk: ChunkInfo | null,
 ): Promise<BankStatementResult> {
-  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
-  console.log('[Gemini Extrato] API key disponível:', !!apiKey)
-  if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')
-
   const model = GEMINI_OCR_MODEL
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  const label = chunk ? `chunk ${chunk.index}/${chunk.total} (pág ${chunk.startPage}-${chunk.endPage})` : 'documento inteiro'
+  const pagesLabel = chunk ? `páginas ${chunk.startPage}-${chunk.endPage}` : 'o extrato'
 
-  // Extrato tem MUITOS itens — timeout e maxOutputTokens bem mais altos que o OCR de cupom.
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 180_000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   const startTime = Date.now()
-
-  const prompt = buildPrompt(statementType)
 
   const body = {
     contents: [{
       role: 'user',
       parts: [
         { inline_data: { mime_type: 'application/pdf', data: base64Pdf } },
-        { text: prompt },
+        { text: buildPrompt(statementType, chunk) },
       ],
     }],
     generationConfig: {
@@ -134,67 +153,65 @@ export async function extractBankStatementWithGemini(
     },
   }
 
-  console.log('[Gemini Extrato] iniciando', model, '| tipo:', statementType, '| pdf b64 len:', base64Pdf.length)
-
-  // 503/429 são transitórios (modelo sobrecarregado) — retentar dentro do
-  // mesmo orçamento de tempo (o 503 volta rápido, sobra tempo pra geração).
+  // 503/429 são transitórios (modelo sobrecarregado) — retentar dentro do mesmo
+  // orçamento de tempo (o 503 volta rápido, sobra tempo pra geração).
   let response: Response
   const MAX_ATTEMPTS = 3
   let attempt = 0
-  while (true) {
-    attempt++
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify(body),
-      })
-    } catch (e: any) {
-      clearTimeout(timeoutId)
-      if (e?.name === 'AbortError') throw new Error('Tempo limite excedido ao ler o extrato. Tente novamente.')
-      throw e
-    }
+  try {
+    while (true) {
+      attempt++
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify(body),
+        })
+      } catch (e: any) {
+        if (e?.name === 'AbortError') {
+          throw new Error(`Falha ao ler ${pagesLabel} do documento (tempo limite). Tente novamente.`)
+        }
+        throw e
+      }
 
-    console.log(`[Gemini Extrato] tentativa ${attempt} em`, Date.now() - startTime, 'ms | status', response.status)
-
-    if ((response.status === 503 || response.status === 429) && attempt < MAX_ATTEMPTS) {
-      await new Promise(r => setTimeout(r, 3000 * attempt))
-      continue
+      if ((response.status === 503 || response.status === 429) && attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 3000 * attempt))
+        continue
+      }
+      break
     }
-    break
-  }
-  clearTimeout(timeoutId)
-
-  if (!response.ok) {
-    const err = await response.text()
-    if (response.status === 503 || response.status === 429) {
-      throw new Error('O serviço de IA está sobrecarregado no momento. Tente novamente em instantes.')
-    }
-    throw new Error(`Gemini API ${response.status}: ${err}`)
+  } finally {
+    clearTimeout(timeoutId)
   }
 
-  const responseData = await response.json()
+  if (!response!.ok) {
+    const err = await response!.text()
+    if (response!.status === 503 || response!.status === 429) {
+      throw new Error(`O serviço de IA está sobrecarregado (falha em ${pagesLabel}). Tente novamente em instantes.`)
+    }
+    throw new Error(`Gemini API ${response!.status} ao ler ${pagesLabel}: ${err}`)
+  }
+
+  const responseData = await response!.json()
   const finishReason = responseData?.candidates?.[0]?.finishReason
   const text: string = responseData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-  console.log('[Gemini Extrato] finishReason:', finishReason, '| raw len:', text.length)
 
   if (finishReason === 'MAX_TOKENS') {
-    throw new Error('O extrato é grande demais para processar de uma vez. Tente um período menor.')
+    throw new Error(`O trecho (${pagesLabel}) é grande demais para processar. Tente um período menor.`)
   }
 
   const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('Não foi possível interpretar a resposta da IA para este extrato.')
+  if (!jsonMatch) throw new Error(`Não foi possível interpretar a resposta da IA para ${pagesLabel}.`)
 
   let parsed: any
   try {
     parsed = JSON.parse(jsonMatch[0])
   } catch {
-    throw new Error('Resposta da IA veio incompleta/inválida. Tente novamente.')
+    throw new Error(`Resposta da IA veio incompleta/inválida para ${pagesLabel}. Tente novamente.`)
   }
 
   const rawTxns: any[] = Array.isArray(parsed?.transactions) ? parsed.transactions : []
-
   const transactions: BankStatementTxn[] = rawTxns
     .map((t): BankStatementTxn => {
       const type: 'expense' | 'income' = t?.type === 'income' ? 'income' : 'expense'
@@ -213,9 +230,92 @@ export async function extractBankStatementWithGemini(
     })
     .filter(t => t.amount > 0)
 
+  console.log(`[Gemini Extrato] ${label}: ${Date.now() - startTime}ms | ${transactions.length} lançamentos | declaredTotal=${parsed?.declaredTotal ?? 'null'}`)
+
   return {
     bank: parsed?.bank ? String(parsed.bank) : null,
     declaredTotal: parsed?.declaredTotal != null ? toNumber(parsed.declaredTotal) : null,
     transactions,
   }
+}
+
+// Divide o PDF em blocos de até CHUNK_SIZE_PAGES páginas, retornando o base64 de cada bloco.
+async function splitPdfIntoChunks(base64Pdf: string): Promise<{ chunk: ChunkInfo; base64: string }[]> {
+  const src = await PDFDocument.load(base64Pdf, { ignoreEncryption: true })
+  const pageCount = src.getPageCount()
+  const totalChunks = Math.ceil(pageCount / CHUNK_SIZE_PAGES)
+  const out: { chunk: ChunkInfo; base64: string }[] = []
+
+  for (let c = 0; c < totalChunks; c++) {
+    const start = c * CHUNK_SIZE_PAGES
+    const end = Math.min(start + CHUNK_SIZE_PAGES, pageCount)
+    const doc = await PDFDocument.create()
+    const indices = Array.from({ length: end - start }, (_, i) => start + i)
+    const pages = await doc.copyPages(src, indices)
+    pages.forEach(p => doc.addPage(p))
+    const base64 = await doc.saveAsBase64()
+    out.push({
+      chunk: { index: c + 1, total: totalChunks, startPage: start + 1, endPage: end },
+      base64,
+    })
+  }
+  return out
+}
+
+export async function extractBankStatementWithGemini(
+  base64Pdf: string,
+  statementType: StatementType,
+): Promise<BankStatementResult> {
+  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY
+  console.log('[Gemini Extrato] API key disponível:', !!apiKey, '| tipo:', statementType)
+  if (!apiKey) throw new Error('EXPO_PUBLIC_GEMINI_API_KEY não configurada.')
+
+  // Quantas páginas tem o PDF? Se poucas, mantém 1 chamada só (sem overhead de split).
+  let pageCount: number
+  try {
+    const doc = await PDFDocument.load(base64Pdf, { ignoreEncryption: true })
+    pageCount = doc.getPageCount()
+  } catch (e: any) {
+    console.log('[Gemini Extrato] pdf-lib não conseguiu ler o PDF, indo de chamada única:', e?.message)
+    return extractChunk(apiKey, base64Pdf, statementType, SINGLE_TIMEOUT_MS, null)
+  }
+
+  if (pageCount <= CHUNK_SIZE_PAGES) {
+    console.log(`[Gemini Extrato] ${pageCount} páginas → 1 chamada`)
+    return extractChunk(apiKey, base64Pdf, statementType, SINGLE_TIMEOUT_MS, null)
+  }
+
+  // Documento grande → dividir em blocos e processar em paralelo.
+  const chunks = await splitPdfIntoChunks(base64Pdf)
+  console.log(`[Gemini Extrato] ${pageCount} páginas → ${chunks.length} blocos de até ${CHUNK_SIZE_PAGES}, em paralelo`)
+  const startTime = Date.now()
+
+  // Promise.all: se um bloco falhar (mesmo após retries), a extração inteira
+  // falha com o erro do bloco — NUNCA silenciamos lançamentos faltantes.
+  const results = await Promise.all(
+    chunks.map(({ chunk, base64 }) => extractChunk(apiKey, base64, statementType, CHUNK_TIMEOUT_MS, chunk)),
+  )
+
+  // Merge — transactions na ordem dos blocos
+  const transactions = results.flatMap(r => r.transactions)
+  const bank = results.map(r => r.bank).find(b => b != null) ?? null
+
+  // declaredTotal: candidatos não-nulos; se divergirem, usa o do ÚLTIMO bloco
+  // que retornou (saldo/total final tende a aparecer perto do fim do documento).
+  const declaredCandidates = results
+    .map((r, i) => ({ chunk: i + 1, value: r.declaredTotal }))
+    .filter(c => c.value != null) as { chunk: number; value: number }[]
+
+  let declaredTotal: number | null = null
+  if (declaredCandidates.length > 0) {
+    const distinct = [...new Set(declaredCandidates.map(c => c.value))]
+    if (distinct.length > 1) {
+      console.log('[Gemini Extrato] declaredTotal DIVERGENTE entre blocos:', JSON.stringify(declaredCandidates), '→ usando o do último bloco')
+    }
+    declaredTotal = declaredCandidates[declaredCandidates.length - 1].value
+  }
+
+  console.log(`[Gemini Extrato] merge em ${Date.now() - startTime}ms: ${transactions.length} lançamentos | bank=${bank} | declaredTotal=${declaredTotal}`)
+
+  return { bank, declaredTotal, transactions }
 }
