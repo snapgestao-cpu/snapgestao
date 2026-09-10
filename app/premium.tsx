@@ -23,8 +23,8 @@ const FEATURES: FeatureRow[] = [
   { label: 'Fontes de receita',      free: 'Até 3',       premium: 'Ilimitado',    freeOk: true,  premiumOk: true },
   { label: 'Histórico de ciclos',    free: '3 meses',     premium: 'Ilimitado',    freeOk: true,  premiumOk: true },
   { label: 'Tokens de IA por mês',   free: '2 tokens',    premium: '10 tokens',    freeOk: true,  premiumOk: true },
-  { label: 'IA no Mentor',           free: '⚡ Llama 3.3', premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
-  { label: 'IA no Analisador',       free: '⚡ Llama 3.3', premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
+  { label: 'IA no Mentor',           free: '⚡ IA Groq',  premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
+  { label: 'IA no Analisador',       free: '⚡ IA Groq',  premium: '⭐ Claude',    freeOk: true,  premiumOk: true },
   { label: 'Módulo IR (Deduções)',   free: '',            premium: '',             freeOk: false, premiumOk: true },
   { label: 'Exportação Excel',       free: '',            premium: '',             freeOk: false, premiumOk: true },
   { label: 'Exportação PDF',         free: '',            premium: '',             freeOk: true,  premiumOk: true },
@@ -109,7 +109,7 @@ export default function PremiumScreen() {
           <View style={styles.aiCardFree}>
             <Text style={styles.aiCardBadgeFree}>Gratuito</Text>
             <Text style={styles.aiCardEmoji}>⚡</Text>
-            <Text style={styles.aiCardName}>Llama 3.3</Text>
+            <Text style={styles.aiCardName}>IA Groq</Text>
             <Text style={styles.aiCardDesc}>IA eficiente para análises financeiras básicas</Text>
           </View>
           {/* Premium */}

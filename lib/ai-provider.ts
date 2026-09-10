@@ -3,9 +3,9 @@
  * Data: 07/05/2026
  * Modificado em: 07/05/2026
  *
- * Abstração de provedores de IA — Claude (Anthropic) e Llama (Groq).
- * Seleção automática por plano: Free → Groq/Llama, Premium → Claude.
- * Gemini desabilitado — Free usa Groq/Llama, Premium usa Claude.
+ * Abstração de provedores de IA — Claude (Anthropic) e Groq.
+ * Seleção automática por plano: Free → Groq, Premium → Claude.
+ * Gemini desabilitado — Free usa Groq, Premium usa Claude.
  */
 
 import { Plan } from '../constants/plans'
@@ -23,9 +23,9 @@ export const AI_PROVIDER_INFO = {
     emoji: '🤖',
   },
   groq: {
-    name: 'Llama',
-    model: 'llama-3.3-70b-versatile',
-    label: 'Llama 3.3 (Groq)',
+    name: 'IA Groq',
+    model: 'openai/gpt-oss-120b',
+    label: 'IA Groq (gratuito)',
     description: 'IA eficiente para análises financeiras essenciais',
     badge: 'Gratuito',
     emoji: '🦙',
@@ -147,7 +147,7 @@ export async function callAI(
               'Authorization': 'Bearer ' + apiKey,
             },
             body: JSON.stringify({
-              model: 'llama-3.3-70b-versatile',
+              model: 'openai/gpt-oss-120b',
               max_tokens: 4096,
               temperature: 0.7,
               messages,

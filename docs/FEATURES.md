@@ -68,7 +68,7 @@ Para adicionar novo estado: inserir entry em `NFCE_STATES` com `code`, `portalUr
 
 ## AI Provider (`lib/ai-provider.ts`)
 
-`AIProvider = 'claude' | 'gemini' | 'groq'`. `callAI(provider, prompt, systemPrompt?)`. Modelos: Claude Haiku (`claude-haiku-4-5-20251001`), Gemini 2.5 Flash, Llama 3.3 70B via Groq. Provider persiste em `useCycleStore.aiProvider` (default `'claude'`). `AIProviderSelector` (`components/AIProviderSelector.tsx`) — 3 radio buttons.
+`AIProvider = 'claude' | 'groq'` (Gemini desabilitado). `callAI(provider, prompt, systemPrompt?)`. Modelos: Claude Haiku (`claude-haiku-4-5-20251001`, Premium) e `openai/gpt-oss-120b` via Groq (Free — rotulado "IA Groq"). Provider persiste em `useCycleStore.aiProvider` (default `'claude'`). `AIProviderSelector` (`components/AIProviderSelector.tsx`) renderiza a partir de `AI_PROVIDERS`. **Histórico**: o Groq usava `llama-3.3-70b-versatile`, descontinuado pela Groq em 16/08/2026 → migrado para `openai/gpt-oss-120b` (mesmo contexto de 131k, recomendação oficial da Groq).
 
 ## Mentor Financeiro — `app/mentor.tsx`
 

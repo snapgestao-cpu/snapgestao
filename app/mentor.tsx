@@ -5,7 +5,7 @@
  *
  * Tela do Mentor Financeiro — questionário guiado com IA para
  * diagnóstico financeiro personalizado. Gera relatório em
- * Markdown exportável como PDF. Suporta Claude, Gemini e Llama.
+ * Markdown exportável como PDF. Suporta Claude (Premium) e Groq (Free).
  */
 
 import React, { useState, useRef, useEffect } from 'react'

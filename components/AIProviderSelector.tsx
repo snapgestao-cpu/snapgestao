@@ -3,8 +3,8 @@
  * Data: 07/05/2026
  * Modificado em: 07/05/2026
  *
- * Seletor de provedor de IA — radio group com Claude, Gemini
- * e Llama (Groq). Usado no Mentor Financeiro e Analisador de
+ * Seletor de provedor de IA — radio group com Claude (Premium)
+ * e Groq (Free). Usado no Mentor Financeiro e Analisador de
  * Preços para escolher qual modelo processar a análise.
  */
 

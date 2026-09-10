@@ -50,7 +50,7 @@ function getProviderInfo(provider: string): { icon: string; name: string } {
   switch (provider) {
     case 'claude':  return { icon: '🤖', name: 'Claude' }
     case 'gemini':  return { icon: '✨', name: 'Gemini' }
-    case 'groq':    return { icon: '🦙', name: 'Llama' }
+    case 'groq':    return { icon: '🦙', name: 'IA Groq' }
     default:        return { icon: '🤖', name: 'IA' }
   }
 }
