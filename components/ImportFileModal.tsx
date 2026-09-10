@@ -23,6 +23,8 @@ import { brl } from '../lib/finance'
 import { Pot, CreditCard } from '../types'
 import { downloadImportTemplate } from '../lib/import-template'
 import { CreditCardModal } from './CreditCardModal'
+import { SUPPORTED_BANKS } from '../constants/banks'
+import { parseBankStatement, StatementType } from '../lib/bank-statement-import'
 
 type ImportRow = {
   date: string
@@ -38,6 +40,8 @@ type ImportRow = {
 }
 
 type Step = 'pick' | 'preview' | 'card_select' | 'assign' | 'saving' | 'done'
+
+type ImportMode = 'excel' | 'bank_pdf'
 
 type Props = {
   visible: boolean
@@ -369,6 +373,11 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [downloadingTemplate, setDownloadingTemplate] = useState(false)
   const [templateSuccess, setTemplateSuccess] = useState(false)
   const [showCreditCardModal, setShowCreditCardModal] = useState(false)
+  // Modo de importação: planilha Excel (padrão) ou extrato bancário em PDF
+  const [importMode, setImportMode] = useState<ImportMode>('excel')
+  const [selectedBankId, setSelectedBankId] = useState<string | null>(SUPPORTED_BANKS[0]?.id ?? null)
+  const [statementType, setStatementType] = useState<StatementType | null>(null)
+  const [parsingPdf, setParsingPdf] = useState(false)
 
   useEffect(() => {
     if (visible) loadCards()
@@ -385,6 +394,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const reset = () => {
     setStep('pick'); setRows([]); setFilename('')
     setSelectedCard(null); setTemplateSuccess(false)
+    setImportMode('excel'); setStatementType(null); setParsingPdf(false)
+    setSelectedBankId(SUPPORTED_BANKS[0]?.id ?? null)
   }
 
   const handleDownloadTemplate = async () => {
@@ -444,6 +455,38 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       setStep('preview')
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Não foi possível abrir o arquivo.')
+    }
+  }
+
+  const canPickBankPdf = !!selectedBankId && !!statementType
+
+  const pickBankPDF = async () => {
+    if (!selectedBankId || !statementType) return
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      })
+      if (result.canceled || !result.assets?.[0]) return
+      const asset = result.assets[0]
+      setFilename(asset.name)
+      setParsingPdf(true)
+      const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 })
+      const parsed = await parseBankStatement(selectedBankId, statementType, b64)
+      if (parsed.length === 0) {
+        Alert.alert(
+          'Nenhuma transação encontrada',
+          'Não conseguimos extrair lançamentos deste extrato. Verifique se o PDF é o extrato do banco selecionado e tente novamente.',
+        )
+        return
+      }
+      // potId sempre null — usuário atribui o pote na tela de assign (igual ao Excel)
+      setRows(parsed)
+      setStep('preview')
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível processar o extrato.')
+    } finally {
+      setParsingPdf(false)
     }
   }
 
@@ -661,7 +704,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   }
 
   const stepTitle = () => {
-    if (step === 'pick') return 'Importar Planilha'
+    if (step === 'pick') return importMode === 'bank_pdf' ? 'Importar Extrato' : 'Importar Planilha'
     if (step === 'preview') return `${rows.length} itens detectados`
     if (step === 'card_select') return 'Selecionar cartão'
     if (step === 'assign') return 'Atribuir potes'
@@ -683,36 +726,118 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         {/* STEP: pick */}
         {step === 'pick' && (
           <ScrollView contentContainerStyle={styles.pickContainer} showsVerticalScrollIndicator={false}>
-            <Text style={styles.pickEmoji}>📊</Text>
-            <Text style={styles.pickTitle}>Arquivo Excel (.xlsx)</Text>
-
-            {/* Template download banner */}
-            <View style={styles.templateBanner}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.templateBannerTitle}>📥 Baixar modelo de exemplo</Text>
-                <Text style={styles.templateBannerSub}>
-                  Use como base para preencher seus lançamentos corretamente
-                </Text>
-                {templateSuccess && (
-                  <Text style={styles.templateSuccess}>✅ Modelo baixado com sucesso!</Text>
-                )}
-              </View>
+            {/* Segmented control: Excel | Extrato Bancário (PDF) */}
+            <View style={styles.segment}>
               <TouchableOpacity
-                style={[styles.templateBtn, downloadingTemplate && { opacity: 0.6 }]}
-                onPress={handleDownloadTemplate}
-                disabled={downloadingTemplate}
+                style={[styles.segmentBtn, importMode === 'excel' && styles.segmentBtnActive]}
+                onPress={() => setImportMode('excel')}
               >
-                {downloadingTemplate
-                  ? <ActivityIndicator color={Colors.primary} size="small" />
-                  : <Text style={styles.templateBtnText}>Baixar</Text>
-                }
+                <Text style={[styles.segmentText, importMode === 'excel' && styles.segmentTextActive]}>
+                  Planilha Excel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentBtn, importMode === 'bank_pdf' && styles.segmentBtnActive]}
+                onPress={() => setImportMode('bank_pdf')}
+              >
+                <Text style={[styles.segmentText, importMode === 'bank_pdf' && styles.segmentTextActive]}>
+                  Extrato Bancário (PDF)
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <ExcelPreview />
-            <TouchableOpacity style={[styles.primaryBtn, { width: '100%' }]} onPress={pickFile}>
-              <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
-            </TouchableOpacity>
+            {importMode === 'excel' ? (
+              <>
+                <Text style={styles.pickEmoji}>📊</Text>
+                <Text style={styles.pickTitle}>Arquivo Excel (.xlsx)</Text>
+
+                {/* Template download banner */}
+                <View style={styles.templateBanner}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.templateBannerTitle}>📥 Baixar modelo de exemplo</Text>
+                    <Text style={styles.templateBannerSub}>
+                      Use como base para preencher seus lançamentos corretamente
+                    </Text>
+                    {templateSuccess && (
+                      <Text style={styles.templateSuccess}>✅ Modelo baixado com sucesso!</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.templateBtn, downloadingTemplate && { opacity: 0.6 }]}
+                    onPress={handleDownloadTemplate}
+                    disabled={downloadingTemplate}
+                  >
+                    {downloadingTemplate
+                      ? <ActivityIndicator color={Colors.primary} size="small" />
+                      : <Text style={styles.templateBtnText}>Baixar</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+
+                <ExcelPreview />
+                <TouchableOpacity style={[styles.primaryBtn, { width: '100%' }]} onPress={pickFile}>
+                  <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.pickEmoji}>🏦</Text>
+                <Text style={styles.pickTitle}>Extrato bancário em PDF</Text>
+
+                {/* Seletor de banco */}
+                <Text style={styles.fieldLabel}>Banco</Text>
+                <View style={styles.chipRow}>
+                  {SUPPORTED_BANKS.map(b => (
+                    <TouchableOpacity
+                      key={b.id}
+                      style={[styles.potChip, selectedBankId === b.id && styles.potChipActive]}
+                      onPress={() => setSelectedBankId(b.id)}
+                    >
+                      <Text style={[styles.potChipText, selectedBankId === b.id && styles.potChipTextActive]}>
+                        {b.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Seletor débito/crédito */}
+                <Text style={styles.fieldLabel}>Tipo de extrato</Text>
+                <View style={styles.chipRow}>
+                  <TouchableOpacity
+                    style={[styles.potChip, statementType === 'debito' && styles.potChipActive]}
+                    onPress={() => setStatementType('debito')}
+                  >
+                    <Text style={[styles.potChipText, statementType === 'debito' && styles.potChipTextActive]}>
+                      Débito / Conta
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.potChip, statementType === 'credito' && styles.potChipActive]}
+                    onPress={() => setStatementType('credito')}
+                  >
+                    <Text style={[styles.potChipText, statementType === 'credito' && styles.potChipTextActive]}>
+                      Crédito / Fatura
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { width: '100%' }, (!canPickBankPdf || parsingPdf) && { opacity: 0.5 }]}
+                  onPress={pickBankPDF}
+                  disabled={!canPickBankPdf || parsingPdf}
+                >
+                  {parsingPdf
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.primaryBtnText}>Escolher extrato em PDF</Text>
+                  }
+                </TouchableOpacity>
+                {!canPickBankPdf && (
+                  <Text style={styles.hintText}>
+                    Selecione o banco e o tipo de extrato para continuar.
+                  </Text>
+                )}
+              </>
+            )}
           </ScrollView>
         )}
 
@@ -851,6 +976,19 @@ const styles = StyleSheet.create({
   closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
   closeBtnText: { fontSize: 14, color: Colors.textMuted },
   pickContainer: { alignItems: 'center', padding: 24, gap: 16 },
+  // Segmented control (Excel | Extrato PDF)
+  segment: {
+    flexDirection: 'row', width: '100%',
+    backgroundColor: Colors.background, borderRadius: 12, padding: 4,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  segmentBtn: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segmentBtnActive: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segmentText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted, textAlign: 'center' },
+  segmentTextActive: { color: Colors.primary },
+  fieldLabel: { alignSelf: 'flex-start', fontSize: 13, fontWeight: '700', color: Colors.textDark },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', alignSelf: 'stretch', marginTop: -4 },
+  hintText: { fontSize: 12, color: Colors.textMuted, textAlign: 'center' },
   centeredContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   pickEmoji: { fontSize: 56 },
   pickTitle: { fontSize: 18, fontWeight: '700', color: Colors.textDark, textAlign: 'center' },

@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **SnapGestão** — app de controle financeiro pessoal (React Native + Expo 54).  
 Supabase: `https://cvyissbkfwphtmvvcvop.supabase.co`
 
+> **Raiz do projeto**: `C:\snapgestao\snapgestao\` (subpasta). O diretório externo `C:\snapgestao\` não tem `package.json` — todos os comandos (`npm`, `npx`, `gradlew`) devem rodar dentro de `snapgestao\`. Este `CLAUDE.md`, `app/`, `lib/`, etc. ficam todos aqui.
+
 ## Documentação detalhada
 
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — routing, data flow, cycle sync, libs, auth, styling
@@ -41,6 +43,16 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 ```
 
 `EXPO_PUBLIC_*` são inlined pelo Metro. Secrets de backend nunca devem usar este prefixo.
+
+## Edge Functions
+
+As funções em `supabase/functions/` **não** são deployadas automaticamente — cada uma precisa de `supabase functions deploy <nome>` para funcionar em qualquer ambiente. Após criar ou alterar uma function (ex: `parse-bank-statement`), rode o deploy manualmente e confirme que o projeto linkado no CLI é o DEV (`cvyissbkfwphtmvvcvop`) antes de subir.
+
+## Controle de versão e documentação
+
+- **Após qualquer execução significativa** (feature implementada, bug corrigido, refactor concluído — não a cada arquivo salvo): fazer commit com mensagem clara em português descrevendo o que mudou e por quê. Permite reverter rapidamente se surgir um erro crítico depois.
+- **Atualizar a documentação no mesmo commit**: se a mudança afeta arquitetura, banco de dados, features ou alguma regra crítica, refletir isso no `CLAUDE.md` e/ou no `docs/*.md` relevante (`ARQUITETURA.md`, `BANCO_DE_DADOS.md`, `FEATURES.md`, `PERFORMANCE_E_BUGS.md`). A documentação nunca deve ficar defasada em relação ao código.
+- Mudanças arriscadas (migrations destrutivas, refactor grande, mexer em lógica de ciclo/billing) merecem uma tag de rollback antes de começar, seguindo o padrão já usado (`v1.1.0-build30-pre-audit`).
 
 ## Regras críticas (resumo rápido)
 

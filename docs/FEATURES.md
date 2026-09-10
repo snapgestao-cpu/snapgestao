@@ -90,6 +90,31 @@ Quiz 3 perguntas + análise IA comparando preços por estabelecimento. `lib/anal
 
 Steps: pick → preview → card_select → assign → saving → done. Auto-detecta colunas. `saveAll` usa `supabase.auth.getUser()` exclusivamente para `user_id` — prop pode estar stale. **Nunca** inserir a row total para crédito — apenas N rows de parcelas.
 
+O step `pick` tem um segmented control: **Planilha Excel** (padrão) | **Extrato Bancário (PDF)** (`importMode`). No modo PDF o usuário escolhe banco + tipo (débito/crédito) e o arquivo; do `preview` em diante o fluxo é 100% reaproveitado do import de Excel.
+
+## Import de extrato bancário (PDF)
+
+Segundo modo do `ImportFileModal`. Converte um extrato/fatura em PDF em `ImportRow`s, que seguem o mesmo fluxo de preview/atribuição de pote do import de Excel.
+
+**Bancos suportados** (`constants/banks.ts` → `SUPPORTED_BANKS`): hoje apenas **Bradesco**, nos dois tipos — **débito** (extrato de conta corrente) e **crédito** (fatura). Adicionar banco = nova entrada na lista + parsing correspondente no backend.
+
+**Onde fica a lógica**:
+- `lib/bank-statement-import.ts` — `parseBankStatement(bankId, statementType, pdfBase64)`: lê o PDF em base64, chama a Edge Function e mapeia o retorno para `ImportRow` (`potId` sempre `null`).
+- `supabase/functions/parse-bank-statement/index.ts` — extrai o texto do PDF (`npm:unpdf`) e delega para o parser.
+- `supabase/functions/parse-bank-statement/parser.ts` — **lógica pura** (sem Deno/PDF), testada em `__tests__/bank-statement-parser.test.ts` contra o texto real extraído em `__tests__/fixtures/*.extracted.txt`.
+
+**Detalhes de parsing** (derivados do texto REAL extraído, que difere do layout visual):
+- **Débito**: a extração funde as colunas Crédito/Débito num único valor + saldo, então o tipo (`income`/`expense`) é inferido pela **variação do saldo corrente** (subiu = crédito, desceu = débito), semeado pelo saldo de abertura. A data é "carregada" da primeira linha do dia; prefixos `REM:`/`DES:` e a data solta `DD/MM` são removidos do nome do contraparte.
+- **Crédito**: linhas de lançamento às vezes quebram em 2-3 linhas físicas — são remontadas até fechar num valor. Ano inferido do `Vencimento`; sufixo ` -` = estorno (`income`); parcela `NN/NN` é removida do merchant e anexada como `(N/T)` na description; `installmentTotal` sempre `1` (a parcela já está sendo cobrada nesta fatura).
+
+**Excluído da importação** (não vira `ImportRow`):
+- Débito: `RENTAB.INVEST FACILCRED*` (rendimento de centavos), `GASTOS CARTAO DE CREDITO` (pagamento agregado da fatura — evita duplicar com o import da fatura), `COD. LANC. 0` (marcador de abertura), linhas `Total` de rodapé.
+- Crédito: `PAGTO. POR DEB EM C/C` (pagamento da fatura anterior — evita duplicar com o extrato de débito), linhas `Total para …` / `Total da fatura …` e qualquer conteúdo fora da seção Lançamentos.
+
+**Validação (checksum)**: a soma líquida dos lançamentos confere com o total do documento — no crédito bate com o "Total da fatura"; no débito a inferência de tipo é validada pela continuidade do saldo. O `index.ts` loga essa soma. Os testes (`bank-statement-parser.test.ts`) usam **dados sintéticos inline** (nunca extratos reais) que reproduzem o formato e exercitam todas as regras — extratos reais ficam fora do repositório (ver `.gitignore` → `__tests__/fixtures/`).
+
+**Cuidado**: no filtro de ruído do débito, `Bradesco Celular` é o cabeçalho de página — **não** confundir com estabelecimentos reais como `BRADESCO VIDA E PREVIDENCIA` / `BRADESCO C-SEFAZ`.
+
 ## Notificações
 
 Completamente desabilitadas. `lib/notifications.ts` exporta apenas funções async vazias. **Não** adicionar imports de `expo-notifications`.
