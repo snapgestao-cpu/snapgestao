@@ -90,30 +90,25 @@ Quiz 3 perguntas + análise IA comparando preços por estabelecimento. `lib/anal
 
 Steps: pick → preview → card_select → assign → saving → done. Auto-detecta colunas. `saveAll` usa `supabase.auth.getUser()` exclusivamente para `user_id` — prop pode estar stale. **Nunca** inserir a row total para crédito — apenas N rows de parcelas.
 
-O step `pick` tem um segmented control: **Planilha Excel** (padrão) | **Extrato Bancário (PDF)** (`importMode`). No modo PDF o usuário escolhe banco + tipo (débito/crédito) e o arquivo; do `preview` em diante o fluxo é 100% reaproveitado do import de Excel.
+O step `pick` tem um segmented control: **Planilha Excel** (padrão) | **Extrato Bancário (PDF)** (`importMode`). No modo PDF o usuário só escolhe o tipo (débito/crédito) e o arquivo; do `preview` em diante o fluxo é 100% reaproveitado do import de Excel.
 
-## Import de extrato bancário (PDF)
+## Import de extrato bancário (PDF) — via IA
 
-Segundo modo do `ImportFileModal`. Converte um extrato/fatura em PDF em `ImportRow`s, que seguem o mesmo fluxo de preview/atribuição de pote do import de Excel.
+Segundo modo do `ImportFileModal` (**Premium**). Converte um extrato/fatura em PDF em `ImportRow`s, que seguem o mesmo fluxo de preview/atribuição de pote do import de Excel.
 
-**Bancos suportados** (`constants/banks.ts` → `SUPPORTED_BANKS`): hoje apenas **Bradesco**, nos dois tipos — **débito** (extrato de conta corrente) e **crédito** (fatura). Adicionar banco = nova entrada na lista + parsing correspondente no backend.
+**Extração via IA (Gemini)** — `lib/bank-statement-ai.ts` → `extractBankStatementWithGemini(base64Pdf, statementType)`:
+- Manda o PDF direto pro Gemini via `inline_data` (`mime_type: 'application/pdf'`), client-side com `EXPO_PUBLIC_GEMINI_API_KEY` — mesmo padrão de `lib/ocr-gemini.ts`. **Não** usa Edge Function nem biblioteca de extração de texto. `maxOutputTokens: 65536` + `responseMimeType: 'application/json'` (extrato tem muitos itens); timeout 120s.
+- Não há seleção nem lógica por banco — o modelo lê qualquer layout. O banco é só **identificado** (campo `bank`, informativo, exibido no preview).
+- Retorna `{ bank, declaredTotal, transactions[] }`. Cada txn: `date` (DD/MM/AAAA), `description`/`merchant`, `amount`, `type`, `paymentMethod` (`pix`|`debit`|`credit`|`transfer`|`cash`), `installmentTotal` sempre `1`, e `isCreditCardBillPayment`.
+- **Parcelas de crédito**: o prompt anexa `(N/T)` à description e mantém `installmentTotal: 1` (parcela já cobrada no mês — não é compra nova a parcelar no app).
+- **Exclusão automática**: linhas de "pagamento da fatura anterior via débito em conta" dentro da própria fatura (ex: `PAGTO POR DEB EM C/C`) nunca entram no retorno.
 
-**Onde fica a lógica**:
-- `lib/bank-statement-import.ts` — `parseBankStatement(bankId, statementType, pdfBase64)`: lê o PDF em base64, chama a Edge Function e mapeia o retorno para `ImportRow` (`potId` sempre `null`).
-- `supabase/functions/parse-bank-statement/index.ts` — extrai o texto do PDF (`npm:unpdf`) e delega para o parser.
-- `supabase/functions/parse-bank-statement/parser.ts` — **lógica pura** (sem Deno/PDF), testada em `__tests__/bank-statement-parser.test.ts` contra o texto real extraído em `__tests__/fixtures/*.extracted.txt`.
+**Fluxo no `ImportFileModal`**:
+- **Gating Premium**: no modo PDF, usuário Free vê `PaywallBanner` (upgrade → `/premium`); só Premium acessa. Mesmo padrão de IR/Export Excel.
+- **Conferência de total**: soma os lançamentos (respeitando `type`) e compara com `declaredTotal`. Só para **crédito** (fatura = compras − estornos; no débito o "total" é saldo final, não a soma). Divergência > R$0,05 → Alert de aviso, **sem bloquear** a importação.
+- **Pagamento de fatura de cartão** (`isCreditCardBillPayment: true`, ex: `GASTOS CARTAO DE CREDITO` no extrato de débito): antes do preview, Alert perguntando se os gastos do cartão já são lançados separadamente — **"Sim, não incluir"** (remove essas linhas) ou **"Não, lançar esse valor"** (mantém como `transfer`).
 
-**Detalhes de parsing** (derivados do texto REAL extraído, que difere do layout visual):
-- **Débito**: a extração funde as colunas Crédito/Débito num único valor + saldo, então o tipo (`income`/`expense`) é inferido pela **variação do saldo corrente** (subiu = crédito, desceu = débito), semeado pelo saldo de abertura. A data é "carregada" da primeira linha do dia; prefixos `REM:`/`DES:` e a data solta `DD/MM` são removidos do nome do contraparte.
-- **Crédito**: linhas de lançamento às vezes quebram em 2-3 linhas físicas — são remontadas até fechar num valor. Ano inferido do `Vencimento`; sufixo ` -` = estorno (`income`); parcela `NN/NN` é removida do merchant e anexada como `(N/T)` na description; `installmentTotal` sempre `1` (a parcela já está sendo cobrada nesta fatura).
-
-**Excluído da importação** (não vira `ImportRow`):
-- Débito: `RENTAB.INVEST FACILCRED*` (rendimento de centavos), `GASTOS CARTAO DE CREDITO` (pagamento agregado da fatura — evita duplicar com o import da fatura), `COD. LANC. 0` (marcador de abertura), linhas `Total` de rodapé.
-- Crédito: `PAGTO. POR DEB EM C/C` (pagamento da fatura anterior — evita duplicar com o extrato de débito), linhas `Total para …` / `Total da fatura …` e qualquer conteúdo fora da seção Lançamentos.
-
-**Validação (checksum)**: a soma líquida dos lançamentos confere com o total do documento — no crédito bate com o "Total da fatura"; no débito a inferência de tipo é validada pela continuidade do saldo. O `index.ts` loga essa soma. Os testes (`bank-statement-parser.test.ts`) usam **dados sintéticos inline** (nunca extratos reais) que reproduzem o formato e exercitam todas as regras — extratos reais ficam fora do repositório (ver `.gitignore` → `__tests__/fixtures/`).
-
-**Cuidado**: no filtro de ruído do débito, `Bradesco Celular` é o cabeçalho de página — **não** confundir com estabelecimentos reais como `BRADESCO VIDA E PREVIDENCIA` / `BRADESCO C-SEFAZ`.
+**Lição aprendida — por que abandonamos o parser determinístico por banco**: a 1ª versão usava regex por banco numa Edge Function (`parse-bank-statement`) com `unpdf` extraindo texto. Problemas: (1) **manutenção por banco/layout** — cada banco (e cada mudança de layout) exigia novos regexes; (2) **fragilidade de extração** — o parser dependia de o `unpdf` preservar quebras de linha (`\n`), e uma diferença de versão da lib (0.12.1 deployado × 1.8.1 testado) trocou `\n` por espaços, zerando o parsing em produção sem erro visível. A extração via IA elimina os dois: sem código por banco e sem depender de whitespace de biblioteca. Custo: uma chamada de IA por import (aceitável, é Premium e ação pontual). A Edge Function `parse-bank-statement`, `constants/banks.ts`, `lib/bank-statement-import.ts` e os testes de parser foram **removidos**.
 
 ## Notificações
 

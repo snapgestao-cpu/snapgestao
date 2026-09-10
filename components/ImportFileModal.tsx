@@ -23,8 +23,10 @@ import { brl } from '../lib/finance'
 import { Pot, CreditCard } from '../types'
 import { downloadImportTemplate } from '../lib/import-template'
 import { CreditCardModal } from './CreditCardModal'
-import { SUPPORTED_BANKS } from '../constants/banks'
-import { parseBankStatement, StatementType } from '../lib/bank-statement-import'
+import { extractBankStatementWithGemini, StatementType, BankStatementTxn } from '../lib/bank-statement-ai'
+import { PaywallBanner } from './PaywallBanner'
+import { useAuthStore } from '../stores/useAuthStore'
+import { router } from 'expo-router'
 
 type ImportRow = {
   date: string
@@ -375,9 +377,10 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [showCreditCardModal, setShowCreditCardModal] = useState(false)
   // Modo de importação: planilha Excel (padrão) ou extrato bancário em PDF
   const [importMode, setImportMode] = useState<ImportMode>('excel')
-  const [selectedBankId, setSelectedBankId] = useState<string | null>(SUPPORTED_BANKS[0]?.id ?? null)
   const [statementType, setStatementType] = useState<StatementType | null>(null)
   const [parsingPdf, setParsingPdf] = useState(false)
+  const [detectedBank, setDetectedBank] = useState<string | null>(null)
+  const { isPremium } = useAuthStore()
 
   useEffect(() => {
     if (visible) loadCards()
@@ -395,7 +398,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     setStep('pick'); setRows([]); setFilename('')
     setSelectedCard(null); setTemplateSuccess(false)
     setImportMode('excel'); setStatementType(null); setParsingPdf(false)
-    setSelectedBankId(SUPPORTED_BANKS[0]?.id ?? null)
+    setDetectedBank(null)
   }
 
   const handleDownloadTemplate = async () => {
@@ -458,10 +461,50 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     }
   }
 
-  const canPickBankPdf = !!selectedBankId && !!statementType
+  const canPickBankPdf = !!statementType
+
+  // Mapeia um lançamento extraído pela IA para o formato ImportRow do modal.
+  // date vem DD/MM/AAAA da IA → parseDateISO converte pra ISO; potId sempre null.
+  const bankTxnToRow = (t: BankStatementTxn): ImportRow => ({
+    date: parseDateISO(t.date),
+    description: t.description,
+    merchant: t.merchant,
+    amount: t.amount,
+    type: t.type,
+    paymentMethod: t.paymentMethod,
+    installmentTotal: 1,
+    potId: null,
+    poteName: '',
+    isNeed: t.type === 'expense' ? true : null,
+  })
+
+  // Confere a soma dos lançamentos com o total declarado (só faz sentido na
+  // fatura de crédito: total = compras − estornos). No débito, o "total" é o
+  // saldo final do período, que não é a soma dos lançamentos, então pulamos.
+  const warnIfTotalMismatch = (txns: BankStatementTxn[], declaredTotal: number | null) => {
+    if (statementType !== 'credito' || declaredTotal == null) return
+    const sum = txns.reduce((s, t) => s + (t.type === 'income' ? -t.amount : t.amount), 0)
+    if (Math.abs(sum - declaredTotal) > 0.05) {
+      Alert.alert(
+        '⚠️ Conferir total',
+        `A soma dos lançamentos (${brl(sum)}) não confere com o total do extrato (${brl(declaredTotal)}). ` +
+        `Pode ter faltado ou sobrado algum item — revise com atenção antes de confirmar.`,
+      )
+    }
+  }
+
+  const goToPreviewWith = (txns: BankStatementTxn[], declaredTotal: number | null) => {
+    if (txns.length === 0) {
+      Alert.alert('Nenhuma transação encontrada', 'Não conseguimos extrair lançamentos deste extrato. Verifique se o PDF é o extrato/fatura correto e tente de novo.')
+      return
+    }
+    setRows(txns.map(bankTxnToRow))
+    setStep('preview')
+    warnIfTotalMismatch(txns, declaredTotal)
+  }
 
   const pickBankPDF = async () => {
-    if (!selectedBankId || !statementType) return
+    if (!statementType) return
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
@@ -472,17 +515,35 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       setFilename(asset.name)
       setParsingPdf(true)
       const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 })
-      const parsed = await parseBankStatement(selectedBankId, statementType, b64)
-      if (parsed.length === 0) {
+      const { bank, declaredTotal, transactions } = await extractBankStatementWithGemini(b64, statementType)
+      setDetectedBank(bank)
+
+      // Pagamento de fatura de cartão detectado → perguntar se inclui ou não
+      const billPayments = transactions.filter(t => t.isCreditCardBillPayment)
+      if (billPayments.length > 0) {
+        const totalBill = billPayments.reduce((s, t) => s + t.amount, 0)
         Alert.alert(
-          'Nenhuma transação encontrada',
-          'Não conseguimos extrair lançamentos deste extrato. Verifique se o PDF é o extrato do banco selecionado e tente novamente.',
+          'Pagamento de fatura detectado',
+          `Detectamos ${brl(totalBill)} em pagamento(s) de fatura de cartão de crédito neste extrato. ` +
+          `Os gastos desse cartão já são (ou serão) lançados separadamente?`,
+          [
+            {
+              text: 'Sim, não incluir',
+              onPress: () => goToPreviewWith(transactions.filter(t => !t.isCreditCardBillPayment), declaredTotal),
+            },
+            {
+              text: 'Não, lançar esse valor',
+              onPress: () => goToPreviewWith(
+                transactions.map(t => t.isCreditCardBillPayment ? { ...t, paymentMethod: 'transfer' as const } : t),
+                declaredTotal,
+              ),
+            },
+          ],
         )
         return
       }
-      // potId sempre null — usuário atribui o pote na tela de assign (igual ao Excel)
-      setRows(parsed)
-      setStep('preview')
+
+      goToPreviewWith(transactions, declaredTotal)
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Não foi possível processar o extrato.')
     } finally {
@@ -779,29 +840,21 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
                   <Text style={styles.primaryBtnText}>Escolher arquivo</Text>
                 </TouchableOpacity>
               </>
+            ) : !isPremium ? (
+              <PaywallBanner
+                feature="Importar extrato bancário (PDF)"
+                description="Extraia todos os lançamentos de um extrato ou fatura em PDF automaticamente com IA — sem digitar. Disponível no plano Premium."
+                onUpgrade={() => { handleClose(); router.push('/premium' as any) }}
+              />
             ) : (
               <>
                 <Text style={styles.pickEmoji}>🏦</Text>
                 <Text style={styles.pickTitle}>Extrato bancário em PDF</Text>
-
-                {/* Seletor de banco */}
-                <Text style={styles.fieldLabel}>Banco</Text>
-                <View style={styles.chipRow}>
-                  {SUPPORTED_BANKS.map(b => (
-                    <TouchableOpacity
-                      key={b.id}
-                      style={[styles.potChip, selectedBankId === b.id && styles.potChipActive]}
-                      onPress={() => setSelectedBankId(b.id)}
-                    >
-                      <Text style={[styles.potChipText, selectedBankId === b.id && styles.potChipTextActive]}>
-                        {b.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.hintText}>
+                  A IA lê o PDF e extrai os lançamentos. Escolha o tipo do documento:
+                </Text>
 
                 {/* Seletor débito/crédito */}
-                <Text style={styles.fieldLabel}>Tipo de extrato</Text>
                 <View style={styles.chipRow}>
                   <TouchableOpacity
                     style={[styles.potChip, statementType === 'debito' && styles.potChipActive]}
@@ -831,10 +884,11 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
                     : <Text style={styles.primaryBtnText}>Escolher extrato em PDF</Text>
                   }
                 </TouchableOpacity>
-                {!canPickBankPdf && (
-                  <Text style={styles.hintText}>
-                    Selecione o banco e o tipo de extrato para continuar.
-                  </Text>
+                {parsingPdf && (
+                  <Text style={styles.hintText}>Lendo o extrato com IA… pode levar até 1 minuto.</Text>
+                )}
+                {!canPickBankPdf && !parsingPdf && (
+                  <Text style={styles.hintText}>Selecione o tipo de extrato para continuar.</Text>
                 )}
               </>
             )}
@@ -846,6 +900,9 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
           <View style={{ flex: 1 }}>
             <View style={styles.filenameBadge}>
               <Text style={styles.filenameText}>📄 {filename}</Text>
+              {detectedBank && (
+                <Text style={styles.filenameText}>🏦 {detectedBank}</Text>
+              )}
             </View>
             <Text style={styles.sectionLabel}>
               Prévia ({rows.length} linhas → {totalTransactions} lançamentos)

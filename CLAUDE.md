@@ -46,7 +46,7 @@ EXPO_PUBLIC_GROQ_API_KEY=...
 
 ## Edge Functions
 
-As funções em `supabase/functions/` **não** são deployadas automaticamente — cada uma precisa de `supabase functions deploy <nome>` para funcionar em qualquer ambiente. Após criar ou alterar uma function (ex: `parse-bank-statement`), rode o deploy manualmente e confirme que o projeto linkado no CLI é o DEV (`cvyissbkfwphtmvvcvop`) antes de subir.
+As funções em `supabase/functions/` **não** são deployadas automaticamente — cada uma precisa de `supabase functions deploy <nome>` para funcionar em qualquer ambiente. Após criar ou alterar uma function (ex: `process-receipt`, `fetch-nfce`), rode o deploy manualmente e confirme que o projeto linkado no CLI é o DEV (`cvyissbkfwphtmvvcvop`) antes de subir. Para deletar em produção: `supabase functions delete <nome> --project-ref cvyissbkfwphtmvvcvop`.
 
 ## Controle de versão e documentação
 
@@ -68,6 +68,7 @@ As funções em `supabase/functions/` **não** são deployadas automaticamente �
 - **AIProviderSelector**: sem badge "GRÁTIS" no Groq — descrição é `'Groq — Leve e eficiente'`
 - **NFCeWebView**: URL já vem sanitizada do caller — nunca chamar `sanitizeNFCeUrl` dentro
 - **Notificações**: completamente desabilitadas — não adicionar imports de `expo-notifications`
+- **Import de extrato bancário (PDF)**: feito via IA (`lib/bank-statement-ai.ts` → Gemini, client-side) e é **Premium**. Não recriar parser determinístico por banco (regex/Edge Function) — foi abandonado por custo de manutenção e fragilidade de extração (ver `docs/FEATURES.md`).
 
 ## Tela de Potes (index.tsx)
 
