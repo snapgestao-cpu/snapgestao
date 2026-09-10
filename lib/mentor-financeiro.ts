@@ -115,7 +115,7 @@ async function buscarMesesValidos(
   return mesesValidos
 }
 
-const MENTOR_SYSTEM_PROMPT = `Você é o Mentor Financeiro do SnapGestão, um assistente especializado em finanças pessoais com tom amigável, direto e motivador. Responda sempre em português brasileiro.
+const MENTOR_SYSTEM_PROMPT = `Você é o Mentor Financeiro do SnapGestão, um assistente especializado em finanças pessoais. Responda sempre em português brasileiro.
 
 Analise os dados financeiros e o questionário do usuário e gere um relatório completo com:
 
@@ -125,11 +125,48 @@ Analise os dados financeiros e o questionário do usuário e gere um relatório 
 4. **Plano de Ação** — 5 recomendações específicas e práticas (numeradas)
 5. **Meta 90 dias** — Uma meta concreta e mensurável para os próximos 3 meses
 
+ESTILO (vale para todo o relatório):
+- Fale SEMPRE em segunda pessoa ("você", "seu"). NUNCA use "o usuário" nem terceira pessoa.
+- Escreva como um consultor financeiro pessoal conversando com você — não como um relatório impessoal.
+- Seja direto e específico usando os valores reais do usuário em R$. Dê ações concretas com números.
+- Use emojis para destacar os pontos importantes.
+
 REGRAS IMPORTANTES:
 - Quando o usuário deixar comentários ou observações nas perguntas, interprete-os como contexto essencial e adapte o diagnóstico com base neles — eles revelam intenções, situações específicas e prioridades que os dados financeiros sozinhos não mostram.
 - Se houver uma observação final do usuário, ela deve ser levada em conta com prioridade máxima — pode mudar completamente o foco do relatório.
 - Quando houver receitas previstas em meses futuros, leve-as em conta no planejamento — especialmente para reservas, metas e quitação de dívidas.
-- Seja específico, use os valores reais do usuário. Evite conselhos genéricos.`
+- Seja específico, use os valores reais do usuário. Evite conselhos genéricos.
+- NUNCA invente, estime ou "chute" valores em R$ que não estejam explicitamente presentes nos dados fornecidos neste prompt. Se faltar um dado necessário para uma recomendação, diga isso claramente (ex: "não há dados suficientes para calcular X") em vez de supor um número.
+
+Ao final do relatório, adicione uma linha curta em itálico deixando claro que este é um conteúdo educativo gerado por IA com base nos dados do app e NÃO constitui aconselhamento financeiro profissional.`
+
+// Instrução de tom aplicada dinamicamente na geração — deriva do tom escolhido
+// pelo usuário (respostas.tom) e da situação financeira. Precisa mudar de fato
+// o texto gerado, não só aparecer como dado no prompt.
+function buildToneInstruction(respostas: QuestionarioRespostas, ctx: ContextoFinanceiro): string {
+  const emDificuldade =
+    ctx.totalPoupado <= 0 ||
+    respostas.objetivo.opcao === 'negativo' ||
+    respostas.objetivo.opcao === 'dividas'
+
+  // Forma/verbosidade — derivada do tom escolhido
+  const forma =
+    respostas.tom.opcao === 'direto'
+      ? 'Seja econômico em palavras, direto ao ponto, sem rodeios nem enrolação.'
+      : respostas.tom.opcao === 'detalhado'
+      ? 'Traga números e comparações a cada afirmação, explicando o porquê de cada ponto com base nos dados.'
+      : 'Escreva de forma clara e acolhedora.'
+
+  // Postura emocional — empatia tem prioridade quando a situação é delicada,
+  // mesmo que o usuário tenha pedido tom "motivador".
+  const postura = emDificuldade
+    ? 'A situação financeira está delicada (poupança não positiva ou foco em sair do negativo/quitar dívidas). Seja EMPÁTICO e PRÁTICO: reconheça a realidade com honestidade, SEM minimizar ("parabéns", "continue assim") e SEM alarmismo ou catastrofismo. Foque em passos concretos e realizáveis e transmita que a recuperação é possível.'
+    : respostas.tom.opcao === 'motivador'
+    ? 'Use um tom motivador e encorajador: celebre as conquistas e incentive os próximos passos.'
+    : 'Use um tom positivo e profissional, reconhecendo o que está indo bem.'
+
+  return `INSTRUÇÃO DE TOM (siga à risca): ${postura} ${forma}`
+}
 
 export async function coletarContextoFinanceiro(
   userId: string,
@@ -416,22 +453,12 @@ export async function gerarRelatorioMentor(
   ctx: ContextoFinanceiro,
   provider: AIProvider = 'groq'
 ): Promise<string> {
+  // Mesmo prompt e mesmo system prompt para os dois providers (Claude/Groq) —
+  // as instruções de estilo/tom vivem no system prompt e valem sempre.
   const promptUsuario = buildPrompt(respostas, ctx)
+  const systemPrompt = `${MENTOR_SYSTEM_PROMPT}\n\n${buildToneInstruction(respostas, ctx)}`
 
-  const promptForcado = `INSTRUÇÕES CRÍTICAS:
-- Fale SEMPRE em segunda pessoa ("você", "seu")
-- NUNCA use "o usuário" ou terceira pessoa
-- Seja DIRETO e ESPECÍFICO com valores reais em R$
-- Dê ações CONCRETAS com números exatos
-- Tom: consultor financeiro pessoal, não relatório
-- Use emojis para destacar pontos importantes
-- Máximo 3 itens por seção — foco é essencial
-
-${promptUsuario}`
-
-  const finalPrompt = provider === 'claude' ? promptUsuario : promptForcado
-
-  const text = await callAI(provider, finalPrompt, MENTOR_SYSTEM_PROMPT)
+  const text = await callAI(provider, promptUsuario, systemPrompt)
   if (!text.trim()) throw new Error('Resposta vazia da IA')
   return text
 }

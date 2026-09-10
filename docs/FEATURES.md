@@ -74,6 +74,13 @@ Para adicionar novo estado: inserir entry em `NFCE_STATES` com `code`, `portalUr
 
 Quiz 5 perguntas animado + análise IA + relatório PDF. Intro → quiz → overlay gerando → resultado com "Salvar PDF" / "Compartilhar PDF". `lib/mentor-financeiro.ts`: `coletarContextoFinanceiro()`, `gerarRelatorioMentor()`. PDF via `expo-print` + `expo-sharing`. "Salvar PDF" usa `MediaLibrary.createAssetAsync` + `createAlbumAsync('Download')` — **nunca** `documentDirectory` para salvar PDF.
 
+**Prompt (`gerarRelatorioMentor`)**:
+- **Mesmo prompt e system prompt para os dois providers** (Claude/Groq) — não há mais divergência (antes só o Groq recebia um bloco extra "INSTRUÇÕES CRÍTICAS" que ainda contradizia o system prompt limitando a "3 itens por seção"). As instruções de estilo (2ª pessoa, tom de consultor pessoal, valores reais em R$, ações concretas, emojis) vivem no `MENTOR_SYSTEM_PROMPT` e valem sempre.
+- **Tom dinâmico** (`buildToneInstruction`, injetado no system prompt): deriva de `respostas.tom.opcao` — `direto` → econômico e direto ao ponto; `detalhado` → números e comparações a cada afirmação; `motivador` → encorajador. Muda de fato o texto gerado, não é só um dado no prompt.
+- **Empatia em situação delicada**: quando `ctx.totalPoupado <= 0` OU `respostas.objetivo.opcao` é `negativo`/`dividas`, o tom vira empático e prático (reconhece a realidade sem minimizar com "parabéns/continue assim" e sem alarmismo) — sobrepõe o "motivador" pra não soar deslocado pra quem está no vermelho.
+- **Anti-alucinação**: o system prompt proíbe inventar/estimar valores em R$ que não estejam nos dados do prompt; se faltar dado, o relatório diz isso em vez de supor um número.
+- **Nota educativa** ao final: todo relatório encerra com uma linha em itálico deixando claro que é conteúdo educativo gerado por IA, não aconselhamento financeiro profissional.
+
 ## Analisador de Preços — `app/analisador-precos.tsx`
 
 Quiz 3 perguntas + análise IA comparando preços por estabelecimento. `lib/analisador-precos.ts`: `buscarDadosParaAnalise()` (só ciclos fechados + atual via `getMesesValidos`), `analisarPrecos()` (itens com 3+ ocorrências, max 15, retorna **string**, não JSON).
