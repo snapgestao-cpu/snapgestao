@@ -51,6 +51,9 @@ android/build/
 # env de produção (nunca commitar com valores reais)
 .env.production
 
+# cache/estado local do CLI do Supabase
+supabase/.temp/
+
 # Extratos/faturas bancárias reais usados só como amostra local — DADOS REAIS,
 # nunca commitar. Os testes usam dados sintéticos inline, não estes arquivos.
 __tests__/fixtures/
