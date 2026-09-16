@@ -473,7 +473,7 @@ export default function MonthlyScreen() {
             })()}
 
             {/* Pot section with view toggle */}
-            {summary && summary.potSummaries.length > 0 && (
+            {summary && (summary.potSummaries.length > 0 || summary.unassignedExpense > 0) && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Potes</Text>
 
