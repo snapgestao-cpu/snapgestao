@@ -35,6 +35,24 @@ export type BankStatementResult = {
   transactions: BankStatementTxn[]
 }
 
+// Separa os pagamentos AGREGADOS de fatura de cartão (isCreditCardBillPayment)
+// do restante. Usado pelo fluxo de importação para o usuário escolher entre
+// EXCLUIR esse valor (evita duplicar os gastos que já entram pela fatura de
+// crédito) ou INCLUÍ-LO mesmo assim (remapeado para "transfer").
+// Puro/sem I/O — testável isoladamente (ver __tests__/bank-statement-ai.test.ts).
+export function partitionBillPayments(transactions: BankStatementTxn[]): {
+  billPayments: BankStatementTxn[]
+  withoutBillPayments: BankStatementTxn[]
+  includedAsTransfer: BankStatementTxn[]
+} {
+  const billPayments = transactions.filter(t => t.isCreditCardBillPayment)
+  const withoutBillPayments = transactions.filter(t => !t.isCreditCardBillPayment)
+  const includedAsTransfer = transactions.map(t =>
+    t.isCreditCardBillPayment ? { ...t, paymentMethod: 'transfer' as const } : t
+  )
+  return { billPayments, withoutBillPayments, includedAsTransfer }
+}
+
 // Nº de páginas por bloco. Documentos com até esse tamanho vão numa chamada só.
 // Validado nos PDFs reais do Bradesco: 3 páginas ≈ 50 lançamentos/bloco,
 // ~56-69s por bloco (dentro dos 90s). Com 6 páginas os blocos chegavam a
@@ -170,7 +188,7 @@ async function extractChunk(
         })
       } catch (e: any) {
         if (e?.name === 'AbortError') {
-          throw new Error(`Falha ao ler ${pagesLabel} do documento (tempo limite). Tente novamente.`)
+          throw new Error(`Falha ao ler ${pagesLabel} do documento (tempo limite). Se o arquivo cobre muitos meses ou tem muitas páginas, exporte um período menor no seu banco (1 a 2 meses por vez) e importe cada período separadamente.`)
         }
         throw e
       }
@@ -198,7 +216,7 @@ async function extractChunk(
   const text: string = responseData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
   if (finishReason === 'MAX_TOKENS') {
-    throw new Error(`O trecho (${pagesLabel}) é grande demais para processar. Tente um período menor.`)
+    throw new Error(`O trecho (${pagesLabel}) tem lançamentos demais para processar de uma vez. Exporte um período menor no seu banco (1 a 2 meses por vez) e importe cada período separadamente.`)
   }
 
   const jsonMatch = text.match(/\{[\s\S]*\}/)

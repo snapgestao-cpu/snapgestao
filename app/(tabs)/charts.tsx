@@ -4,6 +4,7 @@ import {
   Dimensions, FlatList, Modal, TextInput, Image,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useFocusEffect } from 'expo-router'
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg'
 import { PieChart, BarChart, LineChart } from 'react-native-gifted-charts'
 import { Colors } from '../../constants/colors'
@@ -249,6 +250,26 @@ function ChartCard({ title, description, children }: {
 }
 
 // ── Topic 1: Gastos ────────────────────────────────────────────────────────
+// Recarrega os dados quando a aba Gráficos volta a ter foco (ex: usuário editou
+// uma transação em Potes/Mensal/OCR e voltou), SEM quebrar o lazy-load por sub-aba:
+// só dispara o refetch do tópico que está ativo no momento do foco. O callback do
+// useFocusEffect é estável (deps vazias) e lê `refetch`/`enabled` mais recentes via
+// refs, então não re-dispara em troca de ciclo/sub-aba (isso continua no useEffect).
+// O primeiro foco (montagem) é ignorado — o useEffect do tópico já faz a carga inicial.
+function useRefetchOnFocus(refetch: () => void, enabled: boolean) {
+  const refetchRef = useRef(refetch)
+  refetchRef.current = refetch
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
+  const isFirstFocus = useRef(true)
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) { isFirstFocus.current = false; return }
+      if (enabledRef.current) refetchRef.current()
+    }, [])
+  )
+}
+
 function TopicGastos({ userId, cycleStart, cycleEnd, isActive }: {
   userId: string; cycleStart: string; cycleEnd: string; isActive: boolean
 }) {
@@ -258,9 +279,7 @@ function TopicGastos({ userId, cycleStart, cycleEnd, isActive }: {
   const [loading, setLoading]           = useState(true)
   const hasLoaded = useRef(false)
 
-  useEffect(() => {
-    if (!isActive && !hasLoaded.current) return
-    hasLoaded.current = true
+  const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       getExpensesByPot(userId, cycleStart, cycleEnd),
@@ -272,7 +291,15 @@ function TopicGastos({ userId, cycleStart, cycleEnd, isActive }: {
       setPaymentDist(pd)
       setLoading(false)
     })
-  }, [isActive, userId, cycleStart, cycleEnd])
+  }, [userId, cycleStart, cycleEnd])
+
+  useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
+    load()
+  }, [isActive, load])
+
+  useRefetchOnFocus(load, isActive)
 
   if (loading) return <><Skeleton /><Skeleton /><Skeleton /></>
 
@@ -416,15 +443,21 @@ function TopicReceita({ userId, cycleStartDay, isActive }: { userId: string; cyc
   const [loading, setLoading]  = useState(true)
   const hasLoaded = useRef(false)
 
-  useEffect(() => {
-    if (!isActive && !hasLoaded.current) return
-    hasLoaded.current = true
+  const load = useCallback(() => {
     setLoading(true)
     getMonthlyTotalsOptimized(userId, cycleStartDay).then(data => {
       setMonthly(data)
       setLoading(false)
     })
-  }, [isActive, userId, cycleStartDay])
+  }, [userId, cycleStartDay])
+
+  useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
+    load()
+  }, [isActive, load])
+
+  useRefetchOnFocus(load, isActive)
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -566,15 +599,21 @@ function TopicMetas({ userId, isActive }: { userId: string; isActive: boolean })
   const [loading, setLoading] = useState(true)
   const hasLoaded = useRef(false)
 
-  useEffect(() => {
-    if (!isActive && !hasLoaded.current) return
-    hasLoaded.current = true
+  const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       getGoalsProgress(userId),
       getEmergencyReserveHistory(userId, 6),
     ]).then(([g, r]) => { setGoals(g); setReserve(r); setLoading(false) })
-  }, [isActive, userId])
+  }, [userId])
+
+  useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
+    load()
+  }, [isActive, load])
+
+  useRefetchOnFocus(load, isActive)
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -689,9 +728,7 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const hasLoaded = useRef(false)
 
-  useEffect(() => {
-    if (!isActive && !hasLoaded.current) return
-    hasLoaded.current = true
+  const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       getCreditCommitmentsSimple(userId, cycleStartDay, 6),
@@ -703,7 +740,15 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
       setHistory(h)
       setLoading(false)
     })
-  }, [isActive, userId, cycleStartDay, cycleStart, cycleEnd])
+  }, [userId, cycleStartDay, cycleStart, cycleEnd])
+
+  useEffect(() => {
+    if (!isActive && !hasLoaded.current) return
+    hasLoaded.current = true
+    load()
+  }, [isActive, load])
+
+  useRefetchOnFocus(load, isActive)
 
   if (loading) return <><Skeleton /><Skeleton /></>
 
@@ -844,12 +889,18 @@ function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleSta
   const [loading, setLoading] = useState(true)
   const hasLoaded = useRef(false)
 
+  const load = useCallback(() => {
+    setLoading(true)
+    getFinancialScore(userId, cycleStartDay).then(s => { setScore(s); setLoading(false) })
+  }, [userId, cycleStartDay])
+
   useEffect(() => {
     if (!isActive && !hasLoaded.current) return
     hasLoaded.current = true
-    setLoading(true)
-    getFinancialScore(userId, cycleStartDay).then(s => { setScore(s); setLoading(false) })
-  }, [isActive, userId, cycleStartDay])
+    load()
+  }, [isActive, load])
+
+  useRefetchOnFocus(load, isActive)
 
   if (loading) return <Skeleton height={320} />
   if (!score)  return <Empty icon="🤖" text="Dados insuficientes para calcular o score" />
@@ -909,7 +960,7 @@ export default function ChartsScreen() {
     [user?.cycle_start, cycleOffset]
   )
 
-  useEffect(() => {
+  const checkHasCredit = useCallback(() => {
     if (!user) return
     supabase
       .from('transactions')
@@ -921,6 +972,10 @@ export default function ChartsScreen() {
       .lte('date', cycle.endISO)
       .then(({ count }) => setHasCreditTx((count ?? 0) > 0))
   }, [user?.id, cycle.startISO, cycle.endISO])
+
+  useEffect(() => { checkHasCredit() }, [checkHasCredit])
+  // Revalida também ao voltar o foco à aba (ex: 1º lançamento de crédito criado em outra tela).
+  useRefetchOnFocus(checkHasCredit, true)
 
   const scrollToTopic = useCallback((idx: number) => {
     setActiveIdx(idx)

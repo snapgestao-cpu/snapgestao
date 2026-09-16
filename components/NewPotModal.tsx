@@ -23,7 +23,7 @@ import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { PotCard } from './PotCard'
 import { checkAndGrantBadges, Badge } from '../lib/badges'
 import { getCycle } from '../lib/cycle'
-import { upsertPotHistory } from '../lib/pot-history'
+import { upsertPotHistory, ensureHistoryBaseline } from '../lib/pot-history'
 
 function formatDatePT(d: Date): string {
   const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
@@ -156,6 +156,9 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                   onPress: async () => {
                     try {
                       setLoading(true)
+                      const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+                      // Preserva o valor antigo para meses passados ANTES de sobrescrever `pots`.
+                      await ensureHistoryBaseline(existingPot.id, userId, csDay, cycleOffset)
                       const { error: reactivateErr } = await supabase
                         .from('pots')
                         .update({ deleted_at: null, limit_amount: computedLimit, color })
@@ -165,7 +168,6 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                         setLoading(false)
                         return
                       }
-                      const csDay = useAuthStore.getState().user?.cycle_start ?? 1
                       await upsertPotHistory(existingPot.id, userId, name.trim(), computedLimit, csDay, cycleOffset)
                       setLoading(false)
                       onClose()
@@ -203,6 +205,9 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                 onPress: async () => {
                   try {
                     setLoading(true)
+                    const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+                    // Preserva o valor antigo para meses passados ANTES de sobrescrever `pots`.
+                    await ensureHistoryBaseline(existingPot.id, userId, csDay, cycleOffset)
                     const updateData: Record<string, unknown> = { limit_amount: computedLimit, color }
                     if (isCreatedAfterCycle && cycleStartDate) {
                       updateData.created_at = cycleStartDate.toISOString()
@@ -215,7 +220,6 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
                       setLoading(false)
                       return
                     }
-                    const csDay = useAuthStore.getState().user?.cycle_start ?? 1
                     const validFrom = cycleStartDate
                       ? cycleStartDate.toISOString().split('T')[0]
                       : getCycle(csDay, 0).start.toISOString().split('T')[0]
@@ -257,6 +261,8 @@ export function NewPotModal({ visible, onClose, onSuccess, onBadges, editPot, to
 
       const csDay = useAuthStore.getState().user?.cycle_start ?? 1
       if (editPot) {
+        // Preserva o valor antigo para meses passados ANTES de sobrescrever `pots`.
+        await ensureHistoryBaseline(editPot.id, userId, csDay, cycleOffset)
         const { error: err } = await supabase.from('pots').update(payload).eq('id', editPot.id)
         if (err) { setError('Erro ao atualizar: ' + err.message); return }
         await upsertPotHistory(editPot.id, userId, name.trim(), computedLimit, csDay, cycleOffset)

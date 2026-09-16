@@ -36,6 +36,10 @@ export type CycleSummary = {
   totalDebt: number
   totalSurplus: number
   potSummaries: PotSummary[]
+  // Soma das despesas sem pote (pot_id null). Existe para reconciliar: a soma dos
+  // potSummaries[].spent + unassignedExpense === totalExpense. Renderizado como
+  // linha/card "Sem pote" na tela Mensal quando > 0.
+  unassignedExpense: number
   isOverBudget: boolean
   needsAlert: boolean
 }
@@ -77,13 +81,17 @@ export function computeCycleSummaryFromData(
     }
   })
 
+  const unassignedExpense = allExpenses
+    .filter(t => t.pot_id == null)
+    .reduce((s, t) => s + Number(t.amount), 0)
+
   const totalDebt = cycleSaldo < 0 ? Math.abs(cycleSaldo) : 0
   const totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0
 
   return {
     monthlyIncome, totalIncome, totalExpense,
     debtFromPrev, surplusFromPrev, availableIncome, cycleSaldo,
-    totalDebt, totalSurplus, potSummaries,
+    totalDebt, totalSurplus, potSummaries, unassignedExpense,
     isOverBudget: cycleSaldo < 0,
     needsAlert: potSummaries.some(p => p.isOverBudget),
   }
@@ -144,6 +152,10 @@ export async function calculateCycleSummary(
     }
   })
 
+  const unassignedExpense = allExpenses
+    .filter(t => t.pot_id == null)
+    .reduce((s, t) => s + Number(t.amount), 0)
+
   // Debt/surplus baseado no saldo geral do ciclo (não nos potes individualmente)
   const totalDebt = cycleSaldo < 0 ? Math.abs(cycleSaldo) : 0
   const totalSurplus = cycleSaldo > 0 ? cycleSaldo : 0
@@ -151,7 +163,7 @@ export async function calculateCycleSummary(
   return {
     monthlyIncome, totalIncome, totalExpense,
     debtFromPrev, surplusFromPrev, availableIncome, cycleSaldo,
-    totalDebt, totalSurplus, potSummaries,
+    totalDebt, totalSurplus, potSummaries, unassignedExpense,
     isOverBudget: cycleSaldo < 0,
     needsAlert: potSummaries.some(p => p.isOverBudget),
   }

@@ -502,7 +502,9 @@ export default function MonthlyScreen() {
                   (() => {
                     const totalOrcado = summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0)
                     const totalGasto = summary.totalExpense
-                    const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
+                    const unassigned = summary.unassignedExpense ?? 0
+                    // Subtrai o "Sem pote" (saldo −unassigned) para o TOTAL bater com a soma das linhas visíveis.
+                    const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0) - unassigned
                     return (
                       <View style={{ backgroundColor: Colors.white, borderRadius: 12, overflow: 'hidden', marginBottom: 8 }}>
                         <View style={{ flexDirection: 'row', backgroundColor: Colors.lightBlue, paddingVertical: 8, paddingHorizontal: 8 }}>
@@ -531,6 +533,17 @@ export default function MonthlyScreen() {
                             <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '600', color: pot.remaining >= 0 ? Colors.success : Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(pot.remaining)}</Text>
                           </TouchableOpacity>
                         ))}
+                        {unassigned > 0 && (
+                          <View style={{ flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: Colors.background, borderTopWidth: 0.5, borderTopColor: Colors.border, alignItems: 'center' }}>
+                            <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                              <Text style={{ fontSize: 13 }}>🗂️</Text>
+                              <Text style={{ fontSize: 11, color: Colors.textMuted, flex: 1 }} numberOfLines={1}>Sem pote</Text>
+                            </View>
+                            <Text style={{ flex: 1.2, fontSize: 11, color: Colors.textMuted, textAlign: 'right' }} numberOfLines={1}>—</Text>
+                            <Text style={{ flex: 1.2, fontSize: 11, color: Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(unassigned)}</Text>
+                            <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '600', color: Colors.danger, textAlign: 'right' }} numberOfLines={1}>{brl(-unassigned)}</Text>
+                          </View>
+                        )}
                         <View style={{ flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: Colors.lightBlue, borderTopWidth: 1.5, borderTopColor: Colors.primary, alignItems: 'center' }}>
                           <Text style={{ flex: 2, fontSize: 12, fontWeight: '700', color: Colors.primary }}>TOTAL</Text>
                           <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: Colors.textDark, textAlign: 'right' }} numberOfLines={1}>{brl(totalOrcado)}</Text>
@@ -589,11 +602,35 @@ export default function MonthlyScreen() {
                         </TouchableOpacity>
                       )
                     })}
+                    {/* Card "Sem pote" — despesas sem pote atribuído (pot_id null) */}
+                    {(summary.unassignedExpense ?? 0) > 0 && (
+                      <View style={[styles.potCard, { borderLeftColor: Colors.textMuted }]}>
+                        <View style={styles.potCardHeader}>
+                          <Text style={{ fontSize: 16, marginRight: 6 }}>🗂️</Text>
+                          <Text style={styles.potCardName} numberOfLines={1}>Sem pote</Text>
+                        </View>
+                        <View style={styles.potCardValues}>
+                          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+                            <Text style={styles.potCardValueLabel}>Orçado</Text>
+                            <Text style={[styles.potCardValue, { color: Colors.textMuted }]}>—</Text>
+                          </View>
+                          <View style={{ flex: 1, alignItems: 'center' }}>
+                            <Text style={styles.potCardValueLabel}>Gasto</Text>
+                            <Text style={[styles.potCardValue, { color: Colors.danger }]}>{brl(summary.unassignedExpense)}</Text>
+                          </View>
+                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={styles.potCardValueLabel}>Saldo</Text>
+                            <Text style={[styles.potCardValue, styles.potCardValueBold, { color: Colors.danger }]}>{brl(-summary.unassignedExpense)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
                     {/* Total card */}
                     {(() => {
                       const totalOrcado = summary.potSummaries.reduce((s, p) => s + (p.limit_amount ?? 0), 0)
                       const totalGasto = summary.totalExpense
-                      const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0)
+                      const unassigned = summary.unassignedExpense ?? 0
+                      const totalSaldo = summary.potSummaries.reduce((s, p) => s + p.remaining, 0) - unassigned
                       return (
                         <View style={styles.potTotalCard}>
                           <Text style={styles.potTotalTitle}>Total</Text>

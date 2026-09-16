@@ -290,6 +290,15 @@ export async function coletarContextoFinanceiro(
     spent: spentByPot[p.id] ?? 0,
   }))
 
+  // Despesas sem pote (pot_id null): entram no totalGasto mas não em nenhum pote.
+  // Adiciona "Sem pote" para o relatório reconciliar (soma dos potes === totalGasto).
+  const semPoteGasto = expenses
+    .filter((t: any) => t.type === 'expense' && !t.pot_id)
+    .reduce((s: number, t: any) => s + Number(t.amount), 0)
+  if (semPoteGasto > 0) {
+    potesComGasto.push({ name: 'Sem pote', limit_amount: null, spent: semPoteGasto })
+  }
+
   const merchantMap: Record<string, number> = {};
   (allTxsMerchant ?? [])
     .filter((t: any) => t.type === 'expense' && t.merchant)

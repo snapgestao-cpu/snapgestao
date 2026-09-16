@@ -97,6 +97,52 @@ export async function getPotsForMonth(
   return fetchPotsForCycleWithHistory(userId, startISO, endISO)
 }
 
+// Garante que meses ANTERIORES ao mês editado continuem enxergando o valor ANTIGO
+// do pote, em vez de caírem no fallback da tabela `pots` (que será sobrescrito com
+// o valor novo). Protege potes legados (criados antes do mecanismo de pot_history,
+// sem nenhuma entrada) e a primeira edição de um pote sem histórico anterior.
+//
+// IMPORTANTE: deve ser chamada ANTES de atualizar a linha em `pots`, porque lê os
+// valores ATUAIS (antigos) de `pots` para preservá-los. Só insere a baseline se NÃO
+// houver nenhuma entrada de pot_history com valid_from < início do mês editado.
+export async function ensureHistoryBaseline(
+  potId: string,
+  userId: string,
+  cycleStart: number,
+  cycleOffset: number = 0,
+): Promise<void> {
+  const { start } = getCycle(cycleStart, cycleOffset)
+  const editedFrom = start.toISOString().split('T')[0]
+
+  // Já existe histórico cobrindo meses anteriores? Então nada a fazer.
+  const { data: prior } = await supabase
+    .from('pot_history')
+    .select('id')
+    .eq('pot_id', potId)
+    .lt('valid_from', editedFrom)
+    .limit(1)
+    .maybeSingle()
+  if (prior) return
+
+  // Lê os valores ANTIGOS ainda presentes em `pots` (caller ainda não atualizou).
+  const { data: pot } = await supabase
+    .from('pots')
+    .select('name, limit_amount, created_at')
+    .eq('id', potId)
+    .maybeSingle()
+  if (!pot) return
+
+  const p = pot as { name: string; limit_amount: number | null; created_at: string | null }
+  const createdFrom = (p.created_at ?? '').split('T')[0] || '2000-01-01'
+
+  // Sem mês passado a proteger (pote nasceu no mês editado ou depois) → não cria baseline.
+  if (createdFrom >= editedFrom) return
+
+  await supabase
+    .from('pot_history')
+    .insert({ pot_id: potId, user_id: userId, name: p.name, limit_amount: p.limit_amount, valid_from: createdFrom })
+}
+
 // Upsert a pot_history entry for the viewed month (cycleOffset defaults to current month)
 export async function upsertPotHistory(
   potId: string,
@@ -170,6 +216,9 @@ export async function updatePot(
   const validFrom = start.toISOString().split('T')[0]
 
   if (changes.name !== undefined || changes.limit_amount !== undefined) {
+    // Preserva o valor antigo para meses passados ANTES de sobrescrever `pots`.
+    await ensureHistoryBaseline(potId, userId, cycleStart, cycleOffset)
+
     const { data: currentHistory } = await supabase
       .from('pot_history')
       .select('name, limit_amount')

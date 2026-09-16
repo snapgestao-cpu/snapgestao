@@ -56,7 +56,7 @@ As funções em `supabase/functions/` **não** são deployadas automaticamente �
 
 ## Regras críticas (resumo rápido)
 
-- **Potes**: sempre usar `lib/pot-history.ts` — nunca `.is('deleted_at', null)` sozinho
+- **Potes**: sempre usar `lib/pot-history.ts` — nunca `.is('deleted_at', null)` sozinho. Ao **editar** um pote, chamar `ensureHistoryBaseline(potId, userId, csDay, cycleOffset)` **antes** do `UPDATE pots` (senão meses passados de potes legados caem no fallback já sobrescrito). `pot_limit_history` é tabela morta/write-only — usar `pot_history`.
 - **Ciclos**: crédito filtra por `billing_date`; tudo mais por `date`
 - **Data de compra em crédito**: `TransactionGroup` exibe "🛍️ Compra em DD/MM/YYYY" (campo `date`) — no cabeçalho do grupo quando todas as transações têm a mesma data, individualmente por item quando as datas diferem. Não alterar lógica de filtro por `billing_date`.
 - **`monthly.tsx`**: usa `computeCycleSummaryFromData` (síncrono) — nunca `calculateCycleSummary`
@@ -368,6 +368,7 @@ Feature implementada em `app/(tabs)/charts.tsx` e `lib/charts-data.ts`.
 
 **Regras**:
 - Cada tópico é um componente independente que faz seus próprios fetches ao montar
+- **Atualização no foco**: cada tópico usa o hook local `useRefetchOnFocus(load, isActive)` (base em `useFocusEffect` de `expo-router` — **nunca** `@react-navigation` direto) para refazer o fetch quando a aba Gráficos volta a ter foco (ex: transação editada em Potes/Mensal/OCR). Preserva o lazy-load por sub-aba: **só o tópico ativo** recarrega no foco; o 1º foco (montagem) é ignorado (o `useEffect` do tópico já faz a carga inicial). O `load` de cada tópico é um `useCallback`; troca de ciclo/sub-aba continua no `useEffect([isActive, load])`.
 - Estados de loading: `Skeleton` retangular; estado vazio: `Empty` com ícone + texto contextual
 - Ciclo selecionado (offset) afeta apenas os tópicos que dependem de ciclo (Gastos, Crédito distribuição)
 - Score financeiro calculado localmente — não chama APIs de IA

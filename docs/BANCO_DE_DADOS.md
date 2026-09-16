@@ -41,6 +41,7 @@ RLS habilitado em todas as tabelas. Trigger `on_auth_user_created` ativo.
 | `getPotsForMonth(userId, cycleStart, offset)` | Wrapper conveniente |
 | `getPotsHistoryBatch(userId, cycleStart, offsets)` | Projeção — 2 queries para todos os offsets |
 | `upsertPotHistory(potId, userId, name, limitAmount, cycleStart, cycleOffset)` | NewPotModal (create/edit/reativar/update-limit) |
+| `ensureHistoryBaseline(potId, userId, cycleStart, cycleOffset)` | NewPotModal (3 sites) + `updatePot` — proteção de meses passados |
 | `createPot(...)` | INSERT pote + pot_history inicial |
 | `updatePot(...)` | UPDATE pot_history do mês visualizado |
 | `deletePot(...)` | Soft delete — `deleted_at = início do mês visualizado` |
@@ -55,11 +56,13 @@ RLS habilitado em todas as tabelas. Trigger `on_auth_user_created` ativo.
 
 ### `pot_history` — source of truth para estado histórico
 
-Schema: `pot_id, user_id, name, limit_amount, valid_from`. Query de estado num mês: `SELECT ... WHERE pot_id = X AND valid_from <= cycleStart ORDER BY valid_from DESC LIMIT 1`. Colunas `name`/`limit_amount` em `pots` espelham o último entry de `pot_history`.
+Schema: `pot_id, user_id, name, limit_amount, valid_from`. Query de estado num mês: `SELECT ... WHERE pot_id = X AND valid_from <= cycleStart ORDER BY valid_from DESC LIMIT 1`. Colunas `name`/`limit_amount` em `pots` espelham o último entry de `pot_history` e servem de **fallback** quando não há entry válido para o mês.
 
-### `pot_limit_history`
+**Baseline de meses passados** (`ensureHistoryBaseline`): editar o limite/nome de um pote **legado** (criado antes do `pot_history`, ou sem nenhum entry anterior ao mês editado) sobrescrevia a linha `pots` (o fallback), fazendo **meses passados** — que caíam no fallback por não terem entry histórico — passarem a mostrar o valor NOVO. `ensureHistoryBaseline` corrige na origem: **antes** de a linha `pots` ser sobrescrita, se não existir nenhum `pot_history` com `valid_from < início do mês editado`, insere uma entrada **baseline** com os valores ANTIGOS (`name`/`limit_amount` lidos de `pots`) em `valid_from = created_at` do pote. Assim meses passados resolvem para o valor antigo em vez do fallback já alterado. **Deve rodar antes do `UPDATE pots`** (por isso é uma função separada chamada nos call sites, não embutida em `upsertPotHistory` — os 3 sites do NewPotModal atualizam `pots` antes de chamar `upsertPotHistory`, quando o valor antigo já não existiria mais).
 
-Registra mudanças de limite com `valid_from` por ciclo. `ON DELETE CASCADE` em `pot_id`.
+### `pot_limit_history` — **código morto (write-only)**
+
+Tabela **antiga** (só `limit_amount`, sem `name`), predecessora de `pot_history`. Migration `20240419_pot_soft_delete_and_history.sql`. Hoje é **apenas escrita** (`NewPotModal` insere no site "atualizar limite"; `profile.tsx` deleta na exclusão de conta) e **nunca lida** em lugar nenhum — `pot_history` a substituiu por completo. Mantida por ora (não removida) para evitar mexer em migration/exclusão de conta sem necessidade; o INSERT em `NewPotModal:222` é redundante.
 
 ## Transações
 

@@ -23,7 +23,7 @@ import { brl } from '../lib/finance'
 import { Pot, CreditCard } from '../types'
 import { downloadImportTemplate } from '../lib/import-template'
 import { CreditCardModal } from './CreditCardModal'
-import { extractBankStatementWithGemini, StatementType, BankStatementTxn } from '../lib/bank-statement-ai'
+import { extractBankStatementWithGemini, partitionBillPayments, StatementType, BankStatementTxn } from '../lib/bank-statement-ai'
 import { PaywallBanner } from './PaywallBanner'
 import { useAuthStore } from '../stores/useAuthStore'
 import { router } from 'expo-router'
@@ -519,24 +519,27 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       setDetectedBank(bank)
 
       // Pagamento de fatura de cartão detectado → perguntar se inclui ou não
-      const billPayments = transactions.filter(t => t.isCreditCardBillPayment)
+      const { billPayments, withoutBillPayments, includedAsTransfer } = partitionBillPayments(transactions)
+      // Diagnóstico (removido no APK release por transform-remove-console): confirma
+      // que o filtro remove exatamente os itens marcados isCreditCardBillPayment.
+      console.log(
+        `[Import fatura] total=${transactions.length} | isCreditCardBillPayment=true: ${billPayments.length} | ` +
+        `após excluir: ${withoutBillPayments.length} (esperado ${transactions.length - billPayments.length})`
+      )
       if (billPayments.length > 0) {
         const totalBill = billPayments.reduce((s, t) => s + t.amount, 0)
         Alert.alert(
           'Pagamento de fatura detectado',
           `Detectamos ${brl(totalBill)} em pagamento(s) de fatura de cartão de crédito neste extrato. ` +
-          `Os gastos desse cartão já são (ou serão) lançados separadamente?`,
+          `Esse valor costuma duplicar os gastos do cartão, que já entram pela fatura de crédito. O que deseja fazer?`,
           [
             {
-              text: 'Sim, não incluir',
-              onPress: () => goToPreviewWith(transactions.filter(t => !t.isCreditCardBillPayment), declaredTotal),
+              text: 'Excluir esse valor da importação',
+              onPress: () => goToPreviewWith(withoutBillPayments, declaredTotal),
             },
             {
-              text: 'Não, lançar esse valor',
-              onPress: () => goToPreviewWith(
-                transactions.map(t => t.isCreditCardBillPayment ? { ...t, paymentMethod: 'transfer' as const } : t),
-                declaredTotal,
-              ),
+              text: 'Incluir mesmo assim',
+              onPress: () => goToPreviewWith(includedAsTransfer, declaredTotal),
             },
           ],
         )

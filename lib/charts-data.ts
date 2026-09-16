@@ -127,8 +127,9 @@ export async function getExpensesByPot(
 
   const potMap = new Map((pots ?? []).map(p => [p.id, p]))
   const totals = new Map<string, number>()
+  let unassigned = 0
   for (const tx of txs ?? []) {
-    if (!tx.pot_id) continue
+    if (!tx.pot_id) { unassigned += Number(tx.amount); continue }
     totals.set(tx.pot_id, (totals.get(tx.pot_id) ?? 0) + Number(tx.amount))
   }
 
@@ -143,6 +144,10 @@ export async function getExpensesByPot(
       total,
       limit: pot.limit_amount ? Number(pot.limit_amount) : null,
     })
+  }
+  // Gastos sem pote atribuído — fatia "Sem pote" para o donut representar todo o gasto.
+  if (unassigned > 0) {
+    result.push({ potId: '__none__', potName: 'Sem pote', potColor: '#B0B7C3', total: unassigned, limit: null })
   }
   return result.sort((a, b) => b.total - a.total)
 }
