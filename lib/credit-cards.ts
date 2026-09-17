@@ -1,6 +1,60 @@
 import { supabase } from './supabase'
 import { calcBillingDate } from './billing-date'
+import type { CycleOverridesMap } from './billing-date'
 import type { CreditCard } from '../types'
+
+// Overrides pontuais de fechamento/vencimento por ciclo (exceção do mês, sem
+// virar padrão do cartão). Retorna um mapa keyed por cycle_start ISO (primeiro
+// dia do mês, YYYY-MM-01). Tabela pequena — uma query só, sem paginação.
+export async function getCardOverridesMap(cardId: string): Promise<CycleOverridesMap> {
+  const { data } = await supabase
+    .from('credit_card_cycle_overrides')
+    .select('cycle_start, closing_day, due_day')
+    .eq('card_id', cardId)
+
+  const map: CycleOverridesMap = {}
+  for (const row of (data ?? []) as any[]) {
+    // Normaliza a chave para o 1º dia do mês (YYYY-MM-01), igual ao lookup em calcBillingDate.
+    const key = String(row.cycle_start).slice(0, 7) + '-01'
+    map[key] = {
+      closing_day: row.closing_day != null ? Number(row.closing_day) : null,
+      due_day: row.due_day != null ? Number(row.due_day) : null,
+    }
+  }
+  return map
+}
+
+// Recalcula (UPDATE, sem delete+insert) o billing_date SOMENTE das parcelas do
+// cartão cujo billing_date cai dentro do mês afetado pelo override, aplicando os
+// overrides. NÃO altera closing_day/due_day do cartão — é uma exceção pontual.
+// Mesmo padrão de recalculateFutureInstallments, mas escopado a um mês.
+export async function recalculateInstallmentsForCycle(
+  cardId: string,
+  card: CreditCard,
+  monthStartISO: string,
+  monthEndISO: string,
+  overrides: CycleOverridesMap,
+): Promise<number> {
+  const { data } = await supabase
+    .from('transactions')
+    .select('id, date, installment_number')
+    .eq('card_id', cardId)
+    .eq('payment_method', 'credit')
+    .gte('billing_date', monthStartISO)
+    .lte('billing_date', monthEndISO)
+
+  if (!data || data.length === 0) return 0
+
+  await Promise.all(
+    data.map(tx => {
+      const offset = tx.installment_number != null ? (tx.installment_number as number) - 1 : 0
+      const newBillingDate = calcBillingDate(tx.date as string, card, offset, overrides)
+      return supabase.from('transactions').update({ billing_date: newBillingDate }).eq('id', tx.id)
+    })
+  )
+
+  return data.length
+}
 
 export async function hasAnyCreditCard(userId: string): Promise<boolean> {
   const { count } = await supabase

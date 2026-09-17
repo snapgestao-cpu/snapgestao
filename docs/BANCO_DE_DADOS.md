@@ -5,7 +5,7 @@ RLS habilitado em todas as tabelas. Trigger `on_auth_user_created` ativo.
 
 ## Tabelas
 
-`users`, `income_sources`, `pots`, `credit_cards`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`
+`users`, `income_sources`, `pots`, `credit_cards`, `credit_card_cycle_overrides`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`
 
 **`projection_entries` — REMOVIDA**. Dropar se existir: `DROP TABLE IF EXISTS public.projection_entries;`
 
@@ -80,6 +80,14 @@ Tabela **antiga** (só `limit_amount`, sem `name`), predecessora de `pot_history
 ### Parcelamento (crédito)
 
 N rows com `installment_group_id` compartilhado + `billing_date` por mês. `EditTransactionModal` oferece: "Só esta parcela" / "Esta e as seguintes" (`.gte('installment_number', current)`).
+
+No **import de fatura** (`ImportFileModal`), quando a IA detecta "N/T" na linha, as parcelas futuras N+1..T são criadas automaticamente com o mesmo `installment_group_id` (ver `docs/FEATURES.md` → import de extrato).
+
+### `credit_card_cycle_overrides` — exceção pontual de ciclo
+
+Migration `20240509_credit_card_cycle_overrides.sql` (**aplicar manualmente**). Schema: `card_id, user_id, cycle_start (DATE, 1º dia do mês YYYY-MM-01), closing_day (INT null), due_day (INT null)`. `UNIQUE(card_id, cycle_start)`. RLS por `user_id`. `null` num dia = usa o padrão do cartão.
+
+Sobrescreve fechamento/vencimento **só naquele mês**, sem virar o padrão do cartão (fluxo do botão 🗓️ no `CreditCardModal`, separado do "editar" permanente). Lido por `getCardOverridesMap(cardId)` → `Record<YYYY-MM-01, {closing_day?, due_day?}>` e aplicado em `calcBillingDate(..., overrides?)`: `closing_day` do **mês nominal** da compra, `due_day` do **mês final** da fatura. `recalculateInstallmentsForCycle` recalcula (UPDATE) só as parcelas cujo `billing_date` cai no mês afetado.
 
 ## Cycle rollovers (`cycle_rollovers`)
 

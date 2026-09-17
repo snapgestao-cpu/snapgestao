@@ -27,6 +27,7 @@ import { checkCriticalPots } from '../lib/notifications'
 import { brl } from '../lib/finance'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 import { calcBillingDate } from '../lib/billing-date'
+import { getCardOverridesMap } from '../lib/credit-cards'
 import { getCardImage } from '../constants/cardBrands'
 import { CreditCardModal } from './CreditCardModal'
 import IsNeedSelector from './IsNeedSelector'
@@ -164,6 +165,8 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setLoading(true)
     try {
       const card = cards.find(c => c.id === selectedCardId)
+      // Overrides de ciclo do cartão (exceções pontuais de fechamento/vencimento).
+      const overrides = card && paymentMethod === 'credit' ? await getCardOverridesMap(card.id) : undefined
       const groupId = isInstallment ? genUUID() : null
       const totalParcelas = isInstallment ? installments : 1
       const installmentValue = totalAmount / totalParcelas
@@ -180,7 +183,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
           : (description.trim() || null),
         merchant: merchant.trim() || null,
         date: dateISO,
-        billing_date: card ? calcBillingDate(dateISO, card, i) : null,
+        billing_date: card ? calcBillingDate(dateISO, card, i, overrides) : null,
         payment_method: paymentMethod,
         is_need: isNeed,
         installment_total: isInstallment ? totalParcelas : null,

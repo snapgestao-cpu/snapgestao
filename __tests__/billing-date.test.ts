@@ -43,6 +43,49 @@ describe('calcBillingDate', () => {
   })
 })
 
+describe('calcBillingDate com overrides de ciclo', () => {
+  const c = card(10, 5)      // due(5) < closing(10) → billing +2 meses
+  const c2 = card(5, 20)     // due(20) >= closing(5) → mesmo mês
+
+  it('sem override para o mês → comportamento idêntico ao padrão', () => {
+    const overrides = { '2025-02-01': { closing_day: 30 } } // mês diferente, não afeta
+    expect(calcBillingDate('2025-01-12', c, 0, overrides)).toBe('2025-03-05')
+    expect(calcBillingDate('2025-01-12', c, 0)).toBe('2025-03-05')
+  })
+
+  it('override só de closing_day (mês nominal) muda em qual ciclo a compra cai', () => {
+    // padrão: 12 >= closing(10) → +1; com closing 15 → 12 < 15 → não avança
+    const overrides = { '2025-01-01': { closing_day: 15 } }
+    expect(calcBillingDate('2025-01-12', c, 0)).toBe('2025-03-05')
+    expect(calcBillingDate('2025-01-12', c, 0, overrides)).toBe('2025-02-05')
+  })
+
+  it('override só de due_day (mês final) muda só o dia da fatura', () => {
+    const overrides = { '2025-01-01': { due_day: 25 } }
+    expect(calcBillingDate('2025-01-01', c2, 0)).toBe('2025-01-20')
+    expect(calcBillingDate('2025-01-01', c2, 0, overrides)).toBe('2025-01-25')
+  })
+
+  it('override de closing e due no MESMO mês (nominal = final)', () => {
+    // padrão c2: 7 >= closing(5) → +1 → Fev/20. Com closing 10 fica em Jan, due 25.
+    const overrides = { '2025-01-01': { closing_day: 10, due_day: 25 } }
+    expect(calcBillingDate('2025-01-07', c2, 0)).toBe('2025-02-20')
+    expect(calcBillingDate('2025-01-07', c2, 0, overrides)).toBe('2025-01-25')
+  })
+
+  it('closing vem do mês NOMINAL e due do mês FINAL (meses diferentes)', () => {
+    // c: compra Jan → fatura Fev. closing override em Jan (nominal), due override em Fev (final).
+    const overrides = { '2025-01-01': { closing_day: 20 }, '2025-02-01': { due_day: 9 } }
+    expect(calcBillingDate('2025-01-01', c, 0, overrides)).toBe('2025-02-09')
+  })
+
+  it('due_day no mês NOMINAL é ignorado quando o mês final é outro', () => {
+    // final é Fev; um due override em Jan (nominal) não deve valer.
+    const overrides = { '2025-01-01': { due_day: 9 } }
+    expect(calcBillingDate('2025-01-01', c, 0, overrides)).toBe('2025-02-05')
+  })
+})
+
 describe('calcBillingDateNoCard', () => {
   it('retorna o dia 1 do próximo mês', () => {
     expect(calcBillingDateNoCard('2025-03-15')).toBe('2025-04-01')

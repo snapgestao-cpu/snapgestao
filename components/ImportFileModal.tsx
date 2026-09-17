@@ -24,6 +24,9 @@ import { Pot, CreditCard } from '../types'
 import { downloadImportTemplate } from '../lib/import-template'
 import { CreditCardModal } from './CreditCardModal'
 import { extractBankStatementWithGemini, partitionBillPayments, StatementType, BankStatementTxn } from '../lib/bank-statement-ai'
+import { calcBillingDate, calcBillingDateNoCard, CycleOverridesMap } from '../lib/billing-date'
+import { getCardOverridesMap } from '../lib/credit-cards'
+import { expandFutureInstallments, billingMonthKey } from '../lib/installment-expansion'
 import { PaywallBanner } from './PaywallBanner'
 import { useAuthStore } from '../stores/useAuthStore'
 import { router } from 'expo-router'
@@ -39,6 +42,13 @@ type ImportRow = {
   potId: string | null
   poteName: string  // nome do pote da planilha (para exibição e resolução)
   isNeed: boolean | null
+  // Parcelamento detectado na fatura (feature: expandir parcelas futuras). Preenchidos
+  // ao entrar no step 'assign', quando o cartão já foi escolhido.
+  installmentNumber?: number
+  installmentTotalDetected?: number
+  installmentGroupId?: string | null
+  billingDate?: string          // billing_date já calculado para esta parcela específica
+  isSyntheticFuture?: boolean    // true = parcela futura criada automaticamente
 }
 
 type Step = 'pick' | 'preview' | 'card_select' | 'assign' | 'saving' | 'done'
@@ -217,25 +227,6 @@ function parseNeed(raw: any): boolean | null {
   return true  // default SIM
 }
 
-// Same logic as NewExpenseModal
-function calcBillingDate(txISO: string, card: CreditCard, offset = 0): string {
-  const [y, m, d] = txISO.split('-').map(Number)
-  let month0 = m - 1
-  let year = y
-  if (d >= card.closing_day) month0 += 1
-  if (card.due_day < card.closing_day) month0 += 1
-  month0 += offset
-  while (month0 > 11) { month0 -= 12; year += 1 }
-  return new Date(year, month0, card.due_day).toISOString().split('T')[0]
-}
-
-function calcBillingDateNoCard(purchaseDate: Date, offset: number): string {
-  let month0 = purchaseDate.getMonth() + 1 + offset  // +1 = próximo mês, 0-indexed
-  let year = purchaseDate.getFullYear()
-  while (month0 > 11) { month0 -= 12; year += 1 }
-  return `${year}-${String(month0 + 1).padStart(2, '0')}-01`
-}
-
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return ''
   const [year, month, day] = dateStr.split('-')
@@ -380,6 +371,11 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
   const [statementType, setStatementType] = useState<StatementType | null>(null)
   const [parsingPdf, setParsingPdf] = useState(false)
   const [detectedBank, setDetectedBank] = useState<string | null>(null)
+  // Overrides de ciclo do cartão selecionado (carregados 1x ao entrar em 'assign').
+  const [overridesMap, setOverridesMap] = useState<CycleOverridesMap>({})
+  // Parcelas futuras que já existiam e foram puladas na expansão (dedup).
+  const [dupSkipped, setDupSkipped] = useState(0)
+  const [preparingAssign, setPreparingAssign] = useState(false)
   const { isPremium } = useAuthStore()
 
   useEffect(() => {
@@ -399,6 +395,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     setSelectedCard(null); setTemplateSuccess(false)
     setImportMode('excel'); setStatementType(null); setParsingPdf(false)
     setDetectedBank(null)
+    setOverridesMap({}); setDupSkipped(0); setPreparingAssign(false)
   }
 
   const handleDownloadTemplate = async () => {
@@ -476,6 +473,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
     potId: null,
     poteName: '',
     isNeed: t.type === 'expense' ? true : null,
+    installmentNumber: t.installmentNumber,
+    installmentTotalDetected: t.installmentTotalDetected,
   })
 
   // Confere a soma dos lançamentos com o total declarado (só faz sentido na
@@ -568,12 +567,90 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         'Há lançamentos de crédito na importação, mas você não tem cartões cadastrados. Cadastre um cartão ou use o cartão genérico.',
         [
           { text: 'Cadastrar cartão', onPress: () => setShowCreditCardModal(true) },
-          { text: 'Usar genérico', onPress: () => setStep('assign') },
+          { text: 'Usar genérico', onPress: () => enterAssign(null) },
         ]
       )
       return
     }
-    setStep(hasCreditItems ? 'card_select' : 'assign')
+    if (hasCreditItems) setStep('card_select')
+    else enterAssign(null)
+  }
+
+  // Busca no banco as chaves (merchant|amount|mês) de parcelas de crédito já
+  // existentes para o cartão, usadas na dedup das parcelas futuras. Uma query só.
+  const fetchExistingInstallmentKeys = async (cardId: string | null): Promise<Set<string>> => {
+    let q = supabase
+      .from('transactions')
+      .select('merchant, amount, billing_date')
+      .eq('user_id', userId)
+      .eq('payment_method', 'credit')
+      .not('billing_date', 'is', null)
+    q = cardId ? q.eq('card_id', cardId) : q.is('card_id', null)
+    const { data } = await q
+    const set = new Set<string>()
+    for (const t of (data ?? []) as any[]) {
+      if (!t.billing_date) continue
+      set.add(billingMonthKey(t.merchant ?? '', Number(t.amount), t.billing_date))
+    }
+    return set
+  }
+
+  // Entrada única no step 'assign' com o cartão já resolvido. Carrega os overrides
+  // do cartão e, no import de fatura (bank_pdf), expande as compras parceladas em
+  // parcelas futuras (dedup contra o que já existe). Idempotente: reexpande sempre
+  // a partir das âncoras, removendo futuras sintéticas de uma passada anterior.
+  const enterAssign = async (card: CreditCard | null) => {
+    setSelectedCard(card)
+    setPreparingAssign(true)
+    try {
+      const overrides = card ? await getCardOverridesMap(card.id) : {}
+      setOverridesMap(overrides)
+
+      if (importMode === 'bank_pdf') {
+        const anchors = rows.filter(r => !r.isSyntheticFuture)
+        const hasParceled = anchors.some(r =>
+          r.paymentMethod === 'credit' &&
+          (r.installmentTotalDetected ?? 0) > (r.installmentNumber ?? 0) &&
+          (r.installmentNumber ?? 0) >= 1
+        )
+        const existingKeys = hasParceled
+          ? await fetchExistingInstallmentKeys(card?.id ?? null)
+          : new Set<string>()
+
+        const out: ImportRow[] = []
+        let skippedTotal = 0
+        for (const r of anchors) {
+          const N = r.installmentNumber ?? 0
+          const T = r.installmentTotalDetected ?? 0
+          if (r.paymentMethod === 'credit' && T > N && N >= 1) {
+            const groupId = genUUID()
+            const { rows: expanded, skipped } = expandFutureInstallments(
+              { date: r.date, merchant: r.merchant, amount: r.amount, description: r.description, installmentNumber: N, installmentTotalDetected: T },
+              card, overrides, existingKeys, groupId,
+            )
+            skippedTotal += skipped
+            for (const e of expanded) {
+              out.push({
+                ...r,
+                description: e.description,
+                installmentNumber: e.installmentNumber,
+                installmentTotalDetected: e.installmentTotalDetected,
+                installmentGroupId: e.installmentGroupId,
+                billingDate: e.billingDate,
+                isSyntheticFuture: e.isSyntheticFuture,
+              })
+            }
+          } else {
+            out.push(r)
+          }
+        }
+        setRows(out)
+        setDupSkipped(skippedTotal)
+      }
+    } finally {
+      setPreparingAssign(false)
+      setStep('assign')
+    }
   }
 
   const saveAll = async () => {
@@ -594,6 +671,30 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         const isCredit = r.paymentMethod === 'credit'
 
         if (isCredit) {
+          // Fatura: parcela detectada (atual ou futura) — 1 insert por linha, com
+          // billing_date já calculado na expansão e o grupo/numeração da parcela.
+          if (r.installmentTotalDetected && r.installmentTotalDetected > 1) {
+            const billingDate = r.billingDate
+              ?? (selectedCard ? calcBillingDate(r.date, selectedCard, 0, overridesMap) : calcBillingDateNoCard(r.date, 0))
+            inserts.push({
+              user_id: resolvedUserId,
+              pot_id: r.potId,
+              card_id: selectedCard?.id ?? null,
+              type: r.type,
+              amount: r.amount,
+              description: r.description,  // já contém "(k/T)"
+              merchant: r.merchant || null,
+              date: r.date,
+              billing_date: billingDate,
+              payment_method: 'credit',
+              is_need: r.isNeed,
+              installment_total: r.installmentTotalDetected,
+              installment_number: r.installmentNumber ?? null,
+              installment_group_id: r.installmentGroupId ?? null,
+            })
+            continue
+          }
+
           // Crédito: criar APENAS as parcelas — nunca inserir o valor total separado
           const installmentCount = r.installmentTotal
           const installmentValue = Math.round((r.amount / installmentCount) * 100) / 100
@@ -601,8 +702,8 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
 
           for (let i = 0; i < installmentCount; i++) {
             const billingDate = selectedCard
-              ? calcBillingDate(r.date, selectedCard, i)
-              : calcBillingDateNoCard(new Date(r.date + 'T12:00:00'), i)
+              ? calcBillingDate(r.date, selectedCard, i, overridesMap)
+              : calcBillingDateNoCard(r.date, i)
 
             inserts.push({
               user_id: resolvedUserId,
@@ -727,6 +828,13 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               <Text style={styles.installBadgeText}>{item.installmentTotal}x</Text>
             </View>
           )}
+          {item.installmentTotalDetected && item.installmentTotalDetected > 1 && item.billingDate && (
+            <View style={[styles.installBadge, item.isSyntheticFuture && { backgroundColor: Colors.lightBlue }]}>
+              <Text style={styles.installBadgeText}>
+                {item.isSyntheticFuture ? '🔮 ' : ''}fatura {formatDisplayDate(item.billingDate).slice(3)}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Row 3: pote selector — apenas para gastos */}
@@ -786,6 +894,13 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
         </View>
+
+        {preparingAssign && (
+          <View style={[StyleSheet.absoluteFillObject as any, { backgroundColor: Colors.white + 'CC', alignItems: 'center', justifyContent: 'center', zIndex: 10 }]}>
+            <ActivityIndicator color={Colors.primary} size="large" />
+            <Text style={[styles.previewMeta, { marginTop: 12 }]}>Preparando parcelas...</Text>
+          </View>
+        )}
 
         {/* STEP: pick */}
         {step === 'pick' && (
@@ -938,7 +1053,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             {cards.map(card => (
               <TouchableOpacity
                 key={card.id}
-                onPress={() => { setSelectedCard(card); setStep('assign') }}
+                onPress={() => enterAssign(card)}
                 style={[styles.cardRow,
                   selectedCard?.id === card.id && { borderColor: Colors.primary, backgroundColor: Colors.lightBlue }]}
               >
@@ -958,7 +1073,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
               </Text>
             )}
             <TouchableOpacity
-              onPress={() => { setSelectedCard(null); setStep('assign') }}
+              onPress={() => enterAssign(null)}
               style={styles.cardSkipBtn}
             >
               <Text style={{ color: Colors.textMuted, fontSize: 13 }}>Continuar sem vincular cartão</Text>
@@ -970,6 +1085,13 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
         {step === 'assign' && (
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionLabel}>Ajuste o pote por linha ({totalTransactions} lançamentos)</Text>
+            {dupSkipped > 0 && (
+              <View style={{ backgroundColor: Colors.lightBlue, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 8, marginHorizontal: 16, marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, color: Colors.textDark }}>
+                  ℹ️ {dupSkipped} parcela(s) futura(s) já existiam e não foram duplicadas.
+                </Text>
+              </View>
+            )}
             <FlatList
               data={rows}
               keyExtractor={(_, i) => String(i)}

@@ -27,6 +27,11 @@ export type BankStatementTxn = {
   paymentMethod: 'pix' | 'debit' | 'credit' | 'transfer' | 'cash'
   installmentTotal: 1          // extrato/fatura: lançamento já cobrado, nunca parcelar de novo
   isCreditCardBillPayment: boolean
+  // Parcelamento DETECTADO na linha da fatura (sufixo "N/T"). Conceito diferente
+  // de installmentTotal (que é sempre 1 por design). Usados para criar as parcelas
+  // FUTURAS restantes (N+1..T) na importação. undefined = não é compra parcelada.
+  installmentNumber?: number        // N — parcela atual
+  installmentTotalDetected?: number // T — total de parcelas
 }
 
 export type BankStatementResult = {
@@ -66,6 +71,12 @@ const VALID_PAYMENT = new Set(['pix', 'debit', 'credit', 'transfer', 'cash'])
 
 type ChunkInfo = { index: number; total: number; startPage: number; endPage: number }
 
+// Converte para inteiro positivo (parcela), ou undefined se inválido/ausente.
+function toPositiveInt(raw: any): number | undefined {
+  const n = Math.trunc(Number(raw))
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
 function toNumber(raw: any): number {
   if (typeof raw === 'number') return raw
   if (raw == null) return 0
@@ -99,8 +110,10 @@ Identifique o banco pelo cabeçalho/logo (campo "bank" — apenas informativo).
 
 Para CADA lançamento retorne:
 - "date": data do lançamento em DD/MM/AAAA.
-- "description": descrição do lançamento (estabelecimento/contraparte). Se for compra PARCELADA no crédito (ex: sufixo "04/12"), anexe " (N/T)" ao final da descrição — ex: "LOJA X (04/12)". NÃO tente parcelar no app: é uma parcela já cobrada neste mês.
+- "description": descrição do lançamento (estabelecimento/contraparte). Se for compra PARCELADA no crédito (ex: sufixo "04/12"), anexe " (N/T)" ao final da descrição — ex: "LOJA X (04/12)".
 - "merchant": mesmo estabelecimento/contraparte, sem o sufixo de parcela.
+- "installmentNumber": quando a linha for compra PARCELADA (sufixo "N/T", ex: "04/12"), o número da parcela atual (N, ex: 4) como inteiro. Caso contrário, null.
+- "installmentTotalDetected": quando a linha for compra PARCELADA, o total de parcelas (T, ex: 12) como inteiro. Caso contrário, null.
 - "amount": valor absoluto do lançamento (número positivo, ponto decimal).
 - "type": "expense" (saída/débito/compra) ou "income" (entrada/crédito/estorno).
 - "paymentMethod": um de "pix" | "debit" | "credit" | "transfer" | "cash".
@@ -131,7 +144,9 @@ Formato de saída EXATO:
       "type": "expense",
       "paymentMethod": "credit",
       "installmentTotal": 1,
-      "isCreditCardBillPayment": false
+      "isCreditCardBillPayment": false,
+      "installmentNumber": null,
+      "installmentTotalDetected": null
     }
   ]
 }
@@ -244,6 +259,8 @@ async function extractChunk(
         paymentMethod,
         installmentTotal: 1,
         isCreditCardBillPayment: t?.isCreditCardBillPayment === true,
+        installmentNumber: toPositiveInt(t?.installmentNumber),
+        installmentTotalDetected: toPositiveInt(t?.installmentTotalDetected),
       }
     })
     .filter(t => t.amount > 0)

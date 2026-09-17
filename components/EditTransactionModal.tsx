@@ -24,6 +24,7 @@ import { getPotIcon } from '../lib/potIcons'
 import { CreditCard } from '../types'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage, getIRReceiptImageUrl } from '../lib/ir'
 import { calcBillingDate, calcBillingDateNoCard } from '../lib/billing-date'
+import { getCardOverridesMap } from '../lib/credit-cards'
 import IsNeedSelector from './IsNeedSelector'
 
 function genUUID(): string {
@@ -156,6 +157,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     try {
       const isCredit = paymentMethod === 'credit'
       const card = cards.find(c => c.id === selectedCardId) ?? null
+      // Overrides de ciclo do cartão (exceções pontuais de fechamento/vencimento).
+      const overrides = card && isCredit ? await getCardOverridesMap(card.id) : undefined
       const userId = useAuthStore.getState().session?.user?.id
 
       if (isCredit && isInstallment && installments >= 2 && !transaction.installment_group_id) {
@@ -175,7 +178,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
           date: dateISO,
           payment_method: paymentMethod,
           card_id: selectedCardId ?? null,
-          billing_date: card ? calcBillingDate(dateISO, card, i) : calcBillingDateNoCard(dateISO, i),
+          billing_date: card ? calcBillingDate(dateISO, card, i, overrides) : calcBillingDateNoCard(dateISO, i),
           merchant: merchant.trim() || null,
           is_need: isNeed,
           installment_group_id: groupId,
@@ -191,7 +194,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
         const installOffset = (transaction.installment_number ?? 1) - 1
         const billingDate = isCredit
           ? (card
-              ? calcBillingDate(dateISO, card, installOffset)
+              ? calcBillingDate(dateISO, card, installOffset, overrides)
               : (transaction.billing_date ?? null))
           : null
 

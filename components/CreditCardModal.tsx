@@ -19,7 +19,7 @@ import { CreditCard } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
-import { getFutureInstallments, deleteCardWithCascade, recalculateFutureInstallments, analyzeRecalculation } from '../lib/credit-cards'
+import { getFutureInstallments, deleteCardWithCascade, recalculateFutureInstallments, analyzeRecalculation, recalculateInstallmentsForCycle } from '../lib/credit-cards'
 import { getCycle } from '../lib/cycle'
 import { brl } from '../lib/finance'
 import { PLAN_LIMITS } from '../constants/plans'
@@ -56,6 +56,14 @@ export function CreditCardModal({ visible, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // ── Override pontual de ciclo (fechamento/vencimento variável neste mês) ──
+  const [ovCard, setOvCard] = useState<CreditCard | null>(null)  // null = fechado
+  const [ovOffset, setOvOffset] = useState(0)
+  const [ovClosing, setOvClosing] = useState('')
+  const [ovDue, setOvDue] = useState('')
+  const [ovLoading, setOvLoading] = useState(false)
+  const [ovError, setOvError] = useState<string | null>(null)
 
   const loadCards = async () => {
     const userId = useAuthStore.getState().session?.user?.id
@@ -236,6 +244,90 @@ export function CreditCardModal({ visible, onClose }: Props) {
     doSave(userId, closing, due, undefined, null)
   }
 
+  // ── Override pontual de ciclo ─────────────────────────────────────────────
+  // Sobrescreve fechamento/vencimento SÓ para um mês (exceção do ciclo), sem
+  // alterar o padrão do cartão. Fluxo separado do "editar" (mudança permanente).
+  const ovMonthLabel = () => {
+    const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+    const { start } = getCycle(csDay, ovOffset)
+    return start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  }
+
+  const loadOverrideForMonth = async (card: CreditCard, offset: number) => {
+    const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+    const monthStart = getCycle(csDay, offset).startISO.slice(0, 7) + '-01'
+    const { data } = await supabase
+      .from('credit_card_cycle_overrides')
+      .select('closing_day, due_day')
+      .eq('card_id', card.id)
+      .eq('cycle_start', monthStart)
+      .maybeSingle()
+    setOvClosing((data as any)?.closing_day != null ? String((data as any).closing_day) : '')
+    setOvDue((data as any)?.due_day != null ? String((data as any).due_day) : '')
+  }
+
+  const openOverride = (card: CreditCard) => {
+    setOvCard(card)
+    setOvOffset(0)
+    setOvError(null)
+    setOvClosing(''); setOvDue('')
+    loadOverrideForMonth(card, 0)
+  }
+
+  const changeOvOffset = (delta: number) => {
+    if (!ovCard) return
+    const next = ovOffset + delta
+    setOvOffset(next)
+    setOvError(null)
+    loadOverrideForMonth(ovCard, next)
+  }
+
+  const saveOverride = async () => {
+    if (!ovCard) return
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    const closing = ovClosing.trim() ? Number(ovClosing) : null
+    const due = ovDue.trim() ? Number(ovDue) : null
+    if (closing != null && (closing < 1 || closing > 31)) { setOvError('Dia de fechamento inválido (1-31).'); return }
+    if (due != null && (due < 1 || due > 31)) { setOvError('Dia de vencimento inválido (1-31).'); return }
+    if (closing == null && due == null) { setOvError('Informe o fechamento e/ou o vencimento deste mês.'); return }
+
+    setOvError(null)
+    setOvLoading(true)
+    try {
+      const csDay = useAuthStore.getState().user?.cycle_start ?? 1
+      const monthStart = getCycle(csDay, ovOffset).startISO.slice(0, 7) + '-01'
+      const [y, m] = monthStart.split('-').map(Number)
+      const lastDay = new Date(y, m, 0).getDate()
+      const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+      const { error: upErr } = await supabase
+        .from('credit_card_cycle_overrides')
+        .upsert(
+          { card_id: ovCard.id, user_id: userId, cycle_start: monthStart, closing_day: closing, due_day: due },
+          { onConflict: 'card_id,cycle_start' }
+        )
+      if (upErr) { setOvError('Erro ao salvar: ' + upErr.message); setOvLoading(false); return }
+
+      // Recalcula só as parcelas do cartão que caem neste mês (UPDATE, não delete+insert).
+      const count = await recalculateInstallmentsForCycle(
+        ovCard.id, ovCard, monthStart, monthEnd,
+        { [monthStart]: { closing_day: closing, due_day: due } },
+      )
+      setOvLoading(false)
+      setOvCard(null)
+      Alert.alert(
+        'Ciclo ajustado',
+        count > 0
+          ? `${count} parcela(s) deste mês recalculada(s) para o novo fechamento/vencimento.`
+          : 'Exceção salva para este mês.'
+      )
+    } catch (e: any) {
+      setOvError(e?.message ?? 'Erro inesperado.')
+      setOvLoading(false)
+    }
+  }
+
   // ── Brand picker modal ───────────────────────────────────────────────────
   if (showPicker) {
     return (
@@ -263,6 +355,7 @@ export function CreditCardModal({ visible, onClose }: Props) {
   }
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.kav}
@@ -398,7 +491,10 @@ export function CreditCardModal({ visible, onClose }: Props) {
                         {card.credit_limit ? ` · Limite ${card.credit_limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}
                       </Text>
                     </View>
-                    <TouchableOpacity onPress={() => openEdit(card)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}>
+                    <TouchableOpacity onPress={() => openOverride(card)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                      <Text style={styles.editBtn}>🗓️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEdit(card)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
                       <Text style={styles.editBtn}>✏️</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDelete(card)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
@@ -417,6 +513,76 @@ export function CreditCardModal({ visible, onClose }: Props) {
         </View>
       </KeyboardAvoidingView>
     </Modal>
+
+    {/* ── Modal de override pontual de ciclo ── */}
+    <Modal visible={!!ovCard} animationType="fade" transparent onRequestClose={() => setOvCard(null)}>
+      <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject as any} activeOpacity={1} onPress={() => setOvCard(null)} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.handle} />
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>🗓️ Ajustar este ciclo</Text>
+            <TouchableOpacity onPress={() => setOvCard(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.cardMeta}>
+            {ovCard?.name} — exceção pontual só para este mês, sem mudar o padrão do cartão
+            {ovCard ? ` (fecha ${ovCard.closing_day} · vence ${ovCard.due_day})` : ''}.
+          </Text>
+
+          {/* Seletor de mês */}
+          <View style={styles.ovMonthRow}>
+            <TouchableOpacity onPress={() => changeOvOffset(-1)} style={styles.ovArrowBtn}>
+              <Text style={styles.ovArrow}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.ovMonthLabel}>{ovMonthLabel()}</Text>
+            <TouchableOpacity onPress={() => changeOvOffset(1)} style={styles.ovArrowBtn}>
+              <Text style={styles.ovArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.twoCol}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Fechamento neste mês</Text>
+              <TextInput
+                style={styles.input}
+                value={ovClosing}
+                onChangeText={t => setOvClosing(t.replace(/\D/g, '').slice(0, 2))}
+                keyboardType="numeric"
+                placeholder={ovCard ? String(ovCard.closing_day) : '10'}
+                placeholderTextColor={Colors.textMuted}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Vencimento neste mês</Text>
+              <TextInput
+                style={styles.input}
+                value={ovDue}
+                onChangeText={t => setOvDue(t.replace(/\D/g, '').slice(0, 2))}
+                keyboardType="numeric"
+                placeholder={ovCard ? String(ovCard.due_day) : '20'}
+                placeholderTextColor={Colors.textMuted}
+              />
+            </View>
+          </View>
+          <Text style={[styles.cardMeta, { marginTop: 6 }]}>
+            Deixe em branco para manter o dia padrão do cartão.
+          </Text>
+
+          {ovError ? (
+            <View style={styles.errorBox}><Text style={styles.errorText}>⚠ {ovError}</Text></View>
+          ) : null}
+
+          <TouchableOpacity style={[styles.saveBtn, ovLoading && { opacity: 0.7 }]} onPress={saveOverride} disabled={ovLoading}>
+            {ovLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Salvar exceção deste mês</Text>}
+          </TouchableOpacity>
+          <View style={{ height: 8 }} />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+    </>
   )
 }
 
@@ -453,6 +619,10 @@ const styles = StyleSheet.create({
   brandPreview: { width: 80, height: 50 },
   brandHint: { fontSize: 14, color: Colors.textMuted },
   twoCol: { flexDirection: 'row', gap: 12 },
+  ovMonthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, marginBottom: 4 },
+  ovArrowBtn: { paddingHorizontal: 18, paddingVertical: 6, backgroundColor: Colors.lightBlue, borderRadius: 10 },
+  ovArrow: { fontSize: 20, color: Colors.primary, fontWeight: '700' },
+  ovMonthLabel: { fontSize: 15, fontWeight: '700', color: Colors.textDark, textTransform: 'capitalize' },
   empty: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginTop: 24, marginBottom: 8 },
   cardRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
