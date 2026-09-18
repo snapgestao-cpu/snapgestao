@@ -8,7 +8,7 @@
  * forma de pagamento e data. Suporta débito em pote e cartão.
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image, Alert,
@@ -24,6 +24,9 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
 import { checkCriticalPots } from '../lib/notifications'
+import { suggestPotForMerchant } from '../lib/smart-merchants'
+import { evaluateTransactionInsight } from '../lib/transaction-insights'
+import { useInsightStore } from '../stores/useInsightStore'
 import { brl } from '../lib/finance'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage } from '../lib/ir'
 import { calcBillingDate } from '../lib/billing-date'
@@ -78,6 +81,10 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
   const [cards, setCards] = useState<CreditCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [merchant, setMerchant] = useState('')
+  // Sugestão de pote via smart_merchants: só pré-seleciona se o usuário ainda não
+  // mexeu manualmente no seletor nesta sessão do modal (ref evita closure stale).
+  const potTouchedRef = useRef(false)
+  const [potSuggested, setPotSuggested] = useState(false)
   const [isNeed, setIsNeed] = useState<boolean | null>(true)
   const [isInstallment, setIsInstallment] = useState(false)
   const [installments, setInstallments] = useState(2)
@@ -106,6 +113,8 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
     setCards([])
     setSelectedCardId(null)
     setMerchant('')
+    potTouchedRef.current = false
+    setPotSuggested(false)
     setIsNeed(true)
     setIsInstallment(false)
     setInstallments(2)
@@ -139,6 +148,23 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
         }
       })
   }, [paymentMethod])
+
+  // Sugere o pote pelo estabelecimento (debounce 500ms), sem sobrescrever escolha manual.
+  useEffect(() => {
+    const name = merchant.trim()
+    if (potTouchedRef.current || !name) return
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    const t = setTimeout(async () => {
+      if (potTouchedRef.current) return
+      const potId = await suggestPotForMerchant(userId, name)
+      if (potId && !potTouchedRef.current && pots.some(p => p.id === potId)) {
+        setSelectedPotId(potId)
+        setPotSuggested(true)
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [merchant, pots])
 
   const handleDateInput = (text: string) => {
     const digits = text.replace(/\D/g, '').slice(0, 8)
@@ -223,6 +249,21 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
 
       const { user } = useAuthStore.getState()
       if (user) checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
+
+      // Alerta reativo por lançamento notável (não-bloqueante). Só gasto simples —
+      // parcelamento fica de fora (valor se divide em vários meses). Nunca no import.
+      if (user && selectedPotId && !isInstallment) {
+        evaluateTransactionInsight({
+          userId,
+          plan: user.plan ?? 'free',
+          potId: selectedPotId,
+          amount: totalAmount,
+          merchant: merchant.trim(),
+          description: description.trim(),
+          cycleStart: user.cycle_start ?? 1,
+          transactionId: inserted?.[0]?.id,
+        }).then(msg => { if (msg) useInsightStore.getState().showInsight(msg) }).catch(() => {})
+      }
     } finally {
       setLoading(false)
     }
@@ -276,6 +317,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
             <View style={styles.labelRow}>
               <Text style={styles.label}>Pote </Text>
               <Text style={styles.labelRequired}>*</Text>
+              {potSuggested && <Text style={styles.suggestedTag}>✨ sugerido</Text>}
             </View>
             {pots.length === 0 ? (
               <View style={styles.emptyPotsBox}>
@@ -292,7 +334,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
                   <TouchableOpacity
                     key={pot.id}
                     style={[styles.potChip, { borderColor: pot.color }, selectedPotId === pot.id && { backgroundColor: pot.color + '20' }]}
-                    onPress={() => setSelectedPotId(pot.id)}
+                    onPress={() => { potTouchedRef.current = true; setPotSuggested(false); setSelectedPotId(pot.id) }}
                   >
                     <Text style={styles.potChipIcon}>{getPotIcon(pot.name)}</Text>
                     <Text style={[styles.potChipText, selectedPotId === pot.id && { color: pot.color, fontWeight: '700' }]}>
@@ -594,6 +636,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 6, marginTop: 4 },
   labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginTop: 4 },
   labelRequired: { fontSize: 13, fontWeight: '700', color: Colors.danger },
+  suggestedTag: { fontSize: 11, fontWeight: '600', color: Colors.primary, marginLeft: 8 },
   optional: { fontWeight: '400', color: Colors.textMuted },
   emptyPotsBox: {
     backgroundColor: Colors.background, borderRadius: 10,

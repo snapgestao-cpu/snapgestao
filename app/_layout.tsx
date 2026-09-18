@@ -24,6 +24,7 @@ import {
   scheduleCycleEndReminder,
 } from '../lib/notifications'
 import { BadgeToast } from '../components/BadgeToast'
+import { InsightToast } from '../components/InsightToast'
 import { checkAndGrantBadgesOnStartup, Badge } from '../lib/badges'
 
 const queryClient = new QueryClient({
@@ -157,6 +158,7 @@ export default function RootLayout() {
       {pendingBadges.length > 0 && (
         <BadgeToast badges={pendingBadges} onDone={() => setPendingBadges([])} />
       )}
+      <InsightToast />
     </QueryClientProvider>
   )
 }

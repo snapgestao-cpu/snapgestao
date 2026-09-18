@@ -89,6 +89,10 @@ Migration `20240509_credit_card_cycle_overrides.sql` (**aplicar manualmente**). 
 
 Sobrescreve fechamento/vencimento **só naquele mês**, sem virar o padrão do cartão (fluxo do botão 🗓️ no `CreditCardModal`, separado do "editar" permanente). Lido por `getCardOverridesMap(cardId)` → `Record<YYYY-MM-01, {closing_day?, due_day?}>` e aplicado em `calcBillingDate(..., overrides?)`: `closing_day` do **mês nominal** da compra, `due_day` do **mês final** da fatura. `recalculateInstallmentsForCycle` recalcula (UPDATE) só as parcelas cujo `billing_date` cai no mês afetado.
 
+### `smart_merchants` — aprendizado estabelecimento→pote
+
+Schema: `user_id, name (lowercase), pot_id`. `UNIQUE(user_id, name)`. Alimentada por `upsert` ao salvar gastos com Estabelecimento (`NewExpenseModal` e agora também `EditTransactionModal`). **Lida** por `lib/smart-merchants.ts` (`suggestPotForMerchant`, `getMerchantPotMap`) para pré-selecionar o pote habitual nos modais e no import (ver `docs/FEATURES.md` → Sugestão automática de pote). Antes era write-only.
+
 ## Cycle rollovers (`cycle_rollovers`)
 
 Fechamento de ciclo cria um row. `recalculateRollover` recalcula preservando `surplus_action`/`surplus_goal_id`. Rollover key = `getCycle(cycleStart, offset + 1).startISO` (início do próximo ciclo).

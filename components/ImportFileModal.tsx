@@ -27,6 +27,7 @@ import { extractBankStatementWithGemini, partitionBillPayments, StatementType, B
 import { calcBillingDate, calcBillingDateNoCard, CycleOverridesMap } from '../lib/billing-date'
 import { getCardOverridesMap } from '../lib/credit-cards'
 import { expandFutureInstallments, billingMonthKey } from '../lib/installment-expansion'
+import { getMerchantPotMap } from '../lib/smart-merchants'
 import { PaywallBanner } from './PaywallBanner'
 import { useAuthStore } from '../stores/useAuthStore'
 import { router } from 'expo-router'
@@ -606,6 +607,7 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
       const overrides = card ? await getCardOverridesMap(card.id) : {}
       setOverridesMap(overrides)
 
+      let working: ImportRow[] = rows
       if (importMode === 'bank_pdf') {
         const anchors = rows.filter(r => !r.isSyntheticFuture)
         const hasParceled = anchors.some(r =>
@@ -644,9 +646,21 @@ export function ImportFileModal({ visible, onClose, onSuccess, pots, userId, cyc
             out.push(r)
           }
         }
-        setRows(out)
+        working = out
         setDupSkipped(skippedTotal)
       }
+
+      // Pré-preenche o pote sugerido (smart_merchants) em cada linha com merchant
+      // preenchido e ainda SEM pote — o maior ganho da sugestão, já que aqui o
+      // usuário revisa dezenas de linhas. 1 query (mapa), aplicado em memória.
+      const merchantMap = await getMerchantPotMap(userId)
+      const withSuggestions = working.map(r => {
+        const m = r.merchant?.trim().toLowerCase()
+        if (r.potId || !m) return r
+        const potId = merchantMap[m]
+        return potId && pots.some(p => p.id === potId) ? { ...r, potId } : r
+      })
+      setRows(withSuggestions)
     } finally {
       setPreparingAssign(false)
       setStep('assign')

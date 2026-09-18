@@ -87,6 +87,26 @@ Quiz 5 perguntas animado + análise IA + relatório PDF. Intro → quiz → over
 
 Quiz 3 perguntas + análise IA comparando preços por estabelecimento. `lib/analisador-precos.ts`: `buscarDadosParaAnalise()` (só ciclos fechados + atual via `getMesesValidos`), `analisarPrecos()` (itens com 3+ ocorrências, max 15, retorna **string**, não JSON).
 
+## Sugestão automática de pote (`lib/smart-merchants.ts`)
+
+A tabela `smart_merchants` (alimentada ao salvar gastos com Estabelecimento) agora é **lida** para pré-selecionar o pote habitual do estabelecimento.
+
+- `suggestPotForMerchant(userId, name)` → `pot_id | null` (normaliza lowercase/trim; 1 lookup). `getMerchantPotMap(userId)` → mapa `nome→pot_id` (1 query, para o import).
+- **`NewExpenseModal`**: debounce 500ms ao digitar o Estabelecimento → se houver match que exista em `pots` e o usuário ainda **não** mexeu no seletor (`potTouchedRef`), pré-seleciona e mostra label discreta "✨ sugerido". Tocar num chip marca escolha manual e trava a sugestão.
+- **`EditTransactionModal`**: mesma lógica, mas só sugere quando o merchant é **trocado** em relação ao original (não sobrescreve o pote já salvo ao abrir).
+- **`ImportFileModal` (assign)**: ao entrar no `assign` (`enterAssign`), pré-preenche o pote de cada linha com merchant e **sem** pote via `getMerchantPotMap` (1 query, em memória). Maior ganho — o usuário revisa dezenas de linhas. Não sobrescreve pote já resolvido (poteName do Excel).
+- A coleta (`upsert` em `smart_merchants`) roda ao salvar em **ambos** os modais (Edit passou a coletar também).
+
+## Alerta reativo por lançamento notável (`lib/transaction-insights.ts`)
+
+Depois de salvar um gasto (`NewExpenseModal`/`EditTransactionModal`, não-bloqueante), avalia se o lançamento é "notável" e, só nesse caso, gera **uma frase** curta via IA.
+
+- **Determinístico primeiro (grátis)**: `detectThresholdCrossing` (o gasto cruzou 80% ou 100% do limite do pote no ciclo — % antes vs. depois, reaproveitando o padrão de gasto por pote de `cycleClose`) e `isAmountOutlier` (> 2,5× a média dos últimos lançamentos do mesmo estabelecimento ou pote, só com **3+** anteriores). Nada notável → retorna `null` **sem chamar IA** (maioria dos casos). Ambos exportados e cobertos por testes.
+- **IA só quando notável**: prompt curto com os valores reais em R$ + `systemPrompt` anti-alucinação (mesma trava do Mentor: nunca inventar números fora do prompt). Provider por plano (`getAIProvider`).
+- **Guard de custo**: máx **5 chamadas de IA/dia** por usuário (`AsyncStorage` `ai_insight_count_<YYYY-MM-DD>`, reseta ao virar o dia). Estourou → `null` sem IA (a checagem determinística continua). **Não** consome a cota mensal de `ai_tokens` (essa é dos relatórios completos).
+- **Exibição**: `<InsightToast>` global no `_layout` alimentado por `useInsightStore` (mesmo padrão do `BadgeToast` global; toque fecha, some em 6s).
+- **Fora de escopo**: import em massa (`ImportFileModal.saveAll`) — rodaria por linha, gerando custo/ruído; e parcelamentos (valor dividido em vários meses).
+
 ## Gamification
 
 `lib/badges.ts`: 10 badges. `checkAndGrantBadgesOnStartup` (startup — cooldown 1h via AsyncStorage `badge_check_{userId}`). `checkAndGrantBadges` (ações explícitas do usuário). `BadgeToast`: fila de slide-in + fadeOut (3s). `app/achievements.tsx`: grid de badges.

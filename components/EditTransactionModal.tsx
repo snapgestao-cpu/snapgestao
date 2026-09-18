@@ -8,7 +8,7 @@
  * Suporta lançamentos parcelados com billing_date no crédito.
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Switch, Image,
@@ -25,6 +25,10 @@ import { CreditCard } from '../types'
 import { IR_CATEGORY_LABELS, uploadIRReceiptImage, getIRReceiptImageUrl } from '../lib/ir'
 import { calcBillingDate, calcBillingDateNoCard } from '../lib/billing-date'
 import { getCardOverridesMap } from '../lib/credit-cards'
+import { checkCriticalPots } from '../lib/notifications'
+import { suggestPotForMerchant } from '../lib/smart-merchants'
+import { evaluateTransactionInsight } from '../lib/transaction-insights'
+import { useInsightStore } from '../stores/useInsightStore'
 import IsNeedSelector from './IsNeedSelector'
 
 function genUUID(): string {
@@ -75,6 +79,10 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
   const [isInstallment, setIsInstallment] = useState(false)
   const [installments, setInstallments] = useState(2)
   const [merchant, setMerchant] = useState('')
+  // Sugestão de pote via smart_merchants — só quando o usuário TROCA o estabelecimento
+  // (não sobrescreve o pote já salvo ao abrir) e não mexeu manualmente no seletor.
+  const potTouchedRef = useRef(false)
+  const [potSuggested, setPotSuggested] = useState(false)
   const [isNeed, setIsNeed] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -101,6 +109,8 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
     setIsInstallment(!!(transaction.installment_group_id))
     setInstallments(transaction.installment_total ?? 2)
     setMerchant(transaction.merchant ?? '')
+    potTouchedRef.current = false
+    setPotSuggested(false)
     setIsNeed(transaction.is_need ?? null)
     setError(null)
     setCards([])
@@ -132,6 +142,26 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
       setSelectedCardId(prev => list.find(c => c.id === prev) ? prev : (list[0]?.id ?? null))
     })
   }, [paymentMethod])
+
+  // Sugere o pote pelo estabelecimento (debounce 500ms), SÓ quando o usuário trocou
+  // o merchant original e ainda não mexeu manualmente no seletor de pote.
+  useEffect(() => {
+    if (transaction?.type !== 'expense') return
+    const name = merchant.trim()
+    if (potTouchedRef.current || !name) return
+    if (name.toLowerCase() === (transaction?.merchant ?? '').trim().toLowerCase()) return
+    const userId = useAuthStore.getState().session?.user?.id
+    if (!userId) return
+    const t = setTimeout(async () => {
+      if (potTouchedRef.current) return
+      const potId = await suggestPotForMerchant(userId, name)
+      if (potId && !potTouchedRef.current && pots.some(p => p.id === potId)) {
+        setSelectedPotId(potId)
+        setPotSuggested(true)
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [merchant, pots, transaction?.merchant, transaction?.type])
 
   const handleDateInput = (text: string) => {
     const digits = text.replace(/\D/g, '').slice(0, 8)
@@ -189,6 +219,15 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
         if (insErr) { setError('Erro ao criar parcelas: ' + insErr.message); return }
         onSuccess(`${installments}x criadas com sucesso!`)
         onClose()
+
+        if (userId && transaction.type === 'expense' && merchant.trim()) {
+          void supabase.from('smart_merchants').upsert({
+            user_id: userId, name: merchant.trim().toLowerCase(), pot_id: selectedPotId,
+          }, { onConflict: 'user_id,name' })
+        }
+        const user = useAuthStore.getState().user
+        if (userId && user) checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
+        // Parcelamento fica de fora do insight reativo (valor dividido em vários meses).
       } else {
         // Atualização simples (sem parcelamento novo)
         const installOffset = (transaction.installment_number ?? 1) - 1
@@ -238,6 +277,30 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
         if (err) { setError('Erro ao salvar: ' + err.message); return }
         onSuccess('Lançamento atualizado!')
         onClose()
+
+        // Aprende o par estabelecimento→pote (mesmo sinal do NewExpenseModal).
+        if (userId && transaction.type === 'expense' && merchant.trim()) {
+          void supabase.from('smart_merchants').upsert({
+            user_id: userId, name: merchant.trim().toLowerCase(), pot_id: selectedPotId,
+          }, { onConflict: 'user_id,name' })
+        }
+
+        const user = useAuthStore.getState().user
+        if (userId && user) checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
+
+        // Alerta reativo por lançamento notável (não-bloqueante, só gasto).
+        if (userId && user && transaction.type === 'expense' && selectedPotId) {
+          evaluateTransactionInsight({
+            userId,
+            plan: user.plan ?? 'free',
+            potId: selectedPotId,
+            amount,
+            merchant: merchant.trim(),
+            description: description.trim(),
+            cycleStart: user.cycle_start ?? 1,
+            transactionId: transaction.id,
+          }).then(msg => { if (msg) useInsightStore.getState().showInsight(msg) }).catch(() => {})
+        }
       }
     } finally {
       setLoading(false)
@@ -337,13 +400,16 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
 
             {isExpense && pots.length > 0 && (
               <>
-                <Text style={styles.label}>Pote</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.label}>Pote</Text>
+                  {potSuggested && <Text style={styles.suggestedTag}>✨ sugerido</Text>}
+                </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                   {pots.map(pot => (
                     <TouchableOpacity
                       key={pot.id}
                       style={[styles.potChip, { borderColor: pot.color }, selectedPotId === pot.id && { backgroundColor: pot.color + '20' }]}
-                      onPress={() => setSelectedPotId(pot.id)}
+                      onPress={() => { potTouchedRef.current = true; setPotSuggested(false); setSelectedPotId(pot.id) }}
                     >
                       <Text style={styles.potChipIcon}>{getPotIcon(pot.name)}</Text>
                       <Text style={[styles.potChipText, selectedPotId === pot.id && { color: pot.color, fontWeight: '700' }]}>
@@ -610,6 +676,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2, marginBottom: 20,
   },
   label: { fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 6, marginTop: 4 },
+  suggestedTag: { fontSize: 11, fontWeight: '600', color: Colors.primary, marginLeft: 8 },
   optional: { fontWeight: '400', color: Colors.textMuted },
   input: {
     backgroundColor: Colors.background, borderRadius: 10, borderWidth: 1.5,

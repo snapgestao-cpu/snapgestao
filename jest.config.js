@@ -7,6 +7,7 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
     '^expo-image-manipulator$': '<rootDir>/__mocks__/expo-image-manipulator.ts',
+    '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/async-storage.ts',
     '^expo-file-system/legacy$': '<rootDir>/__mocks__/expo-file-system.ts',
     '^./supabase$': '<rootDir>/__mocks__/supabase.ts',
     '^../supabase$': '<rootDir>/__mocks__/supabase.ts',
