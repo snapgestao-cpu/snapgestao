@@ -4,6 +4,25 @@ Histórico resumido de releases. Notas completas por build (com APK) ficam nas
 [Releases do GitHub](https://github.com/snapgestao-cpu/snapgestao/releases).
 Builds ≤ 33 estão documentados apenas nas Releases do GitHub.
 
+## v1.1.3 (build 35) — prerelease
+
+**Correções**
+- Import de extrato por IA: mensagem de timeout/limite mais clara, sugerindo exportar um período menor (1–2 meses) e importar separadamente.
+- Import de extrato: "pagamento de fatura de cartão" marcado como "não incluir" agora é de fato excluído — era ambiguidade de UX no Alert (botões diretos sobre a ação), não bug de filtro.
+- Potes: editar o limite passa a valer só do mês vigente em diante — meses passados de potes legados não mudam mais (baseline de histórico).
+- Tela Mensal: gastos sem pote agora aparecem reconciliados na grade "Tabela"/Cards (linha "Sem pote"), inclusive quando não há nenhum pote cadastrado; o TOTAL bate com as linhas visíveis.
+- Gráficos: atualizam ao voltar para a aba (refetch do tópico ativo no foco), sem quebrar o lazy-load por sub-aba.
+
+**Cartão de crédito**
+- Fechamento/vencimento variável por ciclo: exceção pontual por mês (botão 🗓️ na lista de cartões), sem alterar o padrão do cartão.
+- Importação de fatura: detecção automática de parcelamento ("N/T"), com criação das parcelas futuras restantes e proteção contra duplicidade.
+
+**IA**
+- Sugestão automática de pote pelo histórico de estabelecimentos — no lançamento manual, na edição e na importação de extrato.
+- Alerta reativo quando um lançamento é notável (pote perto/estourando o limite, ou valor fora do padrão): checagem determinística grátis e, só quando notável, uma frase curta gerada por IA (guard de 5/dia, sem consumir a cota de relatórios).
+
+**Nota técnica**: nova tabela `credit_card_cycle_overrides` (migration `20240509`) — necessária para a exceção de ciclo do cartão.
+
 ## v1.1.2 (build 34) — prerelease
 
 **Importação de extrato bancário em PDF via IA (Premium)** — novo modo no
