@@ -89,13 +89,15 @@ Quiz 3 perguntas + análise IA comparando preços por estabelecimento. `lib/anal
 
 ## Sugestão automática de pote (`lib/smart-merchants.ts`)
 
-A tabela `smart_merchants` (alimentada ao salvar gastos com Estabelecimento) agora é **lida** para pré-selecionar o pote habitual do estabelecimento.
+A tabela `smart_merchants` (colunas reais: `merchant_name`, `default_pot_id`, `usage_count`, `last_used`) é **lida** para pré-selecionar o pote habitual do estabelecimento.
 
-- `suggestPotForMerchant(userId, name)` → `pot_id | null` (normaliza lowercase/trim; 1 lookup). `getMerchantPotMap(userId)` → mapa `nome→pot_id` (1 query, para o import).
-- **`NewExpenseModal`**: debounce 500ms ao digitar o Estabelecimento → se houver match que exista em `pots` e o usuário ainda **não** mexeu no seletor (`potTouchedRef`), pré-seleciona e mostra label discreta "✨ sugerido". Tocar num chip marca escolha manual e trava a sugestão.
+⚠️ **Bug corrigido**: o código usava `name`/`pot_id` (colunas inexistentes) → escrita e leitura falhavam **silenciosamente**; a sugestão nunca funcionou. Corrigido para os nomes reais + tratamento de erro (`console.warn`) em todos os pontos.
+
+- **Limiar de 2 usos**: `suggestPotForMerchant` / `getMerchantPotMap` só retornam sugestão quando `usage_count >= 2`. Um estabelecimento usado uma única vez (typo ou pote escolhido por engano) **não** vira sugestão sozinho — precisa de 2 usos consistentes.
+- **Coleta** (`recordMerchantUsage`, ao salvar em `NewExpenseModal` **e** `EditTransactionModal`): SELECT-antes-de-escrever (sem depender de constraint UNIQUE) — insere na 1ª vez (`usage_count=1`), depois incrementa `usage_count`, atualiza `last_used` (hoje) e grava o `default_pot_id` escolhido.
+- **`NewExpenseModal`**: debounce 500ms ao digitar o Estabelecimento → se houver sugestão que exista em `pots` e o usuário ainda **não** mexeu no seletor (`potTouchedRef`), pré-seleciona e mostra label "✨ sugerido". Tocar num chip trava a sugestão.
 - **`EditTransactionModal`**: mesma lógica, mas só sugere quando o merchant é **trocado** em relação ao original (não sobrescreve o pote já salvo ao abrir).
-- **`ImportFileModal` (assign)**: ao entrar no `assign` (`enterAssign`), pré-preenche o pote de cada linha com merchant e **sem** pote via `getMerchantPotMap` (1 query, em memória). Maior ganho — o usuário revisa dezenas de linhas. Não sobrescreve pote já resolvido (poteName do Excel).
-- A coleta (`upsert` em `smart_merchants`) roda ao salvar em **ambos** os modais (Edit passou a coletar também).
+- **`ImportFileModal` (assign)**: ao entrar no `assign` (`enterAssign`), pré-preenche o pote de cada linha com merchant e **sem** pote via `getMerchantPotMap` (1 query, em memória). Não sobrescreve pote já resolvido (poteName do Excel).
 
 ## Alerta reativo por lançamento notável (`lib/transaction-insights.ts`)
 

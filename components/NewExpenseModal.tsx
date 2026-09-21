@@ -24,7 +24,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { formatCents, digitsOnly, centsToFloat } from '../lib/onboardingDraft'
 import { getPotIcon } from '../lib/potIcons'
 import { checkCriticalPots } from '../lib/notifications'
-import { suggestPotForMerchant } from '../lib/smart-merchants'
+import { suggestPotForMerchant, recordMerchantUsage } from '../lib/smart-merchants'
 import { evaluateTransactionInsight } from '../lib/transaction-insights'
 import { useInsightStore } from '../stores/useInsightStore'
 import { brl } from '../lib/finance'
@@ -237,11 +237,7 @@ export function NewExpenseModal({ visible, onClose, onSuccess, pots, initialDate
       }
 
       if (merchant.trim()) {
-        void supabase.from('smart_merchants').upsert({
-          user_id: userId,
-          name: merchant.trim().toLowerCase(),
-          pot_id: selectedPotId,
-        }, { onConflict: 'user_id,name' })
+        void recordMerchantUsage(userId, merchant, selectedPotId)
       }
 
       onSuccess()

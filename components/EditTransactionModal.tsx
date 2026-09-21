@@ -26,7 +26,7 @@ import { IR_CATEGORY_LABELS, uploadIRReceiptImage, getIRReceiptImageUrl } from '
 import { calcBillingDate, calcBillingDateNoCard } from '../lib/billing-date'
 import { getCardOverridesMap } from '../lib/credit-cards'
 import { checkCriticalPots } from '../lib/notifications'
-import { suggestPotForMerchant } from '../lib/smart-merchants'
+import { suggestPotForMerchant, recordMerchantUsage } from '../lib/smart-merchants'
 import { evaluateTransactionInsight } from '../lib/transaction-insights'
 import { useInsightStore } from '../stores/useInsightStore'
 import IsNeedSelector from './IsNeedSelector'
@@ -221,9 +221,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
         onClose()
 
         if (userId && transaction.type === 'expense' && merchant.trim()) {
-          void supabase.from('smart_merchants').upsert({
-            user_id: userId, name: merchant.trim().toLowerCase(), pot_id: selectedPotId,
-          }, { onConflict: 'user_id,name' })
+          void recordMerchantUsage(userId, merchant, selectedPotId)
         }
         const user = useAuthStore.getState().user
         if (userId && user) checkCriticalPots(userId, user.cycle_start ?? 1).catch(() => {})
@@ -280,9 +278,7 @@ export function EditTransactionModal({ visible, transaction, pots, onClose, onSu
 
         // Aprende o par estabelecimento→pote (mesmo sinal do NewExpenseModal).
         if (userId && transaction.type === 'expense' && merchant.trim()) {
-          void supabase.from('smart_merchants').upsert({
-            user_id: userId, name: merchant.trim().toLowerCase(), pot_id: selectedPotId,
-          }, { onConflict: 'user_id,name' })
+          void recordMerchantUsage(userId, merchant, selectedPotId)
         }
 
         const user = useAuthStore.getState().user

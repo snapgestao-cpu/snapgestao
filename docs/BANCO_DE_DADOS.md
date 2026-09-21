@@ -91,7 +91,13 @@ Sobrescreve fechamento/vencimento **só naquele mês**, sem virar o padrão do c
 
 ### `smart_merchants` — aprendizado estabelecimento→pote
 
-Schema: `user_id, name (lowercase), pot_id`. `UNIQUE(user_id, name)`. Alimentada por `upsert` ao salvar gastos com Estabelecimento (`NewExpenseModal` e agora também `EditTransactionModal`). **Lida** por `lib/smart-merchants.ts` (`suggestPotForMerchant`, `getMerchantPotMap`) para pré-selecionar o pote habitual nos modais e no import (ver `docs/FEATURES.md` → Sugestão automática de pote). Antes era write-only.
+Schema real (criada direto no Supabase, sem migration no repo): `id, user_id, merchant_name (lowercase), default_pot_id, usage_count (int), last_used (date), created_at`.
+
+⚠️ **Correção**: o código usava `name`/`pot_id` — colunas **inexistentes** — então toda escrita e leitura falhava **silenciosamente** (nunca funcionou desde que foi escrito). Corrigido para `merchant_name`/`default_pot_id` em `lib/smart-merchants.ts` e nos dois modais. Todos os pontos agora tratam `{ error }` com `console.warn` (não silenciam mais).
+
+- **Escrita**: `recordMerchantUsage(userId, merchant, potId)` — SELECT-antes-de-escrever (não depende de constraint UNIQUE): 1ª vez `INSERT usage_count=1`; depois incrementa `usage_count`, atualiza `last_used` e grava o `default_pot_id` escolhido. Chamada ao salvar em `NewExpenseModal` e `EditTransactionModal`.
+- **Leitura**: `suggestPotForMerchant` / `getMerchantPotMap` só retornam sugestão com `usage_count >= 2` — um único uso (typo/engano) não vira sugestão sozinho.
+- Não há constraint UNIQUE conhecida em `(user_id, merchant_name)` — o código **não** depende dela (por isso read-then-write). Se quiser trocar para `upsert` com `onConflict` no futuro, aí sim é preciso criar o índice UNIQUE.
 
 ## Cycle rollovers (`cycle_rollovers`)
 
