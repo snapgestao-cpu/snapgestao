@@ -119,6 +119,20 @@ Camada 2 da IA: resumo curto (3-5 frases) da semana, exibido num card **"Resumo 
 - **Puro/testável**: `mondayOfWeek`, `addDaysISO`, `weekRangeFromMonday`, `pctChange`, `formatWeekLabel`, `buildWeeklyPrompt` são exportadas e cobertas por testes.
 - **Migration**: `supabase/migrations/20260922_weekly_insights.sql` — **aplicar manualmente no DEV** antes de testar.
 
+## Aba IA + Chat "Fale com seu CFO" (Fase 3a)
+
+**Aba IA** (`app/(tabs)/ia.tsx`, 7ª aba 🤖) — hub de IA: card **Resumo da Semana** (reusa `getOrGenerateWeeklyInsight`), card **💬 Fale com seu CFO** (→ `/chat`) e atalhos para **Mentor Financeiro** e **Analisador de Preços**. O radar de score segue em Gráficos (não movido, pra não arriscar o refactor daquela tela).
+
+**Chat** (`app/chat.tsx`, rota `/chat`; lógica em `lib/cfo-chat.ts` → `sendCfoMessage`): assistente "CFO pessoal", **somente leitura** (nunca cria/edita/exclui).
+
+- **Ferramentas (tool calling, leitura)**: `get_pot_summary` (gasto/limite por pote no ciclo — reusa `computeCycleSummaryFromData` de `cycleClose`), `get_transactions` (filtra por período/pote/estabelecimento/tipo, **teto de 50 linhas**), `get_price_comparison` (encapsula `getPriceComparison`/`getUserCity` de `price-database.ts`).
+- **Escopo de dados (segurança)**: só dados do próprio usuário (`.eq('user_id', ...)`, protegidos por RLS) + a `price_database` agregada/anônima. Nunca a base toda. System prompt reforça "só dados do usuário atual, nunca de outros".
+- **Provider por plano**: Free → Groq (`openai/gpt-oss-120b`, function calling estilo OpenAI); Premium → Claude Haiku (`tool_use`/`tool_result` nativo da Messages API). **Busca na web só no Premium** (server tool `web_search_20250305`; se o request falhar com a busca ligada, refaz uma vez sem ela). Ambos via `fetch` cru (o app não usa o SDK Anthropic), reusando `getApiKey`/`AI_PROVIDER_INFO` de `ai-provider.ts`.
+- **Anti-alucinação**: mesma trava do Mentor — só usa o que vem das ferramentas, nunca inventa valores.
+- **Limite diário próprio** (AsyncStorage `cfo_chat_count_<YYYY-MM-DD>`): **10/dia no Free, 40/dia no Premium**. Ao bater, a tela mostra "Você atingiu o limite de N perguntas de hoje. Volte amanhã" e **não** chama a IA. **Não** consome a cota mensal de `ai_tokens`.
+- **Sessão**: só em memória (estado do componente); sem tabela nova, sem persistir histórico.
+- **Puro/testável**: `dailyMessageLimit`, `isWithinDailyLimit`, `parseToolInput` (normaliza args objeto/string entre Claude e Groq) — exportados e cobertos por testes.
+
 ## Gamification
 
 `lib/badges.ts`: 10 badges. `checkAndGrantBadgesOnStartup` (startup — cooldown 1h via AsyncStorage `badge_check_{userId}`). `checkAndGrantBadges` (ações explícitas do usuário). `BadgeToast`: fila de slide-in + fadeOut (3s). `app/achievements.tsx`: grid de badges.

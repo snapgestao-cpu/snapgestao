@@ -104,6 +104,7 @@ export default function RootLayout() {
     const inTerms = segments[0] === 'terms'
     const inIR = segments[0] === 'ir'
     const inPremium = segments[0] === 'premium'
+    const inChat = segments[0] === 'chat'
     if (!isAuthenticated) {
       if (!inAuth) router.replace('/(auth)/login')
       return
@@ -125,7 +126,7 @@ export default function RootLayout() {
     }
 
     // Autenticado com perfil completo
-    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador && !inIR && !inPremium) router.replace('/(tabs)/monthly')
+    if (!inTabs && !inPot && !inOCR && !inAchievements && !inMentor && !inAnalisador && !inIR && !inPremium && !inChat) router.replace('/(tabs)/monthly')
   }, [isLoading, isAuthenticated, user, segments, safetyReady])
 
   return (
@@ -153,6 +154,7 @@ export default function RootLayout() {
           <Stack.Screen name="analisador-precos" options={{ headerShown: false }} />
           <Stack.Screen name="terms" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="ir" options={{ headerShown: false }} />
+          <Stack.Screen name="chat" options={{ headerShown: false }} />
         </Stack>
       )}
       {pendingBadges.length > 0 && (
