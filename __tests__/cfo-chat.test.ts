@@ -1,4 +1,7 @@
-import { dailyMessageLimit, isWithinDailyLimit, parseToolInput } from '../lib/cfo-chat'
+import {
+  dailyMessageLimit, isWithinDailyLimit, parseToolInput,
+  dailySearchLimit, isWithinSearchLimit,
+} from '../lib/cfo-chat'
 
 describe('dailyMessageLimit', () => {
   it('free = 10, premium = 40', () => {
@@ -17,6 +20,19 @@ describe('isWithinDailyLimit', () => {
   it('premium permite até 39, bloqueia em 40', () => {
     expect(isWithinDailyLimit(39, 'premium')).toBe(true)
     expect(isWithinDailyLimit(40, 'premium')).toBe(false)
+  })
+})
+
+describe('cota de busca (independente do limite de mensagens)', () => {
+  it('teto de busca = 5 e é bem menor que o de mensagens Premium (40)', () => {
+    expect(dailySearchLimit()).toBe(5)
+    expect(dailySearchLimit()).toBeLessThan(dailyMessageLimit('premium'))
+  })
+  it('permite até 4, bloqueia em 5', () => {
+    expect(isWithinSearchLimit(0)).toBe(true)
+    expect(isWithinSearchLimit(4)).toBe(true)
+    expect(isWithinSearchLimit(5)).toBe(false)
+    expect(isWithinSearchLimit(6)).toBe(false)
   })
 })
 

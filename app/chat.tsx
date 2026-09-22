@@ -12,7 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
-import { sendCfoMessage, dailyMessageLimit, ChatTurn } from '../lib/cfo-chat'
+import { sendCfoMessage, dailyMessageLimit, dailySearchLimit, ChatTurn } from '../lib/cfo-chat'
 
 type Msg = ChatTurn | { role: 'system'; text: string }
 
@@ -29,6 +29,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+  const searchNoticeShown = useRef(false)  // aviso de busca esgotada: mostra 1x por sessão
 
   const plan = user?.plan ?? 'free'
   const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
@@ -48,7 +49,7 @@ export default function ChatScreen() {
     scrollToEnd()
 
     try {
-      const { reply, limitReached } = await sendCfoMessage({
+      const { reply, limitReached, searchExhausted } = await sendCfoMessage({
         userId: user.id,
         plan,
         cycleStart: user.cycle_start ?? 1,
@@ -60,7 +61,16 @@ export default function ChatScreen() {
           text: `Você atingiu o limite de ${dailyMessageLimit(plan)} perguntas de hoje. Volte amanhã 🌙`,
         }])
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', text: reply }])
+        const extra: Msg[] = []
+        // Aviso claro de que a BUSCA na internet acabou — o chat continua normal, só sem web.
+        if (searchExhausted && !searchNoticeShown.current) {
+          searchNoticeShown.current = true
+          extra.push({
+            role: 'system',
+            text: `🔎 Você usou as ${dailySearchLimit()} buscas na internet de hoje. Sigo respondendo normalmente com base nos seus dados — a busca volta amanhã.`,
+          })
+        }
+        setMessages(prev => [...prev, { role: 'assistant', text: reply }, ...extra])
       }
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'system', text: 'Algo deu errado ao falar com a IA. Tente de novo em instantes.' }])

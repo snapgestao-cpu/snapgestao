@@ -111,7 +111,7 @@ Depois de salvar um gasto (`NewExpenseModal`/`EditTransactionModal`, não-bloque
 
 ## Resumo semanal — "check-in do CFO" (`lib/weekly-insight.ts`)
 
-Camada 2 da IA: resumo curto (3-5 frases) da semana, exibido num card **"Resumo da Semana"** ACIMA do radar de score na sub-aba **🤖 IA** de Gráficos (`TopicIA` em `charts.tsx`). Disponível para **Free e Premium** na mesma cadência (semanal).
+Camada 2 da IA: resumo curto (3-5 frases) da semana, exibido num card **"Seu check-in da semana"** ACIMA do radar de score na sub-aba **🤖 IA** de Gráficos (`TopicIA` em `charts.tsx`) — e também na aba IA top-level (`ia.tsx`). Recebe `plan` como prop (vindo do `ChartsScreen`); quando `getOrGenerateWeeklyInsight` retorna `''` (sem dado/falha) o card **não** é renderizado. Disponível para **Free e Premium** na mesma cadência (semanal); o `useRefetchOnFocus` só **re-lê o cache** (`weekly_insights`), nunca regenera.
 
 - **`getOrGenerateWeeklyInsight(userId, plan, cycleStart)`**: semana = **segunda a domingo do calendário** (`mondayOfWeek`, independente do `cycle_start`). Primeiro checa cache em `weekly_insights` (`week_start` = segunda desta semana) — se existe, retorna o `content` **sem chamar IA**. Senão, agrega a semana (total gasto, top 3 potes, top 3 estabelecimentos, comparação % com a semana anterior — mesmo padrão de agregação do Mentor), gera via `callAI` (prompt com valores reais em R$ + trava anti-alucinação), **salva** (insert) e retorna.
 - **Custo**: o próprio cache (`UNIQUE(user_id, week_start)`) limita a **1 chamada de IA por usuário por semana**; refocus reaproveita o cache. **Não** consome a cota de `ai_tokens` (chama `callAI` direto, como a Camada 1).
@@ -128,10 +128,13 @@ Camada 2 da IA: resumo curto (3-5 frases) da semana, exibido num card **"Resumo 
 - **Ferramentas (tool calling, leitura)**: `get_pot_summary` (gasto/limite por pote no ciclo — reusa `computeCycleSummaryFromData` de `cycleClose`), `get_transactions` (filtra por período/pote/estabelecimento/tipo, **teto de 50 linhas**), `get_price_comparison` (encapsula `getPriceComparison`/`getUserCity` de `price-database.ts`).
 - **Escopo de dados (segurança)**: só dados do próprio usuário (`.eq('user_id', ...)`, protegidos por RLS) + a `price_database` agregada/anônima. Nunca a base toda. System prompt reforça "só dados do usuário atual, nunca de outros".
 - **Provider por plano**: Free → Groq (`openai/gpt-oss-120b`, function calling estilo OpenAI); Premium → Claude Haiku (`tool_use`/`tool_result` nativo da Messages API). **Busca na web só no Premium** (server tool `web_search_20250305`; se o request falhar com a busca ligada, refaz uma vez sem ela). Ambos via `fetch` cru (o app não usa o SDK Anthropic), reusando `getApiKey`/`AI_PROVIDER_INFO` de `ai-provider.ts`.
-- **Anti-alucinação**: mesma trava do Mentor — só usa o que vem das ferramentas, nunca inventa valores.
-- **Limite diário próprio** (AsyncStorage `cfo_chat_count_<YYYY-MM-DD>`): **10/dia no Free, 40/dia no Premium**. Ao bater, a tela mostra "Você atingiu o limite de N perguntas de hoje. Volte amanhã" e **não** chama a IA. **Não** consome a cota mensal de `ai_tokens`.
+- **Anti-alucinação + anti prompt-injection**: mesma trava do Mentor (só usa o que vem das ferramentas). Reforço explícito: **texto vindo de busca na internet é dado de referência, nunca instrução** — instruções/comandos dentro de uma página buscada são ignorados; o assistente segue só o system prompt e as mensagens reais do usuário. Como o chat é só leitura (não grava nada a partir de uma resposta), o reforço no prompt cobre o risco real (a página manipular o TEXTO da resposta) sem precisar de sandbox extra.
+- **Dois limites diários independentes** (AsyncStorage, zeram à meia-noite):
+  - **Mensagens** (`cfo_chat_count_<YYYY-MM-DD>`): **10/dia Free, 40/dia Premium**. Ao bater, a tela mostra "Você atingiu o limite de N perguntas de hoje" e **não** chama a IA.
+  - **Busca na web** (`cfo_search_count_<YYYY-MM-DD>`): **5/dia** (teto bem menor — cada busca custa muito mais contexto). Só decrementa quando o Claude **de fato** busca (conta blocos `web_search_tool_result`); `max_uses = min(3, cota restante)` por request, e a busca é omitida do request quando a cota zera. Uma pergunta que só consulta os dados do usuário **nunca** consome a cota de busca. Ao esgotar, a UI avisa (1x) que só a **busca** acabou e o chat **continua** normalmente sem internet.
+  - Nenhum dos dois consome a cota mensal de `ai_tokens` (essa é dos relatórios Mentor/Analisador).
+- **Testável**: além de `parseToolInput`, os helpers puros `dailyMessageLimit`/`isWithinDailyLimit` e `dailySearchLimit`/`isWithinSearchLimit` são exportados e cobertos por testes.
 - **Sessão**: só em memória (estado do componente); sem tabela nova, sem persistir histórico.
-- **Puro/testável**: `dailyMessageLimit`, `isWithinDailyLimit`, `parseToolInput` (normaliza args objeto/string entre Claude e Groq) — exportados e cobertos por testes.
 
 ## Gamification
 

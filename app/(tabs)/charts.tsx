@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { brl, fmtShort, fmtSigned } from '../../lib/finance'
 import { getOrGenerateWeeklyInsight } from '../../lib/weekly-insight'
+import type { Plan } from '../../constants/plans'
 import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
@@ -885,10 +886,10 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
 }
 
 // ── Topic 5: IA ────────────────────────────────────────────────────────────
-function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleStartDay: number; isActive: boolean }) {
+function TopicIA({ userId, cycleStartDay, plan, isActive }: { userId: string; cycleStartDay: number; plan: Plan; isActive: boolean }) {
   const [score, setScore]     = useState<FinancialScore | null>(null)
   const [loading, setLoading] = useState(true)
-  const [weekly, setWeekly]   = useState<string | null>(null)
+  const [weekly, setWeekly]   = useState<string>('')
   const [weeklyLoading, setWeeklyLoading] = useState(true)
   const hasLoaded = useRef(false)
 
@@ -896,13 +897,14 @@ function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleSta
     setLoading(true)
     getFinancialScore(userId, cycleStartDay).then(s => { setScore(s); setLoading(false) })
 
-    // Resumo da semana (Camada 2) — cacheado 1x/semana; refocus reaproveita o cache.
+    // Resumo da semana (Camada 2) — cacheado 1x/semana em weekly_insights. getOrGenerate
+    // checa o cache antes de chamar IA, então o refetch em foco só RE-LÊ o cache (nunca
+    // regenera de novo). Disponível para Free e Premium (não gatear por plano).
     setWeeklyLoading(true)
-    const plan = useAuthStore.getState().user?.plan ?? 'free'
     getOrGenerateWeeklyInsight(userId, plan, cycleStartDay)
       .then(c => { setWeekly(c); setWeeklyLoading(false) })
       .catch(() => { setWeekly(''); setWeeklyLoading(false) })
-  }, [userId, cycleStartDay])
+  }, [userId, cycleStartDay, plan])
 
   useEffect(() => {
     if (!isActive && !hasLoaded.current) return
@@ -914,14 +916,12 @@ function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleSta
 
   return (
     <>
-      {/* Camada 2: check-in semanal, ACIMA do radar de score */}
-      <ChartCard title="Resumo da Semana" description="Um check-in curto do seu dinheiro nos últimos 7 dias.">
-        {weeklyLoading
-          ? <Skeleton height={90} />
-          : weekly
-            ? <Text style={s.weeklyText}>{weekly}</Text>
-            : <Empty icon="🗓️" text="Sem resumo esta semana ainda — registre alguns gastos e volte." />}
-      </ChartCard>
+      {/* Camada 2: check-in semanal, ACIMA do radar. Sem dado (retorno '') → não renderiza. */}
+      {(weeklyLoading || weekly) ? (
+        <ChartCard title="Seu check-in da semana" description="Um resumo curto do seu dinheiro nos últimos 7 dias.">
+          {weeklyLoading ? <Skeleton height={90} /> : <Text style={s.weeklyText}>{weekly}</Text>}
+        </ChartCard>
+      ) : null}
 
       {/* Radar de score (existente) */}
       {loading ? (
@@ -1035,7 +1035,7 @@ export default function ChartsScreen() {
           isActive={activeIdx === 3}
         />
       )}
-      {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} isActive={activeIdx === 4} />}
+      {index === 4 && <TopicIA userId={user.id} cycleStartDay={user.cycle_start} plan={user.plan} isActive={activeIdx === 4} />}
     </ScrollView>
   )
 
