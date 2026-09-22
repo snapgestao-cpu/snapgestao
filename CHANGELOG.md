@@ -4,6 +4,16 @@ Histórico resumido de releases. Notas completas por build (com APK) ficam nas
 [Releases do GitHub](https://github.com/snapgestao-cpu/snapgestao/releases).
 Builds ≤ 33 estão documentados apenas nas Releases do GitHub.
 
+## v1.1.4 (build 36) — prerelease
+
+**Correções**
+- **Sugestão automática de pote** (`smart_merchants`): o código usava nomes de coluna inexistentes no banco real (`name`/`pot_id` em vez de `merchant_name`/`default_pot_id`) — a sugestão **nunca funcionou**, falhando em silêncio desde que foi escrita. Corrigido, agora com tratamento de erro visível (`console.warn`) em todos os pontos e um **limiar de 2 usos** antes de sugerir (evita "engessar" um pote escolhido por engano num único lançamento).
+
+**IA**
+- **Novo: resumo semanal automático ("check-in do CFO")** — card no topo da aba Gráficos → sub-aba 🤖 IA. Gerado 1x por semana (segunda a domingo) com o gasto da semana, principais potes/estabelecimentos e comparação com a semana anterior. Disponível nos dois planos (Free e Premium), **sem** consumir a cota mensal de relatórios de IA.
+
+**Nota técnica**: nova tabela `weekly_insights` (migration `20260922`) — cacheia o resumo (1x/semana/usuário). Enquanto não aplicada no banco, o card cai em estado vazio graciosamente.
+
 ## v1.1.3 (build 35) — prerelease
 
 **Correções**
