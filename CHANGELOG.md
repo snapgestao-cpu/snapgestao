@@ -4,6 +4,16 @@ Histórico resumido de releases. Notas completas por build (com APK) ficam nas
 [Releases do GitHub](https://github.com/snapgestao-cpu/snapgestao/releases).
 Builds ≤ 33 estão documentados apenas nas Releases do GitHub.
 
+## v1.1.5 (build 37) — prerelease
+
+**IA**
+- **Nova aba 🤖 IA** (hub): reúne o resumo semanal ("check-in do CFO"), o chat "Fale com seu CFO" e atalhos para o Mentor Financeiro e o Analisador de Preços.
+- **Chat "Fale com seu CFO"** (somente leitura): pergunte sobre seus gastos, potes e preços — o assistente responde com base **nos seus dados** (nunca de outros usuários). Free e Premium, com limite diário de mensagens próprio (não consome a cota dos relatórios de IA).
+- **Busca na internet no chat (Premium)**: com limite diário **próprio e separado** (5/dia) — perguntas sobre seus dados não gastam essa cota; ao esgotar, o chat continua respondendo normalmente sem internet. Conteúdo de páginas buscadas é tratado só como referência, nunca como instrução.
+- **Check-in da semana** também aparece no topo da sub-aba 🤖 IA de Gráficos; some quando não há dado da semana.
+
+**Nota técnica**: sem migration nova nesta versão.
+
 ## v1.1.4 (build 36) — prerelease
 
 **Correções**

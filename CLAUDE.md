@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SnapGestão** — app de controle financeiro pessoal (React Native + Expo 54).  
 Supabase: `https://cvyissbkfwphtmvvcvop.supabase.co`  
-**Versão atual**: `1.1.4` (versionCode 36) — release `v1.1.4-build36` (prerelease). Fluxo de release: dev/commits em `master` → `build.ps1` faz `git push origin master:main` + gera o APK; tag `vX.Y.Z-buildNN` em `main` + prerelease no GitHub. A branch `production` está obsoleta e **não** é a origem das releases.
+**Versão atual**: `1.1.5` (versionCode 37) — release `v1.1.5-build37` (prerelease). Fluxo de release: dev/commits em `master` → `build.ps1` faz `git push origin master:main` + gera o APK; tag `vX.Y.Z-buildNN` em `main` + prerelease no GitHub. A branch `production` está obsoleta e **não** é a origem das releases.
 
 > **Raiz do projeto**: `C:\snapgestao\snapgestao\` (subpasta). O diretório externo `C:\snapgestao\` não tem `package.json` — todos os comandos (`npm`, `npx`, `gradlew`) devem rodar dentro de `snapgestao\`. Este `CLAUDE.md`, `app/`, `lib/`, etc. ficam todos aqui.
 
