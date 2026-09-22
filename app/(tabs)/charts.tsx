@@ -15,6 +15,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { supabase } from '../../lib/supabase'
 import { getCycle } from '../../lib/cycle'
 import { brl, fmtShort, fmtSigned } from '../../lib/finance'
+import { getOrGenerateWeeklyInsight } from '../../lib/weekly-insight'
 import {
   getExpensesByPot, getNecessityShare, getMonthlyTotalsOptimized,
   getCreditCommitmentsSimple, getPaymentMethodDistribution,
@@ -887,11 +888,20 @@ function TopicCredito({ userId, cycleStartDay, cycleStart, cycleEnd, monthYear, 
 function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleStartDay: number; isActive: boolean }) {
   const [score, setScore]     = useState<FinancialScore | null>(null)
   const [loading, setLoading] = useState(true)
+  const [weekly, setWeekly]   = useState<string | null>(null)
+  const [weeklyLoading, setWeeklyLoading] = useState(true)
   const hasLoaded = useRef(false)
 
   const load = useCallback(() => {
     setLoading(true)
     getFinancialScore(userId, cycleStartDay).then(s => { setScore(s); setLoading(false) })
+
+    // Resumo da semana (Camada 2) — cacheado 1x/semana; refocus reaproveita o cache.
+    setWeeklyLoading(true)
+    const plan = useAuthStore.getState().user?.plan ?? 'free'
+    getOrGenerateWeeklyInsight(userId, plan, cycleStartDay)
+      .then(c => { setWeekly(c); setWeeklyLoading(false) })
+      .catch(() => { setWeekly(''); setWeeklyLoading(false) })
   }, [userId, cycleStartDay])
 
   useEffect(() => {
@@ -902,48 +912,64 @@ function TopicIA({ userId, cycleStartDay, isActive }: { userId: string; cycleSta
 
   useRefetchOnFocus(load, isActive)
 
-  if (loading) return <Skeleton height={320} />
-  if (!score)  return <Empty icon="🤖" text="Dados insuficientes para calcular o score" />
-
-  const scoreValues = [score.controle, score.poupanca, score.planejamento, score.equilibrio, score.consistencia]
-  const scoreColor  = score.total >= 75 ? Colors.success : score.total >= 50 ? Colors.warning : Colors.danger
-
   return (
-    <ChartCard title="Seu Perfil Financeiro">
-      <Text style={s.cardDesc}>
-        Este gráfico mostra sua saúde financeira em 5 dimensões, calculadas com base no seu histórico. Quanto maior a área preenchida, melhor sua situação em cada aspecto.
-      </Text>
+    <>
+      {/* Camada 2: check-in semanal, ACIMA do radar de score */}
+      <ChartCard title="Resumo da Semana" description="Um check-in curto do seu dinheiro nos últimos 7 dias.">
+        {weeklyLoading
+          ? <Skeleton height={90} />
+          : weekly
+            ? <Text style={s.weeklyText}>{weekly}</Text>
+            : <Empty icon="🗓️" text="Sem resumo esta semana ainda — registre alguns gastos e volte." />}
+      </ChartCard>
 
-      <View style={s.center}>
-        <RadarChart scores={scoreValues} />
-      </View>
+      {/* Radar de score (existente) */}
+      {loading ? (
+        <Skeleton height={320} />
+      ) : !score ? (
+        <Empty icon="🤖" text="Dados insuficientes para calcular o score" />
+      ) : (() => {
+        const scoreValues = [score.controle, score.poupanca, score.planejamento, score.equilibrio, score.consistencia]
+        const scoreColor  = score.total >= 75 ? Colors.success : score.total >= 50 ? Colors.warning : Colors.danger
+        return (
+          <ChartCard title="Seu Perfil Financeiro">
+            <Text style={s.cardDesc}>
+              Este gráfico mostra sua saúde financeira em 5 dimensões, calculadas com base no seu histórico. Quanto maior a área preenchida, melhor sua situação em cada aspecto.
+            </Text>
 
-      <View style={s.scoreBox}>
-        <Text style={[s.scoreNum, { color: scoreColor }]}>Score: {score.total}/100</Text>
-        <Text style={s.scoreMotivation}>{getMotivation(score.total)}</Text>
-      </View>
-
-      <View style={{ marginTop: 16, gap: 10 }}>
-        {AXIS_INFO.map(a => {
-          const val = score[a.key as keyof FinancialScore] as number
-          const barColor = val >= 70 ? Colors.success : val >= 40 ? Colors.warning : Colors.danger
-          return (
-            <View key={a.key} style={s.axisCard}>
-              <View style={s.axisCardHeader}>
-                <Text style={s.axisEmoji}>{a.emoji}</Text>
-                <Text style={s.axisCardName}>{a.name}</Text>
-                <Text style={[s.axisCardScore, { color: barColor }]}>{val}/100</Text>
-              </View>
-              <View style={s.axisBg}>
-                <View style={[s.axisFill, { width: `${val}%` as any, backgroundColor: barColor }]} />
-              </View>
-              <Text style={s.axisDesc}>{a.desc}</Text>
-              <Text style={s.axisTip}>💡 {a.tip}</Text>
+            <View style={s.center}>
+              <RadarChart scores={scoreValues} />
             </View>
-          )
-        })}
-      </View>
-    </ChartCard>
+
+            <View style={s.scoreBox}>
+              <Text style={[s.scoreNum, { color: scoreColor }]}>Score: {score.total}/100</Text>
+              <Text style={s.scoreMotivation}>{getMotivation(score.total)}</Text>
+            </View>
+
+            <View style={{ marginTop: 16, gap: 10 }}>
+              {AXIS_INFO.map(a => {
+                const val = score[a.key as keyof FinancialScore] as number
+                const barColor = val >= 70 ? Colors.success : val >= 40 ? Colors.warning : Colors.danger
+                return (
+                  <View key={a.key} style={s.axisCard}>
+                    <View style={s.axisCardHeader}>
+                      <Text style={s.axisEmoji}>{a.emoji}</Text>
+                      <Text style={s.axisCardName}>{a.name}</Text>
+                      <Text style={[s.axisCardScore, { color: barColor }]}>{val}/100</Text>
+                    </View>
+                    <View style={s.axisBg}>
+                      <View style={[s.axisFill, { width: `${val}%` as any, backgroundColor: barColor }]} />
+                    </View>
+                    <Text style={s.axisDesc}>{a.desc}</Text>
+                    <Text style={s.axisTip}>💡 {a.tip}</Text>
+                  </View>
+                )
+              })}
+            </View>
+          </ChartCard>
+        )
+      })()}
+    </>
   )
 }
 
@@ -1136,6 +1162,7 @@ const s = StyleSheet.create({
   },
   cardTitle: { fontSize: 14, fontWeight: '700', color: Colors.textDark, marginBottom: 4 },
   cardDesc:  { fontSize: 11, color: Colors.textMuted, fontStyle: 'italic', marginBottom: 12, lineHeight: 16 },
+  weeklyText: { fontSize: 13, color: Colors.textDark, lineHeight: 20 },
 
   noteText: {
     fontSize: 11, color: Colors.textMuted, backgroundColor: Colors.lightBlue,

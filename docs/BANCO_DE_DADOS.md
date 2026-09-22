@@ -5,7 +5,7 @@ RLS habilitado em todas as tabelas. Trigger `on_auth_user_created` ativo.
 
 ## Tabelas
 
-`users`, `income_sources`, `pots`, `credit_cards`, `credit_card_cycle_overrides`, `receipts`, `transactions`, `goals`, `smart_merchants`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`
+`users`, `income_sources`, `pots`, `credit_cards`, `credit_card_cycle_overrides`, `receipts`, `transactions`, `goals`, `smart_merchants`, `weekly_insights`, `user_badges`, `cycle_rollovers`, `pot_limit_history`, `pot_history`
 
 **`projection_entries` — REMOVIDA**. Dropar se existir: `DROP TABLE IF EXISTS public.projection_entries;`
 
@@ -98,6 +98,12 @@ Schema real (criada direto no Supabase, sem migration no repo): `id, user_id, me
 - **Escrita**: `recordMerchantUsage(userId, merchant, potId)` — SELECT-antes-de-escrever (não depende de constraint UNIQUE): 1ª vez `INSERT usage_count=1`; depois incrementa `usage_count`, atualiza `last_used` e grava o `default_pot_id` escolhido. Chamada ao salvar em `NewExpenseModal` e `EditTransactionModal`.
 - **Leitura**: `suggestPotForMerchant` / `getMerchantPotMap` só retornam sugestão com `usage_count >= 2` — um único uso (typo/engano) não vira sugestão sozinho.
 - Não há constraint UNIQUE conhecida em `(user_id, merchant_name)` — o código **não** depende dela (por isso read-then-write). Se quiser trocar para `upsert` com `onConflict` no futuro, aí sim é preciso criar o índice UNIQUE.
+
+### `weekly_insights` — cache do resumo semanal da IA (Camada 2)
+
+Migration `20260922_weekly_insights.sql` (**aplicar manualmente**). Schema: `id, user_id, week_start (DATE, segunda-feira), content (TEXT), generated_at`. `UNIQUE(user_id, week_start)`. RLS por `user_id` (padrão `credit_card_cycle_overrides`).
+
+Cacheia o resumo gerado 1x por semana por usuário — `getOrGenerateWeeklyInsight` (`lib/weekly-insight.ts`) checa se há linha da semana atual antes de chamar IA. Toda chamada trata `{ error }` com `console.warn`. Ver `docs/FEATURES.md` → Resumo semanal.
 
 ## Cycle rollovers (`cycle_rollovers`)
 

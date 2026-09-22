@@ -109,6 +109,16 @@ Depois de salvar um gasto (`NewExpenseModal`/`EditTransactionModal`, não-bloque
 - **Exibição**: `<InsightToast>` global no `_layout` alimentado por `useInsightStore` (mesmo padrão do `BadgeToast` global; toque fecha, some em 6s).
 - **Fora de escopo**: import em massa (`ImportFileModal.saveAll`) — rodaria por linha, gerando custo/ruído; e parcelamentos (valor dividido em vários meses).
 
+## Resumo semanal — "check-in do CFO" (`lib/weekly-insight.ts`)
+
+Camada 2 da IA: resumo curto (3-5 frases) da semana, exibido num card **"Resumo da Semana"** ACIMA do radar de score na sub-aba **🤖 IA** de Gráficos (`TopicIA` em `charts.tsx`). Disponível para **Free e Premium** na mesma cadência (semanal).
+
+- **`getOrGenerateWeeklyInsight(userId, plan, cycleStart)`**: semana = **segunda a domingo do calendário** (`mondayOfWeek`, independente do `cycle_start`). Primeiro checa cache em `weekly_insights` (`week_start` = segunda desta semana) — se existe, retorna o `content` **sem chamar IA**. Senão, agrega a semana (total gasto, top 3 potes, top 3 estabelecimentos, comparação % com a semana anterior — mesmo padrão de agregação do Mentor), gera via `callAI` (prompt com valores reais em R$ + trava anti-alucinação), **salva** (insert) e retorna.
+- **Custo**: o próprio cache (`UNIQUE(user_id, week_start)`) limita a **1 chamada de IA por usuário por semana**; refocus reaproveita o cache. **Não** consome a cota de `ai_tokens` (chama `callAI` direto, como a Camada 1).
+- **Robustez**: toda chamada a `weekly_insights` trata `{ error }` com `console.warn` (lição do bug `smart_merchants`). Sem gastos na semana ou falha de IA/banco → retorna `''` e o card mostra estado vazio discreto, sem quebrar a aba. Reaproveita o lazy-load (`isActive`) + `useRefetchOnFocus` do tópico (não cria carregamento paralelo).
+- **Puro/testável**: `mondayOfWeek`, `addDaysISO`, `weekRangeFromMonday`, `pctChange`, `formatWeekLabel`, `buildWeeklyPrompt` são exportadas e cobertas por testes.
+- **Migration**: `supabase/migrations/20260922_weekly_insights.sql` — **aplicar manualmente no DEV** antes de testar.
+
 ## Gamification
 
 `lib/badges.ts`: 10 badges. `checkAndGrantBadgesOnStartup` (startup — cooldown 1h via AsyncStorage `badge_check_{userId}`). `checkAndGrantBadges` (ações explícitas do usuário). `BadgeToast`: fila de slide-in + fadeOut (3s). `app/achievements.tsx`: grid de badges.
