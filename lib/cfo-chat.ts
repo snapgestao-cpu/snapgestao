@@ -68,8 +68,9 @@ export async function getCfoChatCount(): Promise<number> {
 // mesmo se o AsyncStorage não fizer round-trip, porque a base vem do cache em memória).
 async function incrementCfoChatCount(): Promise<number> {
   rollMemDay()
-  const base = Math.max(memChatCount, await readStored(dailyCountKey()))
-  console.log('[chat] incrementCfoChatCount — valor lido antes de somar:', base)  // DEBUG temporário
+  const stored = await readStored(dailyCountKey())
+  const base = Math.max(memChatCount, stored)
+  console.log('[chat] incrementCfoChatCount — stored:', stored, 'mem:', memChatCount, 'base usada:', base)  // DEBUG temporário
   const next = base + 1
   memChatCount = next
   try { await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
@@ -287,6 +288,7 @@ async function runClaudeChat(
 
   for (let iter = 0; iter < MAX_TOOL_ITERS; iter++) {
     const maxUses = (!noSearchFallback && searchesLeft > 0) ? Math.min(3, searchesLeft) : 0
+    console.log('[chat] decisão de busca — cotaRestante:', searchesLeft, 'usedToday:', usedToday, 'vai incluir tool?', maxUses > 0)  // DEBUG temporário
     let data: any
     try {
       data = await claudeRequest(apiKey, system, msgs, maxUses)
@@ -365,6 +367,7 @@ export async function sendCfoMessage(params: {
   history: ChatTurn[]
 }): Promise<{ reply: string; limitReached: boolean; searchExhausted: boolean; msgCount: number; searchCount: number }> {
   const count = await getCfoChatCount()
+  console.log('[chat] limite de mensagens — count:', count, '/', dailyMessageLimit(params.plan), 'bloqueia?', !isWithinDailyLimit(count, params.plan))  // DEBUG temporário
   if (!isWithinDailyLimit(count, params.plan)) {
     return { reply: '', limitReached: true, searchExhausted: false, msgCount: count, searchCount: await getCfoSearchCount() }
   }
