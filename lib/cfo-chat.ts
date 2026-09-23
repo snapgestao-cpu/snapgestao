@@ -56,20 +56,10 @@ function rollMemDay(): void {
   if (memDay !== today) { memDay = today; memChatCount = 0; memSearchCount = 0 }
 }
 async function readStored(key: string): Promise<number> {
-  try {
-    const v = await AsyncStorage.getItem(key)
-    console.log('[chat] getItem — key:', key, 'retornou:', v)  // DEBUG temporário
-    return v ? (parseInt(v, 10) || 0) : 0
-  } catch (e) { console.log('[chat] getItem FALHOU — key:', key, 'erro:', e); return 0 }
+  try { const v = await AsyncStorage.getItem(key); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
 }
-// Escreve no AsyncStorage logando sucesso/erro explicitamente (DEBUG temporário).
 async function writeStored(key: string, value: number): Promise<void> {
-  try {
-    await AsyncStorage.setItem(key, String(value))
-    console.log('[chat] setItem OK — key:', key, 'valor:', value)  // DEBUG temporário
-  } catch (e) {
-    console.log('[chat] setItem FALHOU — key:', key, 'erro:', e)  // DEBUG temporário
-  }
+  try { await AsyncStorage.setItem(key, String(value)) } catch { /* noop */ }
 }
 
 function dailyCountKey(): string { return `cfo_chat_count_${todayStr()}` }
@@ -81,12 +71,9 @@ export async function getCfoChatCount(): Promise<number> {
 // mesmo se o AsyncStorage não fizer round-trip, porque a base vem do cache em memória).
 async function incrementCfoChatCount(): Promise<number> {
   rollMemDay()
-  const memBefore = memChatCount
-  const stored = await readStored(dailyCountKey())  // leitura FRESCA do persistido
-  const usouMem = memBefore > stored                // base veio do mem (só quando o storage está atrás)
-  const next = Math.max(memBefore, stored) + 1      // sempre >= stored+1 → nunca grava valor menor que o persistido
+  const stored = await readStored(dailyCountKey())   // leitura fresca do persistido
+  const next = Math.max(memChatCount, stored) + 1    // sempre >= stored+1 → nunca grava valor menor que o persistido
   memChatCount = next
-  console.log('[chat] gravando no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, 'mem:', memBefore, ')')  // DEBUG temporário
   await writeStored(dailyCountKey(), next)
   return next
 }
@@ -106,15 +93,10 @@ export async function getCfoSearchCount(): Promise<number> {
 // atual (nunca 0), então uma mensagem sem busca não "zera" o searchCount.
 async function addCfoSearchCount(n: number): Promise<number> {
   rollMemDay()
-  const stored = await readStored(dailySearchKey())  // leitura FRESCA do persistido
-  const usouMem = memSearchCount > stored
-  const base = Math.max(memSearchCount, stored)
-  const next = base + Math.max(0, n)                  // nunca menor que o persistido
+  const stored = await readStored(dailySearchKey())   // leitura fresca do persistido
+  const next = Math.max(memSearchCount, stored) + Math.max(0, n)  // nunca menor que o persistido
   memSearchCount = next
-  if (n > 0) {
-    console.log('[chat] gravando busca no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, ')')  // DEBUG temporário
-    await writeStored(dailySearchKey(), next)
-  }
+  if (n > 0) await writeStored(dailySearchKey(), next)
   return next
 }
 
@@ -307,7 +289,6 @@ async function runClaudeChat(
 
   for (let iter = 0; iter < MAX_TOOL_ITERS; iter++) {
     const maxUses = (!noSearchFallback && searchesLeft > 0) ? Math.min(3, searchesLeft) : 0
-    if (iter === 0) console.log('[chat] decisão de busca — cotaRestante:', searchesLeft, 'usedToday:', usedToday, 'vai incluir tool?', maxUses > 0)  // DEBUG temporário (1x/mensagem)
     let data: any
     try {
       data = await claudeRequest(apiKey, system, msgs, maxUses)
@@ -386,7 +367,6 @@ export async function sendCfoMessage(params: {
   history: ChatTurn[]
 }): Promise<{ reply: string; limitReached: boolean; searchExhausted: boolean; msgCount: number; searchCount: number }> {
   const count = await getCfoChatCount()
-  console.log('[chat] limite de mensagens — count:', count, '/', dailyMessageLimit(params.plan), 'bloqueia?', !isWithinDailyLimit(count, params.plan))  // DEBUG temporário
   if (!isWithinDailyLimit(count, params.plan)) {
     return { reply: '', limitReached: true, searchExhausted: false, msgCount: count, searchCount: await getCfoSearchCount() }
   }

@@ -66,7 +66,6 @@ export default function ChatScreen() {
   useEffect(() => {
     Promise.all([getCfoChatCount(), getCfoSearchCount()]).then(([msgCount, searchCount]) => {
       setDayUsage({ msgCount, searchCount })
-      console.log('[chat] hidratado ao montar — msgCount:', msgCount, 'searchCount:', searchCount)  // DEBUG temporário
     })
   }, [])
 
@@ -77,14 +76,9 @@ export default function ChatScreen() {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
     const showSub = Keyboard.addListener(showEvt, e => {
-      const h = e.endCoordinates?.height ?? 0
-      setKbHeight(h); scrollToEnd()
-      console.log('[chat] keyboard event — kbHeight:', h, 'platform:', Platform.OS)  // DEBUG temporário
+      setKbHeight(e.endCoordinates?.height ?? 0); scrollToEnd()
     })
-    const hideSub = Keyboard.addListener(hideEvt, () => {
-      setKbHeight(0)
-      console.log('[chat] keyboard event — kbHeight:', 0, 'platform:', Platform.OS)  // DEBUG temporário
-    })
+    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0))
     return () => { showSub.remove(); hideSub.remove() }
   }, [])
 
@@ -113,7 +107,6 @@ export default function ChatScreen() {
       })
       // Atualiza o consumo do dia com o valor retornado (fonte da verdade, sem reler).
       setDayUsage({ msgCount, searchCount })
-      console.log('[chat] após envio — msgCount:', msgCount, 'searchCount:', searchCount)  // DEBUG temporário
       if (limitReached) {
         setMessages(prev => [...prev, {
           role: 'system',
