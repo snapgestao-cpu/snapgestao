@@ -130,34 +130,67 @@ function topN(map: Record<string, number>, n: number): { key: string; amount: nu
 }
 
 /**
- * Retorna o resumo semanal do usuário. Se já existe cache para a semana atual,
- * devolve sem chamar IA. Senão, agrega a semana, gera via IA e salva.
- * Nunca lança: em qualquer falha (banco/IA) retorna '' e a tela mostra estado vazio.
+ * Retorna o resumo semanal do usuário.
+ *
+ * Cache com invalidação por novidade (mesma semana):
+ * - Sem cache da semana → gera pela 1ª vez e salva (upsert).
+ * - Cache gerado HOJE → devolve direto (sem query extra, sem IA).
+ * - Cache gerado num dia anterior da mesma semana → só regenera se houver >= 1
+ *   transação NOVA (expense, dentro da semana, created_at > última geração); senão
+ *   devolve o cache (dia sem novidade não custa IA). Ao regenerar, reagrega a semana
+ *   inteira e dá upsert (atualiza a mesma linha + novo timestamp).
+ *
+ * Segunda seguinte = nova semana (novo week_start) → volta ao caso "1ª geração".
+ * NÃO consome ai_tokens (callAI direto); igual p/ Free e Premium.
+ * Risco aceito: editar/excluir lançamento antigo (sem criar um novo) pode não
+ * disparar regeneração — depende de created_at cobrir só criação (documentado).
+ * Nunca lança: em falha (banco/IA) devolve o cache anterior ou '' (estado vazio).
  */
 export async function getOrGenerateWeeklyInsight(userId: string, plan: Plan, cycleStart: number): Promise<string> {
   void cycleStart  // semana é calendário (seg-dom), independente do cycle_start; mantido por compat de API
   const weekStart = mondayOfWeek(new Date())
+  const { startISO, endISO } = weekRangeFromMonday(weekStart)
 
-  // 1. Cache: já gerado nesta semana?
+  // 1. Cache da semana + timestamp da última geração.
   const { data: cached, error: selErr } = await supabase
     .from('weekly_insights')
-    .select('content')
+    .select('content, generated_at')
     .eq('user_id', userId)
     .eq('week_start', weekStart)
     .maybeSingle()
   if (selErr) console.warn('[weekly_insights] leitura do cache falhou:', selErr.message)
-  if ((cached as any)?.content) return (cached as any).content
 
-  // 2. Agrega semana atual e anterior.
-  const { startISO, endISO } = weekRangeFromMonday(weekStart)
+  const cachedContent = (cached as any)?.content as string | undefined
+  const generatedAt = (cached as any)?.generated_at as string | null | undefined
+
+  if (cachedContent) {
+    const todayISO = new Date().toISOString().split('T')[0]
+    const genDay = generatedAt ? String(generatedAt).split('T')[0] : null
+    // Gerado hoje → cache direto.
+    if (genDay === todayISO) return cachedContent
+    if (!generatedAt) return cachedContent  // sem timestamp (não deveria) → não gasta IA
+    // Gerado num dia anterior desta semana: só regenera se houve transação nova.
+    const { count, error: cntErr } = await supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .gte('date', startISO).lte('date', endISO)
+      .gt('created_at', generatedAt)
+    if (cntErr) console.warn('[weekly_insights] checagem de novidade falhou:', cntErr.message)
+    if (!count) return cachedContent  // nada novo desde a última geração → cache, zero IA
+    // há transação nova → cai pra regenerar abaixo
+  }
+
+  // 2. (Re)gera: agrega a semana (mesma janela seg-dom) + a anterior, gera via IA.
   const prev = weekRangeFromMonday(addDaysISO(weekStart, -7))
   const [thisWeek, prevWeek] = await Promise.all([
     fetchWeekAggregates(userId, startISO, endISO),
     fetchWeekAggregates(userId, prev.startISO, prev.endISO),
   ])
 
-  // Sem gastos nesta semana → sem resumo (evita chamada de IA à toa).
-  if (thisWeek.total <= 0) return ''
+  // Sem gastos na semana → sem resumo (mantém o cache anterior se houver).
+  if (thisWeek.total <= 0) return cachedContent ?? ''
 
   // Resolve nomes dos potes do top.
   const topPotIds = topN(thisWeek.byPot, 3)
@@ -183,15 +216,18 @@ export async function getOrGenerateWeeklyInsight(userId: string, plan: Plan, cyc
   try {
     content = (await callAI(getAIProvider(plan), buildWeeklyPrompt(ctx), WEEKLY_SYSTEM_PROMPT)).trim()
   } catch {
-    return ''  // falha de IA → estado vazio, não quebra a aba
+    return cachedContent ?? ''  // falha de IA → mantém cache anterior (ou vazio na 1ª vez)
   }
-  if (!content) return ''
+  if (!content) return cachedContent ?? ''
 
-  // 4. Salva (insert — sempre semana nova). Erro não impede retornar o conteúdo.
-  const { error: insErr } = await supabase
+  // 4. Upsert (atualiza a mesma linha da semana) + novo timestamp de geração.
+  const { error: upErr } = await supabase
     .from('weekly_insights')
-    .insert({ user_id: userId, week_start: weekStart, content })
-  if (insErr) console.warn('[weekly_insights] insert falhou:', insErr.message)
+    .upsert(
+      { user_id: userId, week_start: weekStart, content, generated_at: new Date().toISOString() },
+      { onConflict: 'user_id,week_start' },
+    )
+  if (upErr) console.warn('[weekly_insights] upsert falhou:', upErr.message)
 
   return content
 }
