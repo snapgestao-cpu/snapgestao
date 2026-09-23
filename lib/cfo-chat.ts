@@ -68,11 +68,12 @@ export async function getCfoChatCount(): Promise<number> {
 // mesmo se o AsyncStorage não fizer round-trip, porque a base vem do cache em memória).
 async function incrementCfoChatCount(): Promise<number> {
   rollMemDay()
-  const stored = await readStored(dailyCountKey())
-  const base = Math.max(memChatCount, stored)
-  console.log('[chat] incrementCfoChatCount — stored:', stored, 'mem:', memChatCount, 'base usada:', base)  // DEBUG temporário
-  const next = base + 1
+  const memBefore = memChatCount
+  const stored = await readStored(dailyCountKey())  // leitura FRESCA do persistido
+  const usouMem = memBefore > stored                // base veio do mem (só quando o storage está atrás)
+  const next = Math.max(memBefore, stored) + 1      // sempre >= stored+1 → nunca grava valor menor que o persistido
   memChatCount = next
+  console.log('[chat] gravando no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, 'mem:', memBefore, ')')  // DEBUG temporário
   try { await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
   return next
 }
@@ -92,10 +93,15 @@ export async function getCfoSearchCount(): Promise<number> {
 // atual (nunca 0), então uma mensagem sem busca não "zera" o searchCount.
 async function addCfoSearchCount(n: number): Promise<number> {
   rollMemDay()
-  const base = Math.max(memSearchCount, await readStored(dailySearchKey()))
-  const next = base + Math.max(0, n)
+  const stored = await readStored(dailySearchKey())  // leitura FRESCA do persistido
+  const usouMem = memSearchCount > stored
+  const base = Math.max(memSearchCount, stored)
+  const next = base + Math.max(0, n)                  // nunca menor que o persistido
   memSearchCount = next
-  if (n > 0) { try { await AsyncStorage.setItem(dailySearchKey(), String(next)) } catch { /* noop */ } }
+  if (n > 0) {
+    console.log('[chat] gravando busca no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, ')')  // DEBUG temporário
+    try { await AsyncStorage.setItem(dailySearchKey(), String(next)) } catch { /* noop */ }
+  }
   return next
 }
 
