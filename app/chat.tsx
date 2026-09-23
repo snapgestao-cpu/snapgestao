@@ -12,7 +12,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
-import { sendCfoMessage, dailyMessageLimit, dailySearchLimit, ChatTurn } from '../lib/cfo-chat'
+import {
+  sendCfoMessage, dailyMessageLimit, dailySearchLimit,
+  getCfoChatCount, getCfoSearchCount, ChatTurn,
+} from '../lib/cfo-chat'
 
 // Consumo do dia anexado a uma resposta (snapshot no momento em que ela chegou).
 type Usage = { msgCount: number; msgLimit: number; searchCount: number; searchLimit: number; searchEnabled: boolean }
@@ -50,11 +53,22 @@ export default function ChatScreen() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [kbHeight, setKbHeight] = useState(0)  // altura do teclado (controle manual)
+  // Consumo do dia (estado da tela). Hidratado 1x no mount a partir do AsyncStorage e
+  // depois atualizado pelos valores RETORNADOS por sendCfoMessage a cada envio (sem reler).
+  const [dayUsage, setDayUsage] = useState({ msgCount: 0, searchCount: 0 })
   const scrollRef = useRef<ScrollView>(null)
   const searchNoticeShown = useRef(false)  // aviso de busca esgotada: mostra 1x por sessão
 
   const plan = user?.plan ?? 'free'
   const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
+
+  // Hidrata o consumo do dia ao montar/remontar a tela (persiste ao sair e voltar).
+  useEffect(() => {
+    Promise.all([getCfoChatCount(), getCfoSearchCount()]).then(([msgCount, searchCount]) => {
+      setDayUsage({ msgCount, searchCount })
+      console.log('[chat] hidratado ao montar — msgCount:', msgCount, 'searchCount:', searchCount)  // DEBUG temporário
+    })
+  }, [])
 
   // Empurra a barra de input acima do teclado manualmente. KeyboardAvoidingView é
   // pouco confiável no Android com edgeToEdgeEnabled + softwareKeyboardLayoutMode:"resize"
@@ -62,8 +76,15 @@ export default function ChatScreen() {
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const showSub = Keyboard.addListener(showEvt, e => { setKbHeight(e.endCoordinates?.height ?? 0); scrollToEnd() })
-    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0))
+    const showSub = Keyboard.addListener(showEvt, e => {
+      const h = e.endCoordinates?.height ?? 0
+      setKbHeight(h); scrollToEnd()
+      console.log('[chat] keyboard event — kbHeight:', h, 'platform:', Platform.OS)  // DEBUG temporário
+    })
+    const hideSub = Keyboard.addListener(hideEvt, () => {
+      setKbHeight(0)
+      console.log('[chat] keyboard event — kbHeight:', 0, 'platform:', Platform.OS)  // DEBUG temporário
+    })
     return () => { showSub.remove(); hideSub.remove() }
   }, [])
 
@@ -90,6 +111,9 @@ export default function ChatScreen() {
         cycleStart: user.cycle_start ?? 1,
         history,
       })
+      // Atualiza o consumo do dia com o valor retornado (fonte da verdade, sem reler).
+      setDayUsage({ msgCount, searchCount })
+      console.log('[chat] após envio — msgCount:', msgCount, 'searchCount:', searchCount)  // DEBUG temporário
       if (limitReached) {
         setMessages(prev => [...prev, {
           role: 'system',
@@ -131,6 +155,15 @@ export default function ChatScreen() {
         <Text style={styles.headerTitle}>💬 Fale com seu CFO</Text>
         <View style={{ width: 60 }} />
       </View>
+
+      {/* Consumo do dia (persistente): hidratado no mount, atualizado a cada envio. */}
+      <Text style={styles.usageStrip}>
+        {formatUsage({
+          msgCount: dayUsage.msgCount, msgLimit: dailyMessageLimit(plan),
+          searchCount: dayUsage.searchCount, searchLimit: dailySearchLimit(),
+          searchEnabled: plan === 'premium',
+        })}
+      </Text>
 
       <View style={{ flex: 1, marginBottom: kbHeight }}>
         <ScrollView
@@ -223,6 +256,11 @@ const styles = StyleSheet.create({
   },
   back: { color: Colors.primary, fontSize: 15, fontWeight: '600', width: 60 },
   headerTitle: { fontSize: 16, fontWeight: '800', color: Colors.textDark },
+  usageStrip: {
+    fontSize: 11, color: Colors.textMuted, textAlign: 'center',
+    paddingVertical: 5, backgroundColor: Colors.white,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
   list: { padding: 16, gap: 10, flexGrow: 1 },
   empty: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 8 },
   emptyEmoji: { fontSize: 44 },
