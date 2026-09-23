@@ -4,6 +4,19 @@ Histórico resumido de releases. Notas completas por build (com APK) ficam nas
 [Releases do GitHub](https://github.com/snapgestao-cpu/snapgestao/releases).
 Builds ≤ 33 estão documentados apenas nas Releases do GitHub.
 
+## v1.1.6 (build 38) — prerelease
+
+**IA — consolidação e correções**
+- **Aba 🤖 IA consolidada**: resumo semanal ("check-in do CFO") no topo + radar de perfil financeiro. O resumo agora **regenera quando você registra um gasto novo** na mesma semana (antes ficava fixo até virar a semana); dia sem gasto novo reaproveita o texto, sem custo de IA.
+- **Chat "Fale com seu CFO" (Fase 3a)**: busca na internet no Premium com **cota diária própria** (5/dia, separada do limite de mensagens) e **endurecimento contra prompt injection** (conteúdo de páginas buscadas é tratado só como referência, nunca como instrução). Consumo do dia numa faixa fixa no topo do chat; respostas com **negrito** renderizado.
+
+**Correções**
+- **Persistência dos contadores/preferências**: `@react-native-async-storage/async-storage` estava numa versão incompatível com o Expo SDK 54 e não gravava — corrigido (contadores do chat, toggles de notificação etc. agora persistem).
+- **Teclado no chat**: o campo de texto não fica mais coberto pelo teclado no Android.
+- **Perfil**: removidos os atalhos de Mentor Financeiro e Analisador de Preços (agora vivem na aba IA).
+
+**Nota técnica**: sem migration nova nesta versão.
+
 ## v1.1.5 (build 37) — prerelease
 
 **IA**
