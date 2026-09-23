@@ -137,6 +137,7 @@ Ambos registrados em `app.json` → `plugins`.
 
 - `expo-router` pinado em `~6.0.23` — não atualizar sem atualizar `expo` junto.
 - New Architecture habilitada (`newArchEnabled: true`) — evitar libs incompatíveis.
+- **`@react-native-async-storage/async-storage` pinado em `2.2.0`** (versão que o Expo SDK 54 espera). A 3.0.2 estava instalada e **não persistia** (`setItem` sumia silenciosamente — módulo nativo incompatível com SDK 54); rodar `npx expo install --check` para conferir. Na 2.2.0 o batch read é **`multiGet`** (array de `[key, value]`), não `getMany`. Sempre validar deps novas com `npx expo install --check`.
 - Nunca importar de `@react-navigation` diretamente — usar apenas APIs de `expo-router`.
 - `babel.config.js` usa `babel-preset-expo` + `transform-remove-console` apenas no env `production` (remove `console.*` do APK release).
 - Build Android requer SDK 34 + Java 17. APKs gerados em `android/app/build/outputs/apk/`.

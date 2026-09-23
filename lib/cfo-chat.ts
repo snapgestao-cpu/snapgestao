@@ -56,7 +56,20 @@ function rollMemDay(): void {
   if (memDay !== today) { memDay = today; memChatCount = 0; memSearchCount = 0 }
 }
 async function readStored(key: string): Promise<number> {
-  try { const v = await AsyncStorage.getItem(key); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
+  try {
+    const v = await AsyncStorage.getItem(key)
+    console.log('[chat] getItem — key:', key, 'retornou:', v)  // DEBUG temporário
+    return v ? (parseInt(v, 10) || 0) : 0
+  } catch (e) { console.log('[chat] getItem FALHOU — key:', key, 'erro:', e); return 0 }
+}
+// Escreve no AsyncStorage logando sucesso/erro explicitamente (DEBUG temporário).
+async function writeStored(key: string, value: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, String(value))
+    console.log('[chat] setItem OK — key:', key, 'valor:', value)  // DEBUG temporário
+  } catch (e) {
+    console.log('[chat] setItem FALHOU — key:', key, 'erro:', e)  // DEBUG temporário
+  }
 }
 
 function dailyCountKey(): string { return `cfo_chat_count_${todayStr()}` }
@@ -74,7 +87,7 @@ async function incrementCfoChatCount(): Promise<number> {
   const next = Math.max(memBefore, stored) + 1      // sempre >= stored+1 → nunca grava valor menor que o persistido
   memChatCount = next
   console.log('[chat] gravando no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, 'mem:', memBefore, ')')  // DEBUG temporário
-  try { await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
+  await writeStored(dailyCountKey(), next)
   return next
 }
 
@@ -100,7 +113,7 @@ async function addCfoSearchCount(n: number): Promise<number> {
   memSearchCount = next
   if (n > 0) {
     console.log('[chat] gravando busca no storage — próximo valor:', next, 'baseado em mem?', usouMem, '(stored:', stored, ')')  // DEBUG temporário
-    try { await AsyncStorage.setItem(dailySearchKey(), String(next)) } catch { /* noop */ }
+    await writeStored(dailySearchKey(), next)
   }
   return next
 }
@@ -294,7 +307,7 @@ async function runClaudeChat(
 
   for (let iter = 0; iter < MAX_TOOL_ITERS; iter++) {
     const maxUses = (!noSearchFallback && searchesLeft > 0) ? Math.min(3, searchesLeft) : 0
-    console.log('[chat] decisão de busca — cotaRestante:', searchesLeft, 'usedToday:', usedToday, 'vai incluir tool?', maxUses > 0)  // DEBUG temporário
+    if (iter === 0) console.log('[chat] decisão de busca — cotaRestante:', searchesLeft, 'usedToday:', usedToday, 'vai incluir tool?', maxUses > 0)  // DEBUG temporário (1x/mensagem)
     let data: any
     try {
       data = await claudeRequest(apiKey, system, msgs, maxUses)

@@ -137,7 +137,9 @@ export default function ProfileScreen() {
   }, [user?.id])
 
   useEffect(() => {
-    AsyncStorage.getMany(['notif_gasto', 'notif_ciclo', 'notif_incentivo']).then(m => {
+    // multiGet retorna array de [key, value]; converte pra objeto (getMany não existe na 2.2.0).
+    AsyncStorage.multiGet(['notif_gasto', 'notif_ciclo', 'notif_incentivo']).then(pairs => {
+      const m = Object.fromEntries(pairs) as Record<string, string | null>
       setNotifGasto(m['notif_gasto'] === 'true')
       setNotifCiclo(m['notif_ciclo'] === 'true')
       setNotifIncentivo(m['notif_incentivo'] === 'true')
