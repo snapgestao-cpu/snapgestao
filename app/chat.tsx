@@ -17,11 +17,11 @@ import {
   getCfoChatCount, getCfoSearchCount, ChatTurn,
 } from '../lib/cfo-chat'
 
-// Consumo do dia anexado a uma resposta (snapshot no momento em que ela chegou).
+// Consumo do dia (usado na faixa fixa sob o header).
 type Usage = { msgCount: number; msgLimit: number; searchCount: number; searchLimit: number; searchEnabled: boolean }
 type Msg =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string; usage?: Usage }
+  | { role: 'assistant'; text: string }
   | { role: 'system'; text: string }
 
 const SUGGESTIONS = [
@@ -120,13 +120,7 @@ export default function ChatScreen() {
           text: `Você atingiu o limite de ${dailyMessageLimit(plan)} perguntas de hoje. Volte amanhã 🌙`,
         }])
       } else {
-        // Consumo do dia até este ponto — msgCount/searchCount vêm direto do sendCfoMessage
-        // (valor recém-gravado), não de uma releitura do AsyncStorage.
-        const usage: Usage = {
-          msgCount, msgLimit: dailyMessageLimit(plan),
-          searchCount, searchLimit: dailySearchLimit(),
-          searchEnabled: plan === 'premium',  // busca na web só no Premium
-        }
+        // Consumo do dia é mostrado só na faixa fixa sob o header (dayUsage). Sem legenda por bolha.
         const extra: Msg[] = []
         // Aviso claro de que a BUSCA na internet acabou — o chat continua normal, só sem web.
         if (searchExhausted && !searchNoticeShown.current) {
@@ -136,7 +130,7 @@ export default function ChatScreen() {
             text: `🔎 Você usou as ${dailySearchLimit()} buscas na internet de hoje. Sigo respondendo normalmente com base nos seus dados — a busca volta amanhã.`,
           })
         }
-        setMessages(prev => [...prev, { role: 'assistant', text: reply, usage }, ...extra])
+        setMessages(prev => [...prev, { role: 'assistant', text: reply }, ...extra])
       }
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'system', text: 'Algo deu errado ao falar com a IA. Tente de novo em instantes.' }])
@@ -195,17 +189,13 @@ export default function ChatScreen() {
               return <View key={i} style={styles.systemBubble}><Text style={styles.systemText}>{m.text}</Text></View>
             }
             const isUser = m.role === 'user'
-            const usage = m.role === 'assistant' ? m.usage : undefined
             return (
-              <View key={i}>
-                <View style={[styles.row, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}>
-                  <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
-                    <Text style={[styles.bubbleText, isUser && { color: '#fff' }]}>
-                      {isUser ? m.text : renderMarkdownBold(m.text)}
-                    </Text>
-                  </View>
+              <View key={i} style={[styles.row, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}>
+                <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
+                  <Text style={[styles.bubbleText, isUser && { color: '#fff' }]}>
+                    {isUser ? m.text : renderMarkdownBold(m.text)}
+                  </Text>
                 </View>
-                {usage && <Text style={styles.usageText}>{formatUsage(usage)}</Text>}
               </View>
             )
           })}
@@ -276,7 +266,6 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: Colors.primary, borderBottomRightRadius: 4 },
   aiBubble: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border, borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 14, color: Colors.textDark, lineHeight: 20 },
-  usageText: { fontSize: 10, color: Colors.textMuted, marginLeft: 16, marginTop: 3 },
   systemBubble: {
     alignSelf: 'center', backgroundColor: Colors.lightBlue, borderRadius: 12,
     paddingVertical: 8, paddingHorizontal: 14, maxWidth: '90%',

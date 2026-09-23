@@ -41,17 +41,38 @@ export function parseToolInput(raw: any): Record<string, any> {
   return {}
 }
 
-function dailyCountKey(): string {
-  return `cfo_chat_count_${new Date().toISOString().split('T')[0]}`
+// Contadores diários (mensagens e busca). Fonte da verdade NA SESSÃO = cache em
+// memória (mem*), com AsyncStorage só como persistência entre sessões (best-effort).
+// Motivo: observou-se que o round-trip do AsyncStorage não estava persistindo entre
+// envios (msgCount voltava a 0), então getCfo*Count = max(memória, persistido) e o
+// incremento parte desse max — nunca "reseta" pra 0 no meio da sessão. mem zera só
+// quando vira o dia.
+function todayStr(): string { return new Date().toISOString().split('T')[0] }
+let memDay = ''
+let memChatCount = 0
+let memSearchCount = 0
+function rollMemDay(): void {
+  const today = todayStr()
+  if (memDay !== today) { memDay = today; memChatCount = 0; memSearchCount = 0 }
 }
+async function readStored(key: string): Promise<number> {
+  try { const v = await AsyncStorage.getItem(key); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
+}
+
+function dailyCountKey(): string { return `cfo_chat_count_${todayStr()}` }
 export async function getCfoChatCount(): Promise<number> {
-  try { const v = await AsyncStorage.getItem(dailyCountKey()); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
+  rollMemDay()
+  return Math.max(memChatCount, await readStored(dailyCountKey()))
 }
-// Incrementa e RETORNA o novo total (a UI usa este valor direto, sem reler o
-// AsyncStorage — evita qualquer problema de leitura-após-escrita/closure stale).
+// Incrementa e RETORNA o novo total ACUMULADO do dia (progride 1→2→3… na mesma sessão
+// mesmo se o AsyncStorage não fizer round-trip, porque a base vem do cache em memória).
 async function incrementCfoChatCount(): Promise<number> {
-  let next = 1
-  try { const c = await getCfoChatCount(); next = c + 1; await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
+  rollMemDay()
+  const base = Math.max(memChatCount, await readStored(dailyCountKey()))
+  console.log('[chat] incrementCfoChatCount — valor lido antes de somar:', base)  // DEBUG temporário
+  const next = base + 1
+  memChatCount = next
+  try { await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
   return next
 }
 
@@ -61,15 +82,20 @@ async function incrementCfoChatCount(): Promise<number> {
 export function dailySearchLimit(): number { return 5 }
 export function isWithinSearchLimit(count: number): boolean { return count < dailySearchLimit() }
 
-function dailySearchKey(): string {
-  return `cfo_search_count_${new Date().toISOString().split('T')[0]}`
-}
+function dailySearchKey(): string { return `cfo_search_count_${todayStr()}` }
 export async function getCfoSearchCount(): Promise<number> {
-  try { const v = await AsyncStorage.getItem(dailySearchKey()); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
+  rollMemDay()
+  return Math.max(memSearchCount, await readStored(dailySearchKey()))
 }
-async function addCfoSearchCount(n: number): Promise<void> {
-  if (n <= 0) return
-  try { const c = await getCfoSearchCount(); await AsyncStorage.setItem(dailySearchKey(), String(c + n)) } catch { /* noop */ }
+// Soma n buscas e RETORNA o novo total ACUMULADO do dia. Com n=0 devolve o total
+// atual (nunca 0), então uma mensagem sem busca não "zera" o searchCount.
+async function addCfoSearchCount(n: number): Promise<number> {
+  rollMemDay()
+  const base = Math.max(memSearchCount, await readStored(dailySearchKey()))
+  const next = base + Math.max(0, n)
+  memSearchCount = next
+  if (n > 0) { try { await AsyncStorage.setItem(dailySearchKey(), String(next)) } catch { /* noop */ } }
+  return next
 }
 
 // ── Ferramentas (LEITURA) ────────────────────────────────────────────────────
@@ -286,14 +312,14 @@ async function runClaudeChat(
       msgs.push({ role: 'user', content: toolResults })
       continue
     }
-    await addCfoSearchCount(searchesThisTurn)
-    return { reply: extractText(content), searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount: usedToday + searchesThisTurn }
+    const searchCount = await addCfoSearchCount(searchesThisTurn)  // total acumulado do dia
+    return { reply: extractText(content), searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount }
   }
 
-  await addCfoSearchCount(searchesThisTurn)
+  const searchCount = await addCfoSearchCount(searchesThisTurn)  // total acumulado do dia
   const last = msgs[msgs.length - 1]
   const reply = (last?.role === 'assistant' && Array.isArray(last.content)) ? extractText(last.content) : ''
-  return { reply, searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount: usedToday + searchesThisTurn }
+  return { reply, searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount }
 }
 
 // ── Loop Groq (function calling estilo OpenAI) ───────────────────────────────
