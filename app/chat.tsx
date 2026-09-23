@@ -3,18 +3,26 @@
  * Sessão só em memória (estado do componente); sem persistência de histórico.
  * Provider por plano + limite diário próprio (ver lib/cfo-chat.ts).
  */
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Keyboard, Platform,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
-import { sendCfoMessage, dailyMessageLimit, dailySearchLimit, ChatTurn } from '../lib/cfo-chat'
+import {
+  sendCfoMessage, dailyMessageLimit, dailySearchLimit,
+  getCfoChatCount, getCfoSearchCount, ChatTurn,
+} from '../lib/cfo-chat'
 
-type Msg = ChatTurn | { role: 'system'; text: string }
+// Consumo do dia anexado a uma resposta (snapshot no momento em que ela chegou).
+type Usage = { msgCount: number; msgLimit: number; searchCount: number; searchLimit: number; searchEnabled: boolean }
+type Msg =
+  | { role: 'user'; text: string }
+  | { role: 'assistant'; text: string; usage?: Usage }
+  | { role: 'system'; text: string }
 
 const SUGGESTIONS = [
   'Quanto gastei este mês?',
@@ -22,17 +30,45 @@ const SUGGESTIONS = [
   'Onde está mais barato o arroz?',
 ]
 
+// Parser leve de **negrito** (sem dependência nova) — aplicado só às respostas da IA.
+function renderMarkdownBold(text: string) {
+  const parts = text.split(/(\*\*.+?\*\*)/g)
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <Text key={i} style={{ fontWeight: '700' }}>{part.slice(2, -2)}</Text>
+      : <Text key={i}>{part}</Text>
+  )
+}
+
+function formatUsage(u: Usage): string {
+  let s = `💬 ${u.msgCount}/${u.msgLimit} mensagens hoje`
+  if (u.searchEnabled) s += ` · 🔎 ${u.searchCount}/${u.searchLimit} buscas hoje`
+  return s
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets()
   const { user } = useAuthStore()
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [kbHeight, setKbHeight] = useState(0)  // altura do teclado (controle manual)
   const scrollRef = useRef<ScrollView>(null)
   const searchNoticeShown = useRef(false)  // aviso de busca esgotada: mostra 1x por sessão
 
   const plan = user?.plan ?? 'free'
   const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
+
+  // Empurra a barra de input acima do teclado manualmente. KeyboardAvoidingView é
+  // pouco confiável no Android com edgeToEdgeEnabled + softwareKeyboardLayoutMode:"resize"
+  // (a janela não redimensiona), então usamos a altura real do teclado + marginBottom.
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const showSub = Keyboard.addListener(showEvt, e => { setKbHeight(e.endCoordinates?.height ?? 0); scrollToEnd() })
+    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0))
+    return () => { showSub.remove(); hideSub.remove() }
+  }, [])
 
   const send = async (text: string) => {
     const question = text.trim()
@@ -41,7 +77,9 @@ export default function ChatScreen() {
 
     // Histórico de conversa (só user/assistant) enviado à IA.
     const history: ChatTurn[] = [
-      ...messages.filter((m): m is ChatTurn => m.role === 'user' || m.role === 'assistant'),
+      ...messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role as 'user' | 'assistant', text: m.text })),
       { role: 'user', text: question },
     ]
     setMessages(prev => [...prev, { role: 'user', text: question }])
@@ -61,6 +99,13 @@ export default function ChatScreen() {
           text: `Você atingiu o limite de ${dailyMessageLimit(plan)} perguntas de hoje. Volte amanhã 🌙`,
         }])
       } else {
+        // Consumo do dia até este ponto — reaproveita os contadores já existentes (só lê).
+        const [msgCount, searchCount] = await Promise.all([getCfoChatCount(), getCfoSearchCount()])
+        const usage: Usage = {
+          msgCount, msgLimit: dailyMessageLimit(plan),
+          searchCount, searchLimit: dailySearchLimit(),
+          searchEnabled: plan === 'premium',  // busca na web só no Premium
+        }
         const extra: Msg[] = []
         // Aviso claro de que a BUSCA na internet acabou — o chat continua normal, só sem web.
         if (searchExhausted && !searchNoticeShown.current) {
@@ -70,7 +115,7 @@ export default function ChatScreen() {
             text: `🔎 Você usou as ${dailySearchLimit()} buscas na internet de hoje. Sigo respondendo normalmente com base nos seus dados — a busca volta amanhã.`,
           })
         }
-        setMessages(prev => [...prev, { role: 'assistant', text: reply }, ...extra])
+        setMessages(prev => [...prev, { role: 'assistant', text: reply, usage }, ...extra])
       }
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'system', text: 'Algo deu errado ao falar com a IA. Tente de novo em instantes.' }])
@@ -90,11 +135,7 @@ export default function ChatScreen() {
         <View style={{ width: 60 }} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + 8}
-      >
+      <View style={{ flex: 1, marginBottom: kbHeight }}>
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
@@ -124,11 +165,17 @@ export default function ChatScreen() {
               return <View key={i} style={styles.systemBubble}><Text style={styles.systemText}>{m.text}</Text></View>
             }
             const isUser = m.role === 'user'
+            const usage = m.role === 'assistant' ? m.usage : undefined
             return (
-              <View key={i} style={[styles.row, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}>
-                <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
-                  <Text style={[styles.bubbleText, isUser && { color: '#fff' }]}>{m.text}</Text>
+              <View key={i}>
+                <View style={[styles.row, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}>
+                  <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
+                    <Text style={[styles.bubbleText, isUser && { color: '#fff' }]}>
+                      {isUser ? m.text : renderMarkdownBold(m.text)}
+                    </Text>
+                  </View>
                 </View>
+                {usage && <Text style={styles.usageText}>{formatUsage(usage)}</Text>}
               </View>
             )
           })}
@@ -143,7 +190,7 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
+        <View style={[styles.inputBar, { paddingBottom: kbHeight > 0 ? 8 : insets.bottom + 8 }]}>
           <TextInput
             style={styles.input}
             value={input}
@@ -162,7 +209,7 @@ export default function ChatScreen() {
             <Text style={styles.sendBtnText}>➤</Text>
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   )
 }
@@ -191,6 +238,7 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: Colors.primary, borderBottomRightRadius: 4 },
   aiBubble: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border, borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 14, color: Colors.textDark, lineHeight: 20 },
+  usageText: { fontSize: 10, color: Colors.textMuted, marginLeft: 16, marginTop: 3 },
   systemBubble: {
     alignSelf: 'center', backgroundColor: Colors.lightBlue, borderRadius: 12,
     paddingVertical: 8, paddingHorizontal: 14, maxWidth: '90%',

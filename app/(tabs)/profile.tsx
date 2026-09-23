@@ -564,42 +564,7 @@ export default function ProfileScreen() {
           <Text style={styles.achievementsLink}>Ver todas →</Text>
         </TouchableOpacity>
 
-        {/* Mentor Financeiro */}
-        <TouchableOpacity
-          style={styles.mentorCard}
-          onPress={() => router.push('/mentor')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.mentorLeft}>
-            <View style={styles.mentorIcon}>
-              <Text style={styles.mentorIconText}>🤖</Text>
-            </View>
-            <View style={styles.mentorInfo}>
-              <Text style={styles.mentorTitle}>Mentor Financeiro IA</Text>
-              <Text style={styles.mentorSub}>Análise personalizada + relatório PDF</Text>
-            </View>
-          </View>
-          <Text style={styles.mentorChevron}>›</Text>
-        </TouchableOpacity>
-
-        {/* Analisador de Preços */}
-        <TouchableOpacity
-          style={styles.analisadorCard}
-          onPress={() => router.push('/analisador-precos')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.analisadorIcon}>🔍</Text>
-          <View style={styles.analisadorInfo}>
-            <View style={styles.analisadorTitleRow}>
-              <Text style={styles.analisadorTitle}>Analisador de Preços</Text>
-              <View style={styles.analisadorBadge}>
-                <Text style={styles.analisadorBadgeText}>IA</Text>
-              </View>
-            </View>
-            <Text style={styles.analisadorSub}>Compare preços e encontre onde comprar melhor</Text>
-          </View>
-          <Text style={styles.analisadorChevron}>›</Text>
-        </TouchableOpacity>
+        {/* Mentor Financeiro e Analisador de Preços movidos para a aba IA */}
 
         {/* Settings groups */}
         {groups.map(group => (
@@ -820,43 +785,6 @@ const styles = StyleSheet.create({
   previewName: { fontSize: 11, fontWeight: '600', maxWidth: 80 },
   achievementsEmpty: { fontSize: 12, color: Colors.textMuted, marginBottom: 10 },
   achievementsLink: { fontSize: 13, fontWeight: '600', color: Colors.primary },
-  mentorCard: {
-    backgroundColor: Colors.primary, borderRadius: 16,
-    padding: 16, marginBottom: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
-  },
-  mentorLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  mentorIcon: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  mentorIconText: { fontSize: 22 },
-  mentorInfo: { flex: 1 },
-  mentorTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  mentorSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-  mentorChevron: { fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
-  analisadorCard: {
-    backgroundColor: Colors.white, borderRadius: 16,
-    padding: 16, marginBottom: 12,
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1.5, borderColor: Colors.accent,
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 3,
-  },
-  analisadorIcon: { fontSize: 24, marginRight: 12 },
-  analisadorInfo: { flex: 1 },
-  analisadorTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  analisadorTitle: { fontSize: 15, fontWeight: '700', color: Colors.accent },
-  analisadorBadge: {
-    backgroundColor: Colors.accent, borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  analisadorBadgeText: { fontSize: 9, color: '#fff', fontWeight: '700' },
-  analisadorSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  analisadorChevron: { fontSize: 16, color: Colors.accent },
   groupContainer: { marginBottom: 20 },
   groupTitle: { fontSize: 12, fontWeight: '700', color: Colors.textMuted, marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
   groupCard: {
