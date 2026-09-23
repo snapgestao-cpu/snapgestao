@@ -12,10 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
 import { useAuthStore } from '../stores/useAuthStore'
-import {
-  sendCfoMessage, dailyMessageLimit, dailySearchLimit,
-  getCfoChatCount, getCfoSearchCount, ChatTurn,
-} from '../lib/cfo-chat'
+import { sendCfoMessage, dailyMessageLimit, dailySearchLimit, ChatTurn } from '../lib/cfo-chat'
 
 // Consumo do dia anexado a uma resposta (snapshot no momento em que ela chegou).
 type Usage = { msgCount: number; msgLimit: number; searchCount: number; searchLimit: number; searchEnabled: boolean }
@@ -87,7 +84,7 @@ export default function ChatScreen() {
     scrollToEnd()
 
     try {
-      const { reply, limitReached, searchExhausted } = await sendCfoMessage({
+      const { reply, limitReached, searchExhausted, msgCount, searchCount } = await sendCfoMessage({
         userId: user.id,
         plan,
         cycleStart: user.cycle_start ?? 1,
@@ -99,8 +96,8 @@ export default function ChatScreen() {
           text: `Você atingiu o limite de ${dailyMessageLimit(plan)} perguntas de hoje. Volte amanhã 🌙`,
         }])
       } else {
-        // Consumo do dia até este ponto — reaproveita os contadores já existentes (só lê).
-        const [msgCount, searchCount] = await Promise.all([getCfoChatCount(), getCfoSearchCount()])
+        // Consumo do dia até este ponto — msgCount/searchCount vêm direto do sendCfoMessage
+        // (valor recém-gravado), não de uma releitura do AsyncStorage.
         const usage: Usage = {
           msgCount, msgLimit: dailyMessageLimit(plan),
           searchCount, searchLimit: dailySearchLimit(),
@@ -190,7 +187,10 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.inputBar, { paddingBottom: kbHeight > 0 ? 8 : insets.bottom + 8 }]}>
+        {/* paddingBottom mantém insets.bottom + 8 SEMPRE: com edge-to-edge o endCoordinates.height
+            do teclado no Android costuma não incluir a nav bar, então essa folga garante o campo
+            100% acima do teclado (vale como buffer; some sob o teclado quando ele está aberto). */}
+        <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
           <TextInput
             style={styles.input}
             value={input}

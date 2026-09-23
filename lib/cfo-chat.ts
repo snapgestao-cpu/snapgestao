@@ -47,8 +47,12 @@ function dailyCountKey(): string {
 export async function getCfoChatCount(): Promise<number> {
   try { const v = await AsyncStorage.getItem(dailyCountKey()); return v ? (parseInt(v, 10) || 0) : 0 } catch { return 0 }
 }
-async function incrementCfoChatCount(): Promise<void> {
-  try { const c = await getCfoChatCount(); await AsyncStorage.setItem(dailyCountKey(), String(c + 1)) } catch { /* noop */ }
+// Incrementa e RETORNA o novo total (a UI usa este valor direto, sem reler o
+// AsyncStorage — evita qualquer problema de leitura-após-escrita/closure stale).
+async function incrementCfoChatCount(): Promise<number> {
+  let next = 1
+  try { const c = await getCfoChatCount(); next = c + 1; await AsyncStorage.setItem(dailyCountKey(), String(next)) } catch { /* noop */ }
+  return next
 }
 
 // ── Guard PRÓPRIO da busca na internet (diário, INDEPENDENTE do limite de mensagens) ──
@@ -248,7 +252,7 @@ function extractText(content: any[]): string {
 
 async function runClaudeChat(
   apiKey: string, system: string, neutral: { role: string; content: string }[], ctx: ToolCtx,
-): Promise<{ reply: string; searchExhausted: boolean }> {
+): Promise<{ reply: string; searchExhausted: boolean; searchCount: number }> {
   const msgs: any[] = neutral.map(m => ({ role: m.role, content: m.content }))
   const usedToday = await getCfoSearchCount()
   let searchesLeft = Math.max(0, dailySearchLimit() - usedToday)  // cota de busca restante hoje
@@ -283,13 +287,13 @@ async function runClaudeChat(
       continue
     }
     await addCfoSearchCount(searchesThisTurn)
-    return { reply: extractText(content), searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0 }
+    return { reply: extractText(content), searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount: usedToday + searchesThisTurn }
   }
 
   await addCfoSearchCount(searchesThisTurn)
   const last = msgs[msgs.length - 1]
   const reply = (last?.role === 'assistant' && Array.isArray(last.content)) ? extractText(last.content) : ''
-  return { reply, searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0 }
+  return { reply, searchExhausted: searchesThisTurn > 0 && searchesLeft <= 0, searchCount: usedToday + searchesThisTurn }
 }
 
 // ── Loop Groq (function calling estilo OpenAI) ───────────────────────────────
@@ -333,9 +337,11 @@ export async function sendCfoMessage(params: {
   plan: Plan
   cycleStart: number
   history: ChatTurn[]
-}): Promise<{ reply: string; limitReached: boolean; searchExhausted: boolean }> {
+}): Promise<{ reply: string; limitReached: boolean; searchExhausted: boolean; msgCount: number; searchCount: number }> {
   const count = await getCfoChatCount()
-  if (!isWithinDailyLimit(count, params.plan)) return { reply: '', limitReached: true, searchExhausted: false }
+  if (!isWithinDailyLimit(count, params.plan)) {
+    return { reply: '', limitReached: true, searchExhausted: false, msgCount: count, searchCount: await getCfoSearchCount() }
+  }
 
   const provider = getAIProvider(params.plan)
   const apiKey = getApiKey(provider)
@@ -347,12 +353,15 @@ export async function sendCfoMessage(params: {
   // Groq (Free) não tem busca na web; Claude (Premium) enforça a cota diária de busca.
   const result = provider === 'claude'
     ? await runClaudeChat(apiKey, CFO_SYSTEM_PROMPT, neutral, ctx)
-    : { reply: await runGroqChat(apiKey, CFO_SYSTEM_PROMPT, neutral, ctx), searchExhausted: false }
+    : { reply: await runGroqChat(apiKey, CFO_SYSTEM_PROMPT, neutral, ctx), searchExhausted: false, searchCount: 0 }
 
-  await incrementCfoChatCount()  // limite de MENSAGENS: só conta quando a IA respondeu de fato
+  // Contadores retornados direto da fonte (o valor recém-gravado), não relidos na UI.
+  const msgCount = await incrementCfoChatCount()  // limite de MENSAGENS: +1 por resposta bem-sucedida
   return {
     reply: result.reply || 'Não consegui gerar uma resposta agora. Tente reformular a pergunta.',
     limitReached: false,
     searchExhausted: result.searchExhausted,
+    msgCount,
+    searchCount: result.searchCount,
   }
 }
