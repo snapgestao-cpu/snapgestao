@@ -85,6 +85,19 @@ export function extractStateCode(qrData: string): string | null {
   }
 }
 
+// Hostnames dos portais SEFAZ suportados, derivados de NFCE_STATES (sem hardcode por UF).
+// Usado para decidir se um redirect http:// deve ser forçado para https://.
+export const SEFAZ_HOSTNAMES: string[] = Object.values(NFCE_STATES).map((s) => {
+  const noProto = s.portalUrl.replace(/^https?:\/\//i, '')
+  return noProto.split('/')[0].toLowerCase()
+})
+
+// True quando a URL pertence a um dos portais SEFAZ suportados (qualquer protocolo).
+export function isSefazUrl(url: string): boolean {
+  const lower = url.toLowerCase()
+  return SEFAZ_HOSTNAMES.some((host) => lower.includes(host))
+}
+
 export function getStateByCode(code: string | null): NFCeState | null {
   if (!code) return null
   return NFCE_STATES[code] ?? null

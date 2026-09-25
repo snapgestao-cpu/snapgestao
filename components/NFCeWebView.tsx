@@ -14,6 +14,7 @@ import { WebView } from 'react-native-webview'
 import { Colors } from '../constants/colors'
 import type { NFCeResult } from '../lib/ocr'
 import type { NFCeState } from '../lib/nfce-states'
+import { isSefazUrl } from '../lib/nfce-states'
 
 type Props = {
   url: string
@@ -261,6 +262,9 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
 
   const scriptInjectedRef = useRef(false)
   const loadEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Guarda a última URL https:// já forçada, para não repetir a correção em loop
+  // quando onNavigationStateChange dispara mais de uma vez para a mesma URL.
+  const lastForcedHttpsUrlRef = useRef<string | null>(null)
   // url is already sanitized by ocr.tsx — do NOT call sanitizeNFCeUrl again here
   const finalUrlRef = useRef(url)
   const sawRedirectRef = useRef(
@@ -385,9 +389,46 @@ export default function NFCeWebView({ url, state, chaveAcesso, stateCode, onSucc
         javaScriptEnabled={true}
         domStorageEnabled={true}
         mixedContentMode="always"
+        onShouldStartLoadWithRequest={(request) => {
+          const reqUrl = request.url
+          // Alguns portais SEFAZ (ex.: RJ) redirecionam a etapa final para http:// (sem TLS),
+          // e o servidor recusa HTTP puro (net::ERR_CONNECTION_REFUSED) → "Erro de conexão".
+          // Interceptamos: se a navegação for http:// para um domínio SEFAZ suportado,
+          // cancelamos e recarregamos a MESMA URL em https://.
+          if (/^http:\/\//i.test(reqUrl) && isSefazUrl(reqUrl)) {
+            const httpsUrl = reqUrl.replace(/^http:\/\//i, 'https://')
+            finalUrlRef.current = httpsUrl
+            // Cancela a navegação http e força a versão https na página atual.
+            setTimeout(() => {
+              webViewRef.current?.injectJavaScript(
+                `window.location.replace('${httpsUrl}'); true;`
+              )
+            }, 0)
+            return false
+          }
+          return true
+        }}
         onNavigationStateChange={(navState) => {
           const navUrl = navState.url
           if (!navUrl || navUrl === 'about:blank') return
+
+          // 2ª camada de proteção: onShouldStartLoadWithRequest não pega TODA navegação no
+          // Android, mas onNavigationStateChange dispara de forma confiável em toda troca de
+          // URL. Se cair num http:// de domínio SEFAZ (o portal alterna sozinho por auto-refresh),
+          // paramos o carregamento e forçamos a mesma URL em https://.
+          if (/^http:\/\//i.test(navUrl) && isSefazUrl(navUrl)) {
+            const httpsUrl = navUrl.replace(/^http:\/\//i, 'https://')
+            if (lastForcedHttpsUrlRef.current !== httpsUrl) {
+              lastForcedHttpsUrlRef.current = httpsUrl
+              console.log('[WebView] Redirect http:// SEFAZ — forçando https://:', httpsUrl)
+              finalUrlRef.current = httpsUrl
+              webViewRef.current?.stopLoading()
+              webViewRef.current?.injectJavaScript(
+                `window.location.replace('${httpsUrl}'); true;`
+              )
+            }
+            return
+          }
 
           console.log('[WebView] Navegando para:', navUrl.substring(0, 100))
 

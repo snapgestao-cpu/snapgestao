@@ -4,6 +4,14 @@ Histórico resumido de releases. Notas completas por build (com APK) ficam nas
 [Releases do GitHub](https://github.com/snapgestao-cpu/snapgestao/releases).
 Builds ≤ 33 estão documentados apenas nas Releases do GitHub.
 
+## v1.1.7 (build 39) — prerelease
+
+**Correção — leitura de cupom fiscal (NFC-e) por QR Code**
+- **Cupom do RJ voltou a funcionar.** No meio da cadeia de redirecionamentos do portal `consultadfe.fazenda.rj.gov.br`, o próprio servidor da SEFAZ redirecionava a etapa final para uma URL `http://` (sem TLS), que o servidor recusa (`net::ERR_CONNECTION_REFUSED`) — o WebView tentava seguir esse `http://` e o app exibia "Erro de conexão com a SEFAZ". Agora toda navegação `http://` para um domínio de portal SEFAZ suportado é interceptada e forçada para `https://`, em duas camadas: `onShouldStartLoadWithRequest` (1ª) e um fallback em `onNavigationStateChange` com proteção anti-loop (2ª, pega os redirects que o Android não passa pela 1ª).
+- A lista de domínios é derivada dos portais já cadastrados (RJ/SP/MG), sem hardcode por UF — então SP e MG também são cobertos pela mesma correção (RJ testado; SP/MG a validar em campo).
+
+**Nota técnica**: sem migration nova nesta versão.
+
 ## v1.1.6 (build 38) — prerelease
 
 **IA — consolidação e correções**
